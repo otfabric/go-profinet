@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -218,4 +219,12 @@ func linkUp(p l2.Port) bool {
 		return l.LinkUp()
 	}
 	return true
+}
+
+// setLinkUp sets an interface up.
+func setLinkUp(iface string) error {
+	if out, err := exec.Command("ip", "link", "set", "dev", iface, "up").CombinedOutput(); err != nil {
+		return fmt.Errorf("ip link set up: %v: %s", err, out)
+	}
+	return nil
 }
