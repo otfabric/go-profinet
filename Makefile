@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -144,6 +144,8 @@ cross: ## Build every package for the supported platforms
 	@for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
 		echo "Building $$p"; GOOS=$${p%/*} GOARCH=$${p#*/} go build ./... || exit 1; \
 	done
+
+e2e: test-e2e ## Alias of test-e2e
 
 check: generate-check coverpkg-check release-notes-check fmt fmt-check lint lint-ci vet vuln test coverage-check examples ## Run everything CI runs, except the Docker-based suites
 
