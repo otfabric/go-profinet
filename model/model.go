@@ -30,6 +30,12 @@ const (
 	SubslotPort1 uint16 = 0x8001
 )
 
+// maxMinDeviceInterval is the largest MinDeviceInterval, 128 ms. The GSDML
+// schema types the attribute only as Unsigned16; the bound is the one p-net
+// (pf_fspm_validate_configuration) and Hilscher's firmware tag
+// (usMinDeviceInterval) apply.
+const maxMinDeviceInterval = 4096
+
 // Record is a parameter record of a submodule.
 type Record struct {
 	// Index is the record index, 0..0x7FFF for user records.
@@ -130,7 +136,7 @@ type Capabilities struct {
 	MaxARs int `json:"maxArs"`
 	// MinDeviceInterval is the shortest cycle, SendClockFactor ×
 	// ReductionRatio, in units of 31.25 µs (32 = 1 ms, at most 4096 =
-	// 128 ms).
+	// 128 ms). Zero sets no lower bound on the cycle.
 	MinDeviceInterval uint16 `json:"minDeviceInterval"`
 	// ReductionRatios are the supported reduction ratios; empty means
 	// 1, 2, 4, ..., 512.
@@ -334,6 +340,9 @@ func (d *Device) Validate() error {
 	}
 	if d.Capabilities.MaxARs < 0 {
 		return bad("MaxARs %d", d.Capabilities.MaxARs)
+	}
+	if d.Capabilities.MinDeviceInterval > maxMinDeviceInterval {
+		return bad("MinDeviceInterval %d above %d (128 ms)", d.Capabilities.MinDeviceInterval, maxMinDeviceInterval)
 	}
 	return nil
 }

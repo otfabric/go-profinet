@@ -26,6 +26,28 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.6.1
+
+**Date:** to be set at release
+**Previous release:** v0.6.0
+
+Device behaviour change; no API change.
+
+- **`MinDeviceInterval` bounds the cycle, not the send clock.** The device
+  compares it with SendClockFactor × ReductionRatio, so a device can declare
+  up to 4096 (128 ms); before, one that declared more than 128 refused every
+  Connect. Contributed by Giebisch (#52).
+  - A device that declares 32 now accepts a send clock below 1 ms when the
+    cycle reaches 1 ms.
+  - A cycle below `MinDeviceInterval` is refused with IOCRBlockReq
+    ErrorCode2 11 (ReductionRatio), as p-net does; it was 10
+    (SendClockFactor) when the send clock alone was below it.
+- **`model.Device.Validate`** refuses a `MinDeviceInterval` above 4096, so
+  `device.New` and `gsdml.FromModel` do too. Such a device refused every
+  Connect in v0.6.0. Zero stays valid and sets no lower bound.
+
+---
+
 ## v0.6.0
 
 **Date:** 2026-10-29

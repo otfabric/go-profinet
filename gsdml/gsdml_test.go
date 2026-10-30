@@ -194,6 +194,30 @@ func TestFromModelRoundTrip(t *testing.T) {
 	}
 }
 
+// MinDeviceInterval is the shortest cycle, so a value above the document's
+// send clock survives generation; below it, the generated SendClock 32 is
+// the floor.
+func TestFromModelMinDeviceInterval(t *testing.T) {
+	for _, c := range []struct{ in, want uint16 }{{4096, 4096}, {512, 512}, {32, 32}, {16, 32}, {0, 32}} {
+		m := testModel()
+		m.Capabilities.MinDeviceInterval = c.in
+		doc, err := FromModel(m, GenerateOptions{})
+		if err != nil {
+			t.Fatalf("%d: %v", c.in, err)
+		}
+		if err := Validate(doc); err != nil {
+			t.Fatalf("%d: %v", c.in, err)
+		}
+		m2, err := ToModel(doc, "")
+		if err != nil {
+			t.Fatalf("%d: %v", c.in, err)
+		}
+		if got := m2.Capabilities.MinDeviceInterval; got != c.want {
+			t.Fatalf("%d: generated %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
 func TestValidationIssues(t *testing.T) {
 	doc := load(t, "otf-fixture-latin1.xml")
 	dap := doc.ProfileBody.ApplicationProcess.DeviceAccessPointList.DeviceAccessPointItems[0]

@@ -97,7 +97,7 @@ against (see [the matrix](#interop-matrix)).
 | Feature | State | Interop |
 |---------|:---:|---------|
 | RT_CLASS_1 (FrameID 0xC000–0xF7FF) and RT_CLASS_2 unsynchronized (0x8000–0xBBFF) | ✅ | p-net, pnio-rs, profinet-py |
-| SendClockFactor 1–128 (powers of two, from the device's MinDeviceInterval) × ReductionRatio 1–512 | ✅ | p-net (1 ms), profinet-py (32 ms) |
+| SendClockFactor 1–128 (powers of two) × ReductionRatio 1–512, the cycle at least the device's MinDeviceInterval | ✅ | p-net (1 ms), profinet-py (32 ms) |
 | IOPS, IOCS, DataStatus, cycle counter, watchdog and data hold factors | ✅ | all |
 | 802.1Q priority 6 tag; untagged and priority-tagged reception | ✅ | all |
 | RT_CLASS_3 (IRT), RT over UDP, multicast CRs (MCR), redundant frames | — | |

@@ -537,6 +537,8 @@ func FromModel(m *model.Device, opts GenerateOptions) (*Document, error) {
 	if sw.Prefix == 0 {
 		sw.Prefix = 'V'
 	}
+	// The document offers SendClock 32 only (TimingProperties below), so
+	// no cycle below 32 can be configured from it.
 	dap := &DeviceAccessPointItem{
 		ID: "DAP", PNIOVersion: opts.PNIOVersion, PhysicalSlots: fmt.Sprintf("0..%d", maxSlot),
 		ModuleIdentNumber: hex32(m.DAP.IdentNumber), MinDeviceInterval: strconv.Itoa(int(max(m.Capabilities.MinDeviceInterval, 32))),
