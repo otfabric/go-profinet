@@ -95,6 +95,7 @@ func TestValidateErrors(t *testing.T) {
 			}
 		}, "output CR of"},
 		{"negative MaxARs", func(d *Device) { d.Capabilities.MaxARs = -1 }, "MaxARs -1"},
+		{"MinDeviceInterval above 128 ms", func(d *Device) { d.Capabilities.MinDeviceInterval = 4097 }, "MinDeviceInterval 4097"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
