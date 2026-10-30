@@ -28,7 +28,7 @@ section ending with a `---` line and no `---` line inside a section.
 
 ## v0.6.1
 
-**Date:** to be set at release
+**Date:** 2026-10-30
 **Previous release:** v0.6.0
 
 Device behaviour change; no API change.
