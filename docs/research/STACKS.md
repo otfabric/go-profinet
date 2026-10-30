@@ -510,7 +510,7 @@ Source: `rtlabs-com/p-net`, branch `public`, commit `ca4f37c5d66b5378a8cf9349b90
 | MC CR FrameID | RTC1/UDP 0xF800-0xFBFF, RTC2 0xBC00-0xBFFF, RTC3 0x0100-0x7FFF | pf_cmdev.c:3113-3122 |
 | Output-CR FrameID (controller→device) | When the request carries **0xFFFF**, the device picks the first free FrameID from the class range (RTC1/UDP from 0xC000, RTC2 from 0x8000, RTC3 from 0x0100) and returns it in IOCRBlockRes. | pf_cmdev.c:4660-4712 |
 | SendClockFactor | Must be one of 1, 2, 4, …, 128 | pf_cmdev.c:3150-3160 |
-| ReductionRatio | RTC1-3: 1..512, with 256+ only when SCF ≤ 64 and 512 only when SCF ≤ 32. UDP: 1..16384. Phase must be 1..RR. | pf_cmdev.c:3175-3215 |
+| ReductionRatio | RTC1-3: 1..512, with 256+ only when SCF ≤ 64 and 512 only when SCF ≤ 32. UDP: 1..16384. Phase must be 1..RR. `min_device_interval` > SCF × RR is refused with ErrorCode2 11. | pf_cmdev.c:3175-3215 |
 | DataHoldFactor | 1..0x1E00, plus a check on the total hold time | pf_cmdev.c:3236-3255 |
 | AlarmCR | LT 0x8892 (UDP transport rejected by LT check). RTATimeoutFactor 1..100 (unit 100 ms). RTARetries 3..15. MaxAlarmDataLength 200..1432. | pf_cmdev.c:4024-4070 |
 | AlarmCRBlockRes | `LocalAlarmReference` = endpoint allocated by the device. `MaxAlarmDataLength` = 200 (`PF_MAX_ALARM_DATA_LEN`). | pf_cmdev.c:4884-4887; pf_types.h:1691 |
