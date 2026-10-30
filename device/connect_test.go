@@ -144,6 +144,43 @@ func TestConnectMinDeviceInterval128ms(t *testing.T) {
 	}
 }
 
+// The boundaries of the MinDeviceInterval check, and what goes before it.
+func TestConnectMinDeviceIntervalBoundaries(t *testing.T) {
+	cases := []struct {
+		name     string
+		interval uint16
+		scf, rr  uint16
+		code2    uint8 // 0: accepted
+	}{
+		{"unset sets no bound", 0, 8, 2, 0},
+		{"cycle equals it, short send clock", 32, 1, 32, 0},
+		{"one step below", 32, 1, 16, 11},
+		{"cycle equals 128 ms, largest send clock", 4096, 128, 32, 0},
+		{"one step below 128 ms", 4096, 64, 32, 11},
+		{"largest cycle", 4096, 128, 128, 0},
+		{"a bad send clock stays code 10", 4096, 48, 128, 10},
+		{"RR 0 is not a short cycle at interval 0", 0, 32, 0, 11},
+		{"RR above the range at interval 0", 0, 32, 1024, 11},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			n := newNet(t)
+			d, _ := n.device(nil, func(cfg *Config) { cfg.Model.Capabilities.MinDeviceInterval = c.interval })
+			p := n.peer(d, "192.168.0.2", true)
+			req := p.ioCAR()
+			for i := range req.IOCRs {
+				req.IOCRs[i].SendClockFactor, req.IOCRs[i].ReductionRatio = c.scf, c.rr
+			}
+			_, err := p.connect(req)
+			if c.code2 != 0 {
+				wantStatus(t, err, pnio.Code1IOCRBlock, c.code2)
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestConnectAcceptedVariants(t *testing.T) {
 	n := newNet(t)
 	d, _ := n.device(nil)
