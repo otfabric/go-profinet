@@ -26,6 +26,17 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.6.2
+
+**Date:** 2026-10-31
+**Previous release:** v0.6.1
+
+### Changed
+
+- Policy 1.2: build output in `bin/` and `release/`, a per-package coverage floor, and more tests and CI. No change in behaviour.
+
+---
+
 ## v0.6.1
 
 **Date:** 2026-10-30
