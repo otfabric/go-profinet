@@ -18,7 +18,8 @@ on real Layer 2 networks.
 | Benchmarks | codecs, cyclic path, mux, vnet | `make bench` ([BENCHMARKS.md](BENCHMARKS.md)) |
 | Hardware | commercial PLCs, devices and engineering tools | not done: no hardware available ([docs/research/INDEPENDENT-CONTROLLER.md](research/INDEPENDENT-CONTROLLER.md) is the manual recipe for CODESYS) |
 
-Coverage is gated at 90 % of the statements of the library packages
+Coverage is gated at 90 % of the statements of the library packages, and at
+85 % of each package (`make coverage-pkg-check`, `COVER_PKG_MIN`)
 ([COVERAGE.md](COVERAGE.md)).
 
 ## The virtual network

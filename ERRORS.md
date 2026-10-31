@@ -47,6 +47,13 @@ What the library retries by itself, and what it leaves to the application:
 | `*gsdml.ValidationError` | the `Issues` of a document (path and message) | `ErrMalformed` |
 | `dcp.ErrInvalidName` | a station name that is not a valid NameOfStation | `ErrInvalidConfig` |
 
+Two sentinels belong to a single package:
+
+| Sentinel | Meaning | Matches |
+|----------|---------|---------|
+| `ethernet.ErrInvalidMAC` | `ethernet.ParseMAC` was given text that is not six octets separated by `:` or `-`, or twelve hexadecimal digits | nothing else: it is returned for an argument, not for a frame |
+| `store.ErrCorrupt` | a persisted value failed its integrity check (short or bad header, wrong length, trailing data, checksum) and no intact previous version remains to fall back on | `ErrMalformed` |
+
 ```go
 _, err := d.ReadRecord(ctx, controller.Record{Slot: 1, Subslot: 1, Index: 0x10}, 0)
 var se *pnio.StatusError

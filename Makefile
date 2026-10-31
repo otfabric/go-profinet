@@ -25,6 +25,8 @@ TEST_PKGS := $(shell go list ./... | grep -v '/examples')
 COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/internal/cmd' | grep -v '/interop' | grep -v '/e2e' | grep -v '/l2/afpacket' | grep -v '/l2/bpf' | grep -v '/l2/npcap' | paste -sd, -)
 # The minimum total statement coverage (make coverage-check, CI).
 COVER_MIN := 90
+# Per-package floor (TEST-012); needs the -coverpkg coverage.out of `make coverage`.
+COVER_PKG_MIN := 85
 
 all: build ## Default target: build the examples
 
@@ -81,6 +83,11 @@ coverage-check: coverage ## Fail when total coverage is below COVER_MIN
 	@total=$$(go tool cover -func=coverage.out | awk '/^total:/ {sub(/%/,"",$$3); print $$3}'); \
 	echo "total coverage $$total% (minimum $(COVER_MIN)%)"; \
 	awk -v t="$$total" -v m="$(COVER_MIN)" 'BEGIN { exit (t+0 < m+0) }' || { echo "coverage below $(COVER_MIN)%"; exit 1; }
+
+coverage-pkg-check: coverage ## Fail when a package is below COVER_PKG_MIN
+	@awk -v m="$(COVER_PKG_MIN)" 'NR > 1 { n[$$1] = $$2; if ($$3 > 0) h[$$1] = 1 } \
+	END { for (k in n) { p = k; sub(/\/[^\/]*$$/, "", p); s[p] += n[k]; if (k in h) c[p] += n[k] } \
+	for (p in s) { v = 100 * c[p] / s[p]; if (v < m) { printf "%s: %.1f%% < %s%%\n", p, v, m; bad = 1 } } exit bad }' coverage.out
 
 cover: coverage ## Open coverage report in browser
 	@go tool cover -html=coverage.out
@@ -147,7 +154,7 @@ cross: ## Build every package for the supported platforms
 
 e2e: test-e2e ## Alias of test-e2e
 
-check: generate-check coverpkg-check release-notes-check fmt fmt-check lint lint-ci vet vuln test coverage-check examples ## Run everything CI runs, except the Docker-based suites
+check: generate-check coverpkg-check release-notes-check fmt fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples ## Run everything CI runs, except the Docker-based suites
 
 clean: ## Remove generated binaries and coverage artifacts
 	@rm -rf $(BIN_DIR) coverage.out coverage.html

@@ -59,7 +59,8 @@ jobs:
         env:
           GOWORK: "off"
 
-  # The coverage gate of the library: at least 90% of the statements.
+  # The coverage gate of the library: at least 90% of the statements, and
+  # 85% of each package.
   coverage:
     name: Coverage ≥ 90%
     runs-on: ubuntu-latest
@@ -69,7 +70,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.23.x"
-      - run: make coverage-check
+      - run: make coverage-check coverage-pkg-check
       - name: Coverage by package
         run: scripts/coverage-by-package.sh coverage.out >> "$GITHUB_STEP_SUMMARY"
 
