@@ -4,3 +4,26 @@ coverage.html
 *.pcap
 .DS_Store
 interop-results/
+
+# Build artefacts live in /bin/ and /release/ (otfabric/engineering REPO-005)
+/release/
+*.test
+
+# Output of a bare `go build`, anchored so it can never hide a source folder
+/examples/alarms/alarms
+/examples/chaos/chaos
+/examples/controller/controller
+/examples/device/device
+/examples/discovery/discovery
+/examples/gsdml/gsdml
+/examples/gsdmlimport/gsdmlimport
+/examples/gsdx/gsdx
+/examples/hello/hello
+/examples/mrp/mrp
+/examples/observability/observability
+/examples/quickstart/quickstart
+/examples/records/records
+/examples/topology/topology
+/internal/cmd/gengsdml/gengsdml
+/internal/cmd/l2bench/l2bench
+/interop/otfnode/otfnode
