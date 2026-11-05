@@ -14,7 +14,8 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.6.0** | 1.23 or later (CI: 1.23–1.26) | v0.6.0 (1.2) | v0.6.0 | **yes** |
+| **v0.7.0** | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.6.0 | **yes** |
+| v0.6.0 | 1.23 or later (CI: 1.23–1.26) | v0.6.0 (1.2) | v0.6.0 | no: v0.7.0 raises the Go floor and refuses out-of-range values |
 | v0.5.1 | 1.23 or later | v0.4.1 (1.2) | v0.3.2 | no: v0.6.0 only adds API (apidiff: compatible) |
 | v0.5.0 | 1.23 or later | v0.4.0 (1.2) | v0.3.1 | no |
 | v0.4.0 | 1.23 or later | v0.3.0 (1.1) | v0.3.0 | no |

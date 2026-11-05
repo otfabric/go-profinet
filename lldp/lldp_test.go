@@ -611,3 +611,27 @@ func BenchmarkAppendTo(b *testing.B) {
 		}
 	}
 }
+
+// The announced TTL saturates in 16 bits and never wraps: a receive-only
+// agent (negative interval) asked to SendNow announced 65532 s before.
+func TestAnnouncedTTL(t *testing.T) {
+	for _, c := range []struct {
+		interval time.Duration
+		factor   int
+		want     uint16
+	}{
+		{5 * time.Second, 4, 20},
+		{1500 * time.Millisecond, 4, 4},
+		{500 * time.Millisecond, 4, 1},
+		{-time.Second, 4, 1},
+		{time.Second, 0, 1},
+		{time.Second, 65535, 65535},
+		{time.Second, 65536, 65535},
+		{math.MaxInt64, math.MaxInt, 65535},
+		{20000 * time.Second, 4, 65535},
+	} {
+		if got := announcedTTL(c.interval, c.factor); got != c.want {
+			t.Errorf("announcedTTL(%v, %d) = %d, want %d", c.interval, c.factor, got, c.want)
+		}
+	}
+}

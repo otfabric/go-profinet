@@ -108,7 +108,7 @@ func NewClient(mux *l2.Mux, opts ClientOptions) (*Client, error) {
 	// Transaction IDs start from a value derived from the MAC address
 	// and the time, so that two requesters on a segment rarely collide.
 	m := mux.HardwareAddr()
-	c.xid.Store(binary.BigEndian.Uint32(m[2:]) ^ uint32(time.Now().UnixNano()))
+	c.xid.Store(binary.BigEndian.Uint32(m[2:]) ^ uint32(time.Now().UnixNano()&0xFFFFFFFF))
 	go c.run(ctx)
 	return c, nil
 }

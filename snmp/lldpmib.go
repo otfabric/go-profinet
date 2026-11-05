@@ -145,7 +145,7 @@ func (m *MIB) AddLLDP(local func() LLDPLocal, remote func() []LLDPRemote) error 
 	// lldpRemEntry ::= { lldpRemTable 1 }; columns 4 to 10 (1 to 3 are
 	// the not-accessible index).
 	rem := OIDLLDPRemTable.Append(1)
-	columns := func(r LLDPRemote, filter uint32, col func(c uint32, name OID, v Value)) {
+	columns := func(r LLDPRemote, filter, port, idx uint32, col func(c uint32, name OID, v Value)) {
 		for _, c := range []struct {
 			n uint32
 			v Value
@@ -153,17 +153,14 @@ func (m *MIB) AddLLDP(local func() LLDPLocal, remote func() []LLDPRemote) error 
 			{4, Integer(r.ChassisIDSubtype)}, {5, lldpID(r.ChassisID)}, {6, Integer(r.PortIDSubtype)}, {7, lldpID(r.PortID)},
 			{8, displayString(r.PortDesc)}, {9, displayString(r.SysName)}, {10, displayString(r.SysDesc)},
 		} {
-			col(c.n, rem.Append(c.n, filter, uint32(r.LocalPortNum), uint32(r.Index)), c.v)
+			col(c.n, rem.Append(c.n, filter, port, idx), c.v)
 		}
-	}
-	valid := func(r LLDPRemote) bool {
-		return r.LocalPortNum >= 1 && r.LocalPortNum <= maxPortNumber && r.Index >= 1
 	}
 	list := func() []VarBind {
 		var out []VarBind
 		for _, r := range remote() {
-			if valid(r) {
-				columns(r, 0, func(_ uint32, name OID, v Value) { out = append(out, VarBind{Name: name, Value: v}) })
+			if port, idx, ok := lldpRowIndex(r); ok {
+				columns(r, 0, port, idx, func(_ uint32, name OID, v Value) { out = append(out, VarBind{Name: name, Value: v}) })
 			}
 		}
 		return out
@@ -175,12 +172,13 @@ func (m *MIB) AddLLDP(local func() LLDPLocal, remote func() []LLDPRemote) error 
 		}
 		c, t, port, idx := name[len(rem)], name[len(rem)+1], name[len(rem)+2], name[len(rem)+3]
 		for _, r := range remote() {
-			if !valid(r) || uint32(r.LocalPortNum) != port || uint32(r.Index) != idx || t > r.TimeMark {
+			p, i, ok := lldpRowIndex(r)
+			if !ok || p != port || i != idx || t > r.TimeMark {
 				continue
 			}
 			var val Value
 			found := false
-			columns(r, t, func(n uint32, _ OID, v Value) {
+			columns(r, t, p, i, func(n uint32, _ OID, v Value) {
 				if n == c {
 					val, found = v, true
 				}
@@ -190,4 +188,14 @@ func (m *MIB) AddLLDP(local func() LLDPLocal, remote func() []LLDPRemote) error 
 		return Value{}, false
 	}
 	return m.addSubtree(OIDLLDPRemTable, list, get)
+}
+
+// lldpRowIndex returns the lldpRemLocalPortNum and lldpRemIndex
+// sub-identifiers of r; false when r has no valid index (a port outside 1
+// to maxPortNumber or an Index below 1).
+func lldpRowIndex(r LLDPRemote) (port, idx uint32, ok bool) {
+	if r.LocalPortNum < 1 || r.LocalPortNum > maxPortNumber || r.Index < 1 {
+		return 0, 0, false
+	}
+	return uint32(r.LocalPortNum), uint32(r.Index), true
 }

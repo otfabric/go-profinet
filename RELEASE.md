@@ -26,6 +26,68 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.7.0
+
+**Date:** 2026-11-05
+**Previous release:** v0.6.2
+
+Security hardening from a gosec/opengrep review (153 findings at low/low:
+146 fixed in code, 7 accepted with a recorded justification), new hostile-
+peer, fuzz and chaos tests, and Go 1.26. Values that used to wrap silently
+are now errors; see ERRORS.md, "Values that do not fit their field".
+
+### Breaking
+
+- **Go 1.26 or later** (was 1.23); CI runs 1.26 and 1.27. `go fix` applied.
+- Out-of-range configuration is refused with `ErrInvalidConfig` where it
+  was truncated before: `RPCPort`/`ControllerRPCPort`, MRP ring ports, MRP
+  profile intervals, controller station and MRP domain names above 240
+  octets, `rpc` `MaxFragmentBody` above 65 427 (capped), `store.OpenDir`
+  `MaxValueSize` above 2^32-1 (capped).
+- `controller.RecordClient.Read` refuses a RecordDataLength above `maxLen`
+  (its documented bound; it returned the data before).
+- `gsdml`: `ParseValueList` with a negative limit allows no values (was:
+  unbounded); `ToModel` refuses `FixedInSubslots` above 0xFFFF and a bit
+  DefaultValue wider than its BitLength or a wrapping BitOffset.
+
+### Fixed
+
+- **32-bit platforms:** a record length of 0xFFFFFFFF in a Write, a
+  WriteMultiple or a Read answer passed the length check (int -1) and
+  panicked the device or controller. Lengths are compared as uint64. CI now
+  runs the tests on linux/386 (`make test-32bit`).
+- Device: a Connect with ~4 100 expected modules got a ModuleDiffBlock with
+  a wrapped length; it is refused (CMRPC out of memory). A diagnosis record
+  grown past 64 KiB panicked the RPC server; it is answered with a read
+  error. The diagnosis reader no longer encodes under its lock. Abort
+  goroutines are tied to `Close`.
+- RPC: fragment numbers wrapped above 65 536 fragments; such a call or
+  response is refused (a FAULT for a response). Alarm: a VarPart above
+  65 535 octets is refused before it takes a sequence number.
+- Controller: a WriteMultiple answer with more results than items is
+  refused; reconnect jitter comes from crypto/rand.
+- LLDP TTL saturates to 1..65535 (a receive-only agent announced 65532);
+  netstack refuses ports outside 0..65535 and IPv4 datagrams above 65 535
+  octets; pcap refuses times outside 1970..2106; the store opens values
+  through `os.OpenInRoot`, so a symlink cannot lead outside its directory.
+- `l2/afpacket` decodes the kernel structures with `binary.NativeEndian`
+  instead of pointer casts (two `unsafe` calls remain, for recvmsg and the
+  flags ioctl); otfnode, l2bench and examples/controller refuse flag values
+  out of range.
+
+### Tests
+
+- Hostile peers: `device/hostile_test.go`, `controller/hostile_test.go`
+  (malicious Connects, AR floods, lying record lengths, 4 GiB claims),
+  DCP responder floods, rpc client and alarm endpoint fuzzing.
+- 8 new fuzz targets (34 in all), including the device and controller RPC
+  servers end to end.
+- e2e: chaos on startup frames only, RTA ACK loss, Close in each phase.
+- profinet-interop v0.7.1 (base images pinned by digest; adapters
+  unchanged), shared workflows v3.3.1.
+
+---
+
 ## v0.6.2
 
 **Date:** 2026-10-31

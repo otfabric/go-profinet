@@ -131,7 +131,9 @@ func (h *Header) Order() ByteOrder {
 // AppendTo appends the encoded header to dst.
 func (h *Header) AppendTo(dst []byte) []byte {
 	o := h.Order()
-	dst = append(dst, Version, byte(h.Type), h.Flags1, h.Flags2, h.DRep[0], h.DRep[1], h.DRep[2], byte(h.Serial>>8))
+	var serial [2]byte // SerialHigh here, SerialLow at the end
+	binary.BigEndian.PutUint16(serial[:], h.Serial)
+	dst = append(dst, Version, byte(h.Type), h.Flags1, h.Flags2, h.DRep[0], h.DRep[1], h.DRep[2], serial[0])
 	dst = h.Object.Append(dst, o)
 	dst = h.Iface.Append(dst, o)
 	dst = h.Activity.Append(dst, o)
@@ -143,7 +145,7 @@ func (h *Header) AppendTo(dst []byte) []byte {
 	dst = o.AppendUint16(dst, h.ActivityHint)
 	dst = o.AppendUint16(dst, h.BodyLen)
 	dst = o.AppendUint16(dst, h.FragNum)
-	return append(dst, h.AuthProto, byte(h.Serial))
+	return append(dst, h.AuthProto, serial[1])
 }
 
 // DecodeHeader decodes a CL packet header from b and returns it with the

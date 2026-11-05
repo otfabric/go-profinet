@@ -366,7 +366,7 @@ func (a *Agent) respond(req *Message) []byte {
 		// An error response has the variable bindings of the request
 		// (RFC 1157 section 4.1.2 to 4.1.5: "of identical form";
 		// RFC 3416 section 4.2.5 for SetRequest).
-		resp.PDU.ErrorStatus, resp.PDU.ErrorIndex, out = status, int32(index), in
+		resp.PDU.ErrorStatus, resp.PDU.ErrorIndex, out = status, saturateInt32(index), in
 	}
 	switch req.PDU.Type {
 	case PDUGetRequest:

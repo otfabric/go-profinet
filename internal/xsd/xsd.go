@@ -79,9 +79,14 @@ func LoadDir(dir string) (*Schema, error) {
 		return nil, fmt.Errorf("xsd: no .xsd files in %s", dir)
 	}
 	sort.Strings(paths)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
 	var roots []*node
 	for _, p := range paths {
-		f, err := os.Open(p)
+		f, err := root.Open(filepath.Base(p))
 		if err != nil {
 			return nil, err
 		}

@@ -3,6 +3,7 @@
 package pnio
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/otfabric/go-profinet"
@@ -83,7 +84,7 @@ func (s ARSetID) UUID() rpc.UUID {
 	copy(u[:6], s.Discriminator[:])
 	copy(u[6:14], s.ConfigID[:])
 	sel := uint16(s.ARNumber)&0x0007 | uint16(s.Resource&0x3)<<3
-	u[14], u[15] = byte(sel>>8), byte(sel)
+	binary.BigEndian.PutUint16(u[14:], sel)
 	return u
 }
 
@@ -104,7 +105,7 @@ func (m *MCRBlockReq) Append(b []byte) []byte {
 	b = appendU16(b, m.IOCRReference)
 	b = appendU32(b, m.AddressResolutionProperties)
 	b = appendU16(b, m.MCITimeoutFactor)
-	b = appendU16(b, uint16(len(m.ProviderStationName)))
+	b = appendLen16(b, "ProviderStationName", len(m.ProviderStationName))
 	b = append(b, m.ProviderStationName...)
 	return endBlock(b, s)
 }

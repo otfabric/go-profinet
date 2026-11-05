@@ -266,8 +266,7 @@ func (a *Agent) SendNow(ctx context.Context) error {
 	if a.opts.Local == nil || a.silent.Load() {
 		return nil
 	}
-	ttl := uint16(min(int(a.opts.Interval.Seconds())*a.opts.TTLFactor, 65535))
-	f := a.opts.Local().Build(a.mux.HardwareAddr(), max(ttl, 1))
+	f := a.opts.Local().Build(a.mux.HardwareAddr(), announcedTTL(a.opts.Interval, a.opts.TTLFactor))
 	h := ethernet.Frame{Dst: ethernet.LLDPMulticast, Src: a.mux.HardwareAddr(), EtherType: ethernet.EtherTypeLLDP}
 	b := h.AppendHeader(make([]byte, 0, 256))
 	b, err := f.AppendTo(b)
@@ -415,4 +414,22 @@ func (a *Agent) Alias() string {
 		return ""
 	}
 	return ns[0].Alias()
+}
+
+// announcedTTL is the TTL of the frames sent: factor × interval in whole
+// seconds, at least 1 and at most 65535. A receive-only agent (negative
+// interval) that is asked to SendNow announces 1 s, and a product beyond
+// 16 bits saturates instead of wrapping.
+func announcedTTL(interval time.Duration, factor int) uint16 {
+	secs := int64(interval / time.Second)
+	f := int64(factor)
+	if secs < 1 || f < 1 {
+		return 1
+	}
+	if f <= math.MaxUint16/secs {
+		if ttl := secs * f; ttl >= 1 && ttl <= math.MaxUint16 {
+			return uint16(ttl)
+		}
+	}
+	return math.MaxUint16
 }

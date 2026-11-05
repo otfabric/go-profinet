@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -227,6 +228,13 @@ func New(cfg Config) (*Entity, error) {
 	}
 	if cfg.Profile.TestInterval == 0 {
 		cfg.Profile = Profile200
+	}
+	// The TopologyChange and LinkChange frames carry these intervals as
+	// 16-bit millisecond counts.
+	for _, d := range []time.Duration{cfg.Profile.TopChangeInterval, cfg.Profile.LinkInterval} {
+		if d < 0 || d > maxFrameInterval {
+			return nil, fmt.Errorf("mrp: profile %q: interval %v outside 0 to %v: %w", cfg.Profile.Name, d, maxFrameInterval, profinet.ErrInvalidConfig)
+		}
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = profinet.NopLogger()
@@ -505,7 +513,37 @@ func (e *Entity) ringState() RingState {
 	return RingClosed
 }
 
-func (e *Entity) timestamp() uint32 { return uint32(time.Since(e.start).Milliseconds()) }
+// timestamp is the 32-bit millisecond TimeStamp of MRP_Test: it wraps
+// after about 49 days, as a modulo 2^32 counter.
+func (e *Entity) timestamp() uint32 {
+	return uint32(time.Since(e.start).Milliseconds() & 0xFFFFFFFF)
+}
+
+// maxFrameInterval is the largest interval a 16-bit millisecond field
+// holds.
+const maxFrameInterval = math.MaxUint16 * time.Millisecond
+
+// frameInterval is d as the 16-bit millisecond Interval of a
+// TopologyChange or LinkChange; New keeps the profile within range, so
+// the clamp only guards the conversion.
+func frameInterval(d time.Duration) uint16 {
+	ms := int64(d / time.Millisecond)
+	switch {
+	case ms < 0:
+		return 0
+	case ms > math.MaxUint16:
+		return math.MaxUint16
+	}
+	return uint16(ms)
+}
+
+// portRole is the PortRole of ring port i (0 or 1).
+func portRole(i int) PortRole {
+	if i == 1 {
+		return PortSecondary
+	}
+	return PortPrimary
+}
 
 // recv handles the MRP frames of a ring port.
 func (e *Entity) recv(i int) {
@@ -823,7 +861,7 @@ func (e *Entity) unblockPTLocked() {
 // TOPNRmax times.
 func (e *Entity) sendTopologyChange(interval time.Duration) {
 	e.topChanges.Add(1)
-	f := Frame{TopologyChange: &TopologyChange{Prio: e.cfg.Prio, SA: e.cfg.MAC, Interval: uint16(interval / time.Millisecond)}}
+	f := Frame{TopologyChange: &TopologyChange{Prio: e.cfg.Prio, SA: e.cfg.MAC, Interval: frameInterval(interval)}}
 	for n := 0; n < e.cfg.Profile.TopChangeRepeat; n++ {
 		for i := range e.cfg.Ports {
 			if e.upLocked(i) {
@@ -844,8 +882,8 @@ func (e *Entity) sendTopologyChange(interval time.Duration) {
 // via about port about, LNKNRmax times, without blocking the caller.
 func (e *Entity) sendLinkChange(via int, up bool, about int) {
 	e.linkChanges.Add(1)
-	f := Frame{Link: &LinkChange{Up: up, SA: e.cfg.MAC, PortRole: PortRole(about),
-		Interval: uint16(e.cfg.Profile.LinkInterval / time.Millisecond), Blocked: 1}}
+	f := Frame{Link: &LinkChange{Up: up, SA: e.cfg.MAC, PortRole: portRole(about),
+		Interval: frameInterval(e.cfg.Profile.LinkInterval), Blocked: 1}}
 	e.mu.Lock()
 	gen := e.linkGen
 	e.mu.Unlock()

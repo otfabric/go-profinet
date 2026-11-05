@@ -26,6 +26,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -115,7 +116,7 @@ func openPort(iface, pcapFile string) (*l2.Mux, func(), error) {
 	port := p
 	var f *os.File
 	if pcapFile != "" {
-		if f, err = os.Create(pcapFile); err != nil {
+		if f, err = os.Create(filepath.Clean(pcapFile)); err != nil {
 			_ = p.Close()
 			return nil, nil, err
 		}
@@ -137,7 +138,7 @@ func openPort(iface, pcapFile string) (*l2.Mux, func(), error) {
 }
 
 func loadModel(path, dap string) (*model.Device, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +214,7 @@ func runController(args []string) error {
 	modelFile := fs.String("model", "", "expected configuration (model JSON or GSDML)")
 	dap := fs.String("dap", "", "GSDML device access point ID")
 	advanced := fs.Bool("advanced", false, "advanced startup with RTClass 2")
-	rr := fs.Uint("rr", 8, "reduction ratio (send clock 1 ms)")
+	rr := uint16Flag(fs, "rr", 8, "reduction ratio (send clock 1 ms)")
 	// 32 cycles (256 ms at 8 ms) rather than the library's 10: the peers
 	// run their watchdogs on a general-purpose OS in a container on a
 	// shared CI runner, and p-net runs its watchdog on the thread that
@@ -222,7 +223,7 @@ func runController(args []string) error {
 	// an AR with "consumer DHT expired" once in a hundred CI runs, in the
 	// middle of a WriteMultiple). The tests check interoperability, not
 	// real-time behaviour.
-	dhf := fs.Uint("dhf", 32, "data hold factor")
+	dhf := uint16Flag(fs, "dhf", 32, "data hold factor")
 	dur := fs.Duration("duration", 3*time.Second, "how long to run the AR")
 	timeout := fs.Duration("timeout", 30*time.Second, "how long to wait for Running")
 	reconnectMin := fs.Duration("reconnect-min", 0, "shortest wait between connection attempts (0: the library's default)")
@@ -270,8 +271,8 @@ func runController(args []string) error {
 	var gotAlarms []map[string]any
 	alarmCh := make(chan struct{}, 64)
 	cfg := controller.DeviceConfig{
-		StationName: *station, Model: m, Advanced: *advanced, ReductionRatio: uint16(*rr),
-		DataHoldFactor: uint16(*dhf), WatchdogFactor: uint16(*dhf), ReconnectMin: *reconnectMin, ReconnectMax: max(2*time.Second, *reconnectMin),
+		StationName: *station, Model: m, Advanced: *advanced, ReductionRatio: *rr,
+		DataHoldFactor: *dhf, WatchdogFactor: *dhf, ReconnectMin: *reconnectMin, ReconnectMax: max(2*time.Second, *reconnectMin),
 		OnState: func(from, to controller.State, err error) {
 			e := map[string]any{"event": "state", "from": from.String(), "to": to.String()}
 			if err != nil {
@@ -553,7 +554,7 @@ func runDevice(args []string) error {
 	pcapFile := fs.String("pcap", "", "write the frames to this pcap file")
 	alarmAfter := fs.Duration("alarm-after", 0, "raise a diagnosis on slot 1 this long after the AR reaches Data")
 	acceptIP := fs.Bool("apply-ip", true, "apply DCP Set IP to the interface (needs CAP_NET_ADMIN)")
-	hello := fs.Uint("hello", 0, "DCP Hello mode: 0 off, 1 on link up, 2 on link up after a delay")
+	hello := uint32Flag(fs, "hello", 0, "DCP Hello mode: 0 off, 1 on link up, 2 on link up after a delay")
 	community := fs.String("snmp", "", "serve SNMP (v1/v2c, UDP 161) with this read community")
 	lldpEvery := fs.Duration("lldp-interval", 0, "LLDP transmit interval (0: the default, 5 s)")
 	_ = fs.Parse(args)
@@ -574,7 +575,7 @@ func runDevice(args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(*gsdmlOut, b, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Clean(*gsdmlOut), b, 0o600); err != nil {
 			return err
 		}
 	}

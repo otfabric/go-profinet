@@ -79,6 +79,14 @@ again, so the compressed octets may differ.
 | macOS / BSD BPF | a CI job tests it on a feth pair as root; locally, opening and reading an interface was verified (profinetctl on macOS) |
 | Windows Npcap | cross-compiled; its unit tests run without Npcap; not tested against Npcap (the hosted runners have none) |
 
+32-bit: the tests run on linux/386 in CI (`make test-32bit`); linux/386
+and linux/arm are cross-built. The e2e suite there runs without the race
+detector, which 386 lacks.
+
+Sizes: every 16-bit length, count and port is checked, never wrapped; the
+limits and their errors are listed in ERRORS.md, "Values that do not fit
+their field".
+
 VLAN-tagged reception: the kernel strips the 802.1Q header before AF_PACKET
 delivers a frame; the backend restores the tag from the packet's auxiliary
 data (PACKET_AUXDATA).

@@ -5,6 +5,7 @@ package pnio
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-profinet"
 )
@@ -89,7 +90,31 @@ func DecodeConnectRequest(b []byte) (ConnectRequest, error) {
 	if !seenAR {
 		return c, &StatusError{Op: "decode connect", Status: ServiceStatus(CodeConnect, Code1CMRPC, CMRPCUnknownBlocks)}
 	}
+	if n := moduleDiffBound(c.Expected); n > math.MaxUint16 {
+		// The answer of a device lists the expected modules that differ
+		// in one ModuleDiffBlock; several ExpectedSubmoduleBlockReqs can
+		// describe more than its 16-bit length can carry.
+		return c, &StatusError{Op: fmt.Sprintf("decode connect: a ModuleDiffBlock of %d octets", n), Status: ServiceStatus(CodeConnect, Code1CMRPC, CMRPCOutOfMemory)}
+	}
 	return c, nil
+}
+
+// moduleDiffBound is the block length of the largest ModuleDiffBlock the
+// expected configuration exp can produce: every module and submodule
+// differing.
+func moduleDiffBound(exp []ExpectedSubmoduleBlockReq) int {
+	apis := map[uint32]bool{}
+	n := 2 + 2 // block version, NumberOfAPIs
+	for i := range exp {
+		for _, m := range exp[i].Modules {
+			if !apis[m.API] {
+				apis[m.API] = true
+				n += 4 + 2 // API, NumberOfModules
+			}
+			n += 2 + 4 + 2 + 2 + 8*len(m.Submodules) // slot, ident, state, NumberOfSubmodules
+		}
+	}
+	return n
 }
 
 // asConnectError turns a decoding error into the PNIO status of the faulty

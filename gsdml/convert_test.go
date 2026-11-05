@@ -233,3 +233,62 @@ func TestDCPHelloAndProtocols(t *testing.T) {
 		}
 	}
 }
+
+// TestApplyRefBitOverflow: a bit default that does not fit its BitLength,
+// or a BitOffset whose sum with the width wraps uint16, is malformed
+// instead of being masked silently.
+func TestApplyRefBitOverflow(t *testing.T) {
+	for _, r := range []Ref{
+		{ByteOffset: "0", DataType: "Bit", DefaultValue: "3"},
+		{ByteOffset: "0", BitOffset: "4", BitLength: "2", DataType: "BitArea", DefaultValue: "4"},
+		{ByteOffset: "0", BitOffset: "65535", DataType: "Bit", DefaultValue: "1"},
+	} {
+		rec := make([]byte, 1)
+		if err := applyRef(rec, &r); !errors.Is(err, profinet.ErrMalformed) || rec[0] != 0 {
+			t.Errorf("%+v: % x %v", r, rec, err)
+		}
+	}
+	rec := []byte{0xFF}
+	if err := applyRef(rec, &Ref{ByteOffset: "0", BitOffset: "2", BitLength: "3", DataType: "BitArea", DefaultValue: "5"}); err != nil || rec[0] != 0xF7 {
+		t.Fatalf("% x %v", rec, err)
+	}
+}
+
+func TestApplyRefSigned(t *testing.T) {
+	for dt, want := range map[string][]byte{
+		"Integer8":  {0x80},
+		"Integer16": {0xFF, 0x80},
+		"Integer64": {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x80},
+	} {
+		rec := make([]byte, len(want))
+		if err := applyRef(rec, &Ref{ByteOffset: "0", DataType: dt, DefaultValue: "-128"}); err != nil || !bytes.Equal(rec, want) {
+			t.Errorf("%s: % x %v", dt, rec, err)
+		}
+	}
+}
+
+// TestToModelSubslotRange: FixedInSubslots beyond 0xFFFF is rejected, not
+// truncated to another subslot; reduction ratios beyond uint16 are
+// dropped, not truncated.
+func TestToModelSubslotRange(t *testing.T) {
+	d, err := FromModel(testModel(), GenerateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.ProfileBody.ApplicationProcess.ModuleList.ModuleItems[0].VirtualSubmoduleList.VirtualSubmoduleItems[0].FixedInSubslots = "65537"
+	if _, err := ToModel(d, ""); !errors.Is(err, profinet.ErrMalformed) {
+		t.Fatalf("err %v", err)
+	}
+	d, err = FromModel(testModel(), GenerateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.ProfileBody.ApplicationProcess.DeviceAccessPointList.DeviceAccessPointItems[0].SystemDefinedSubmoduleList.InterfaceSubmoduleItems[0].ApplicationRelations.TimingProperties = &TimingProperties{ReductionRatio: "2 65537"}
+	m, err := ToModel(d, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Capabilities.ReductionRatios; len(got) != 1 || got[0] != 2 {
+		t.Fatalf("ratios %v", got)
+	}
+}

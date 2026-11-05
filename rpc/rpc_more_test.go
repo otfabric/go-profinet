@@ -157,7 +157,10 @@ func TestUUIDText(t *testing.T) {
 }
 
 func TestPacketsDefaults(t *testing.T) {
-	ps := packets(Header{DRep: [3]byte{DRepLittleEndian}}, make([]byte, DefaultMaxFragmentBody+1), 0)
+	ps, err := packets(Header{DRep: [3]byte{DRepLittleEndian}}, make([]byte, DefaultMaxFragmentBody+1), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(ps) != 2 {
 		t.Fatalf("%d packets", len(ps))
 	}
@@ -167,7 +170,9 @@ func TestPacketsDefaults(t *testing.T) {
 		t.Fatalf("headers %+v %+v", h0, h1)
 	}
 	// An empty body is one packet without fragment flags.
-	ps = packets(Header{}, nil, 10)
+	if ps, err = packets(Header{}, nil, 10); err != nil {
+		t.Fatal(err)
+	}
 	if h, _, _ := DecodeHeader(ps[0]); len(ps) != 1 || h.Flags1 != 0 {
 		t.Fatalf("empty: %d packets", len(ps))
 	}

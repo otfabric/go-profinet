@@ -188,7 +188,8 @@ func padded(t Type) bool {
 }
 
 func appendTLV(b []byte, start int, t Type, value []byte) []byte {
-	b = append(b, byte(t), byte(len(value)))
+	// Every caller bounds value to 255 octets.
+	b = append(b, byte(t), byte(len(value)&0xFF))
 	b = append(b, value...)
 	if padded(t) {
 		for (len(b)-start)%4 != 0 {

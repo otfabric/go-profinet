@@ -88,17 +88,30 @@ func (d *Device) startSNMP() error {
 	return nil
 }
 
+// snmpIndex returns v as an SNMP table index (Integer32 from 1); ok is
+// false for a value an index cannot hold, whose row is then left out.
+func snmpIndex(v int64) (int32, bool) {
+	if v < 1 || v > math.MaxInt32 {
+		return 0, false
+	}
+	return int32(v), true
+}
+
 // snmpInterfaces is the ifTable: one row per Ethernet port.
 func (d *Device) snmpInterfaces() []snmp.Interface {
 	out := make([]snmp.Interface, 0, len(d.ports))
 	for _, p := range d.ports {
+		idx, ok := snmpIndex(int64(p.n))
+		if !ok {
+			continue
+		}
 		mac := p.mux.HardwareAddr()
 		oper := snmp.IfStatusUp
 		if !p.linkUp() {
 			oper = snmp.IfStatusDown
 		}
 		out = append(out, snmp.Interface{
-			Index: int32(p.n), Descr: p.name(), Type: snmp.IfTypeEthernetCsmacd, MTU: 1500, Speed: ifSpeed,
+			Index: idx, Descr: p.name(), Type: snmp.IfTypeEthernetCsmacd, MTU: 1500, Speed: ifSpeed,
 			PhysAddress: mac[:], AdminStatus: snmp.IfStatusUp, OperStatus: oper,
 		})
 	}
@@ -114,7 +127,11 @@ func (d *Device) snmpLLDPLocal() snmp.LLDPLocal {
 		if i == 0 {
 			l = snmp.LLDPLocal{ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, SysName: f.SystemName, SysDesc: f.SystemDescription}
 		}
-		l.Ports = append(l.Ports, snmp.LLDPLocalPort{Num: int32(p.n), IDSubtype: int32(f.PortSubtype), ID: f.PortID, Desc: f.PortDescription})
+		num, ok := snmpIndex(int64(p.n))
+		if !ok {
+			continue
+		}
+		l.Ports = append(l.Ports, snmp.LLDPLocalPort{Num: num, IDSubtype: int32(f.PortSubtype), ID: f.PortID, Desc: f.PortDescription})
 	}
 	return l
 }
@@ -126,17 +143,22 @@ func (d *Device) snmpLLDPLocal() snmp.LLDPLocal {
 func (d *Device) snmpLLDPRemote() []snmp.LLDPRemote {
 	var out []snmp.LLDPRemote
 	for _, p := range d.ports {
-		if p.lldpA == nil {
+		num, ok := snmpIndex(int64(p.n))
+		if !ok || p.lldpA == nil {
 			continue
 		}
 		for _, n := range p.lldpA.Neighbors() {
+			idx, ok := snmpIndex(int64(n.Index))
+			if !ok {
+				continue
+			}
 			f := &n.Frame
 			var mark uint32
 			if since := n.Changed.Sub(d.snmpStart); since > 0 {
 				mark = uint32(min(since/(10*time.Millisecond), math.MaxUint32))
 			}
 			out = append(out, snmp.LLDPRemote{
-				TimeMark: mark, LocalPortNum: int32(p.n), Index: int32(n.Index),
+				TimeMark: mark, LocalPortNum: num, Index: idx,
 				ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, PortIDSubtype: int32(f.PortSubtype), PortID: f.PortID,
 				PortDesc: f.PortDescription, SysName: f.SystemName, SysDesc: f.SystemDescription,
 			})

@@ -119,6 +119,21 @@ jobs:
           go-version: "1.26.x"
       - run: make cross
 
+  # 32-bit int: a uint32 wire length converted to int is negative there,
+  # which 64-bit tests cannot see.
+  test-32bit:
+    name: Tests on linux/386
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+      - run: make test-32bit
+        env:
+          GOWORK: "off"
+
   # The real Layer 2 tests on Linux: AF_PACKET on a veth pair, as root.
   l2-linux:
     name: Real Layer 2 (Linux AF_PACKET)

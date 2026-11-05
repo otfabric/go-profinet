@@ -352,14 +352,14 @@ func (d *IdentificationData) Append(b []byte) []byte {
 		t = BlockExpectedIdentData
 	}
 	b, s := beginBlock(b, t, 1, 1)
-	b = appendU16(b, uint16(len(d.APIs)))
+	b = appendLen16(b, "APIs", len(d.APIs))
 	for _, a := range d.APIs {
 		b = appendU32(b, a.API)
-		b = appendU16(b, uint16(len(a.Slots)))
+		b = appendLen16(b, "Slots", len(a.Slots))
 		for _, sl := range a.Slots {
 			b = appendU16(b, sl.Slot)
 			b = appendU32(b, sl.IdentNumber)
-			b = appendU16(b, uint16(len(sl.Submodules)))
+			b = appendLen16(b, "Submodules", len(sl.Submodules))
 			for _, sm := range sl.Submodules {
 				b = appendU16(b, sm.Subslot)
 				b = appendU32(b, sm.IdentNumber)

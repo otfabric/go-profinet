@@ -72,6 +72,9 @@ vuln: ## Run govulncheck
 test: ## Run the tests with the race detector
 	@go test -count=1 -race $(TEST_PKGS)
 
+test-32bit: ## Run the tests as linux/386 (32-bit int; needs Linux or Docker: scripts/l2-test.sh's image)
+	@GOOS=linux GOARCH=386 CGO_ENABLED=0 go test -count=1 $(TEST_PKGS)
+
 test-e2e: ## Run the end-to-end suite on the virtual network (race detector, three chaos seeds)
 	@go test -count=1 -race -v ./e2e/...
 
@@ -148,7 +151,7 @@ interop-matrix: ## Regenerate profinet-interop's matrix from the results of make
 	@$(MAKE) -C "$(PROFINET_INTEROP_DIR)" matrix RESULTS="$(abspath $(PROFINET_INTEROP_RESULTS))"
 
 cross: ## Build every package for the supported platforms
-	@for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
+	@for p in linux/amd64 linux/arm64 linux/386 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
 		echo "Building $$p"; GOOS=$${p%/*} GOARCH=$${p#*/} go build ./... || exit 1; \
 	done
 

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"os/exec"
+	"net/netip"
 	"syscall"
 
 	"github.com/otfabric/go-profinet/dcp"
@@ -16,14 +16,18 @@ import (
 // setIP applies a DCP Set of the IP suite to the interface with iproute2,
 // as a device on a real interface must (the container has CAP_NET_ADMIN).
 func setIP(iface string, s dcp.IPSuite) error {
-	if out, err := exec.Command("ip", "address", "flush", "dev", iface).CombinedOutput(); err != nil {
+	if out, err := ipCommand(iface, "address", "flush"); err != nil {
 		return fmt.Errorf("ip address flush: %v: %s", err, out)
 	}
 	if s.IsZero() {
 		return nil
 	}
 	ones, _ := net.IPMask(s.Mask.AsSlice()).Size()
-	if out, err := exec.Command("ip", "address", "add", fmt.Sprintf("%s/%d", s.Addr, ones), "dev", iface).CombinedOutput(); err != nil {
+	prefix := netip.PrefixFrom(s.Addr, ones)
+	if !prefix.IsValid() {
+		return fmt.Errorf("ip address add: invalid IP suite %v", s)
+	}
+	if out, err := ipCommand(iface, "address", "add", prefix.String()); err != nil {
 		return fmt.Errorf("ip address add: %v: %s", err, out)
 	}
 	return nil

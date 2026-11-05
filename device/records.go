@@ -6,9 +6,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
+	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/pnio"
 )
@@ -113,11 +115,12 @@ func (d *Device) readRecordData(ctx context.Context, a *ar, q pnio.ReadReq) ([]b
 		}
 		return nil, errInvalidIndex
 	case pnio.IndexLogBook:
-		// LogBookData with the local time and no entries.
-		b := []byte{0x00, 0x19, 0, 0, 1, 0}
-		b = binary.BigEndian.AppendUint64(b, uint64(time.Now().Unix()))
+		// LogBookData with the local time and no entries; BlockLength 12:
+		// the version, the 8-octet time and the entry count. A clock
+		// before 1970 reads as 0.
+		b := []byte{0x00, 0x19, 0, 12, 1, 0}
+		b = binary.BigEndian.AppendUint64(b, uint64(max(time.Now().Unix(), 0)))
 		b = binary.BigEndian.AppendUint16(b, 0)
-		binary.BigEndian.PutUint16(b[2:], uint16(len(b)-4))
 		return b, nil
 	default:
 	}
@@ -237,9 +240,10 @@ func (d *Device) writeRecordData(ctx context.Context, a *ar, q pnio.WriteReq, da
 
 func (d *Device) im0Filter() []byte {
 	// I&M0FilterDataSubmodule: the DAP identity submodule carries I&M0;
-	// I&M0FilterDataDevice: it represents the device.
-	sub := []byte{0x00, 0x30, 0, 0, 1, 0}
-	dev := []byte{0x00, 0x32, 0, 0, 1, 0}
+	// I&M0FilterDataDevice: it represents the device. BlockLength 24:
+	// the version and the 22 octets appended below.
+	sub := []byte{0x00, 0x30, 0, 24, 1, 0}
+	dev := []byte{0x00, 0x32, 0, 24, 1, 0}
 	dap := d.model.DAP
 	sm, _ := dap.Submodule(model.SubslotDAP)
 	for _, p := range []*[]byte{&sub, &dev} {
@@ -252,7 +256,6 @@ func (d *Device) im0Filter() []byte {
 		b = binary.BigEndian.AppendUint16(b, 1) // submodules
 		b = binary.BigEndian.AppendUint16(b, model.SubslotDAP)
 		b = binary.BigEndian.AppendUint32(b, sm.IdentNumber)
-		binary.BigEndian.PutUint16(b[2:], uint16(len(b)-4))
 		*p = b
 	}
 	return append(sub, dev...)
@@ -368,19 +371,24 @@ func (d *Device) diagnosis(q pnio.ReadReq) []byte {
 		}
 		return keys[i].subslot < keys[j].subslot
 	})
-	var out []byte
+	dds := make([]pnio.DiagnosisData, 0, len(keys))
 	for _, k := range keys {
-		items := d.diags[k]
+		items := append([]pnio.DiagnosisItem(nil), d.diags[k]...)
 		usi := pnio.USIChannelDiagnosis
 		for _, it := range items {
 			if it.ExtErrorType != 0 || it.ExtAddValue != 0 {
 				usi = pnio.USIExtChannelDiagnosis
 			}
 		}
-		dd := pnio.DiagnosisData{API: model.API, Slot: k.slot, Subslot: k.subslot, ChannelNumber: pnio.ChannelNumberSubmodule, ChannelProperties: pnio.ChanSpecAppears, USI: usi, Items: items}
-		out = dd.Append(out)
+		dds = append(dds, pnio.DiagnosisData{API: model.API, Slot: k.slot, Subslot: k.subslot, ChannelNumber: pnio.ChannelNumberSubmodule, ChannelProperties: pnio.ChanSpecAppears, USI: usi, Items: items})
 	}
 	d.mu.Unlock()
+	// Encoded without mu: an encoder panic (too many diagnoses for a
+	// block) is recovered by the caller and must not leave mu locked.
+	var out []byte
+	for i := range dds {
+		out = dds[i].Append(out)
+	}
 	return out
 }
 
@@ -410,10 +418,16 @@ func (d *Device) recordInput(a *ar, q pnio.ReadReq) ([]byte, error) {
 		}
 		a.mu.Unlock()
 	}
-	b := []byte{0x00, 0x15, 0, 0, 1, 0}
-	b = append(b, 1, iocs, 1, iops)
-	b = binary.BigEndian.AppendUint16(b, uint16(len(data)))
+	// BlockLength: the version, the four status octets, the data length
+	// and the data. The model bounds a submodule's data to 1439 octets.
+	n := len(data)
+	if n > math.MaxUint16-8 {
+		return nil, fmt.Errorf("device: input %d/%d: %w: %d octets exceed a block", q.Slot, q.Subslot, profinet.ErrInvalidConfig, n)
+	}
+	dl := uint16(n)
+	b := binary.BigEndian.AppendUint16([]byte{0x00, 0x15}, dl+8)
+	b = append(b, 1, 0, 1, iocs, 1, iops)
+	b = binary.BigEndian.AppendUint16(b, dl)
 	b = append(b, data...)
-	binary.BigEndian.PutUint16(b[2:], uint16(len(b)-4))
 	return b, nil
 }

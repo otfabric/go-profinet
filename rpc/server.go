@@ -4,7 +4,9 @@ package rpc
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"math"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -41,7 +43,8 @@ func (f HandlerFunc) ServeRPC(ctx context.Context, req *Request) ([]byte, error)
 // ServerOptions configure a [Server].
 type ServerOptions struct {
 	// MaxFragmentBody bounds the body of one response packet. Zero means
-	// DefaultMaxFragmentBody.
+	// DefaultMaxFragmentBody; a value above 65427 (a UDP datagram of 65507
+	// octets) is reduced to it.
 	MaxFragmentBody int
 	// MaxMessage bounds a reassembled request. Zero means
 	// DefaultMaxMessage.
@@ -122,9 +125,7 @@ type Server struct {
 // conn. Register interfaces before requests arrive; calls of an interface
 // that is not registered are rejected with StatusUnknownIf.
 func NewServer(conn net.PacketConn, owned bool, opts ServerOptions) *Server {
-	if opts.MaxFragmentBody <= 0 {
-		opts.MaxFragmentBody = DefaultMaxFragmentBody
-	}
+	opts.MaxFragmentBody = fragmentBody(opts.MaxFragmentBody)
 	if opts.MaxMessage <= 0 {
 		opts.MaxMessage = DefaultMaxMessage
 	}
@@ -150,7 +151,7 @@ func NewServer(conn net.PacketConn, owned bool, opts ServerOptions) *Server {
 		owned:    owned,
 		opts:     opts,
 		log:      log,
-		boot:     uint32(time.Now().Unix()),
+		boot:     bootTime(time.Now()),
 		handlers: make(map[UUID]registration),
 		acts:     make(map[UUID]*serverActivity),
 		sem:      make(chan struct{}, opts.Workers),
@@ -357,7 +358,7 @@ func (s *Server) request(addr net.Addr, h *Header, body []byte) {
 	s.mu.Unlock()
 
 	s.requests.Add(1)
-	if !known || uint16(h.IfaceVersion) != reg.major {
+	if !known || h.IfaceVersion&0xFFFF != uint32(reg.major) {
 		s.rejected.Add(1)
 		s.finish(h, a, s.faultPackets(h, true, StatusUnknownIf))
 		return
@@ -385,7 +386,11 @@ func (s *Server) request(addr net.Addr, h *Header, body []byte) {
 			}
 		} else {
 			rh := s.responseHeader(h, TypeResponse)
-			pkts = packets(rh, out, s.opts.MaxFragmentBody)
+			var perr error
+			if pkts, perr = packets(rh, out, s.opts.MaxFragmentBody); perr != nil {
+				s.log.Warnf("rpc: response to opnum %d from %s: %v", h.OpNum, addr, perr)
+				pkts = s.faultPackets(h, false, StatusFaultUnspec)
+			}
 		}
 		s.finish(h, a, pkts)
 	})
@@ -431,6 +436,15 @@ func (s *Server) finish(h *Header, a *serverActivity, pkts [][]byte) {
 	}
 }
 
+// bootTime is the ServerBoot of a server started at t: its time in
+// seconds since 1970, modulo 2^32 as the 32-bit field carries it (DCE
+// RPC uses it only to tell server instances apart).
+func bootTime(t time.Time) uint32 {
+	var b [8]byte
+	binary.BigEndian.PutUint64(b[:], uint64(t.Unix()&math.MaxUint32))
+	return binary.BigEndian.Uint32(b[4:])
+}
+
 func (s *Server) responseHeader(h *Header, t PacketType) Header {
 	r := *h
 	r.Type = t
@@ -452,18 +466,15 @@ func (s *Server) faultPackets(h *Header, reject bool, status uint32) [][]byte {
 	if reject {
 		t = TypeReject
 	}
-	rh := s.responseHeader(h, t)
-	return packets(rh, s.status(h, status), s.opts.MaxFragmentBody)
+	return [][]byte{single(s.responseHeader(h, t), s.status(h, status))}
 }
 
 func (s *Server) control(addr net.Addr, h *Header, t PacketType, body []byte) {
 	rh := s.responseHeader(h, t)
-	rh.BodyLen = uint16(len(body))
 	if t == TypeFack {
 		rh.FragNum = h.FragNum
 	}
-	b := rh.AppendTo(make([]byte, 0, HeaderLen+len(body)))
-	s.write([][]byte{append(b, body...)}, addr)
+	s.write([][]byte{single(rh, body)}, addr)
 }
 
 func (s *Server) write(pkts [][]byte, addr net.Addr) {

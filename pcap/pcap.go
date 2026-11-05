@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"time"
 
@@ -43,14 +44,27 @@ func NewWriter(w io.Writer) (*Writer, error) {
 	return &Writer{w: w}, nil
 }
 
-// WriteFrame writes one Ethernet frame captured at t.
+// WriteFrame writes one Ethernet frame captured at t. The classic format
+// stores the seconds as an unsigned 32-bit count since 1970, so a t before
+// 1970 or after 2106-02-07 06:28:15 UTC, and a frame of 2^32 octets or
+// more, are refused with [profinet.ErrInvalidConfig] instead of being
+// written with a wrapped value.
 func (w *Writer) WriteFrame(t time.Time, frame []byte) error {
-	n := min(len(frame), SnapLen)
+	sec := t.Unix()
+	if sec < 0 || sec > math.MaxUint32 {
+		return fmt.Errorf("pcap: %w: timestamp %v outside the classic format's range", profinet.ErrInvalidConfig, t)
+	}
+	orig := len(frame)
+	if int64(orig) > math.MaxUint32 {
+		return fmt.Errorf("pcap: %w: frame of %d octets", profinet.ErrInvalidConfig, orig)
+	}
+	n := min(orig, SnapLen)
 	h := make([]byte, 16, 16+n)
-	binary.LittleEndian.PutUint32(h[0:], uint32(t.Unix()))
-	binary.LittleEndian.PutUint32(h[4:], uint32(t.Nanosecond()/1000))
-	binary.LittleEndian.PutUint32(h[8:], uint32(n))
-	binary.LittleEndian.PutUint32(h[12:], uint32(len(frame)))
+	binary.LittleEndian.PutUint32(h[0:], uint32(sec))
+	// Nanosecond is below 10^9, so the microseconds fit 20 bits.
+	binary.LittleEndian.PutUint32(h[4:], uint32((t.Nanosecond()/1000)&0xFFFFF))
+	binary.LittleEndian.PutUint32(h[8:], uint32(n&0xFFFF))
+	binary.LittleEndian.PutUint32(h[12:], uint32(orig))
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	_, err := w.w.Write(append(h, frame[:n]...))

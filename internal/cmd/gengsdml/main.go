@@ -126,7 +126,7 @@ func goName(s string) string {
 var idWord = regexp.MustCompile(`Id([A-Z]|$)`)
 
 func load(path string) (*catalog, []byte, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -460,14 +460,16 @@ func main() {
 	stale := false
 	for path, want := range outputs {
 		if *check {
-			have, err := os.ReadFile(path)
+			have, err := os.ReadFile(filepath.Clean(path))
 			if err != nil || !bytes.Equal(have, want) {
 				fmt.Fprintf(os.Stderr, "gengsdml: %s is out of date; run go generate ./gsdml\n", path)
 				stale = true
 			}
 			continue
 		}
-		if err := os.WriteFile(path, want, 0o644); err != nil {
+		// The files exist under version control, which keeps no mode: an
+		// existing file keeps its mode, a new one is the owner's.
+		if err := os.WriteFile(filepath.Clean(path), want, 0o600); err != nil {
 			fail(err)
 		}
 	}

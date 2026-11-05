@@ -16,6 +16,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"time"
 
 	"github.com/otfabric/go-profinet"
@@ -29,10 +30,14 @@ import (
 func main() {
 	iface := flag.String("i", "", "network interface")
 	name := flag.String("device", "io-1", "station name of the device")
-	cycle := flag.Uint("rr", 4, "reduction ratio (cycle = 1 ms × rr)")
+	rrFlag := flag.String("rr", "4", "reduction ratio (cycle = 1 ms × rr)")
 	flag.Parse()
 	if *iface == "" {
 		log.Fatal("-i is required")
+	}
+	rr, err := strconv.ParseUint(*rrFlag, 10, 16)
+	if err != nil {
+		log.Fatalf("-rr: %v", err)
 	}
 	port, err := osport.Open(*iface, osport.Options{})
 	if err != nil {
@@ -46,7 +51,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer func() { _ = ctrl.Close() }()
-	d, err := ctrl.AddDevice(controller.DeviceConfig{StationName: *name, Model: vnetenv.Model(), ReductionRatio: uint16(*cycle),
+	d, err := ctrl.AddDevice(controller.DeviceConfig{StationName: *name, Model: vnetenv.Model(), ReductionRatio: uint16(rr),
 		OnState: func(from, to controller.State, err error) { log.Printf("%s: %s → %s %v", *name, from, to, err) }})
 	if err != nil {
 		log.Fatal(err)

@@ -24,7 +24,8 @@ type ClientOptions struct {
 	// server executes it at most once). Zero means 1 s.
 	Retransmit time.Duration
 	// MaxFragmentBody bounds the body of one request packet. Zero means
-	// DefaultMaxFragmentBody.
+	// DefaultMaxFragmentBody; a value above 65427 (a UDP datagram of 65507
+	// octets) is reduced to it.
 	MaxFragmentBody int
 	// MaxMessage bounds a reassembled response. Zero means
 	// DefaultMaxMessage.
@@ -101,9 +102,7 @@ func NewClient(conn net.PacketConn, owned bool, opts ClientOptions) *Client {
 	if opts.Retransmit <= 0 {
 		opts.Retransmit = time.Second
 	}
-	if opts.MaxFragmentBody <= 0 {
-		opts.MaxFragmentBody = DefaultMaxFragmentBody
-	}
+	opts.MaxFragmentBody = fragmentBody(opts.MaxFragmentBody)
 	if opts.MaxMessage <= 0 {
 		opts.MaxMessage = DefaultMaxMessage
 	}
@@ -302,7 +301,10 @@ func (c *Client) do(ctx context.Context, act *activity, addr net.Addr, call Call
 	if call.Idempotent {
 		h.Flags1 |= FlagIdempotent
 	}
-	pkts := packets(h, call.Body, c.opts.MaxFragmentBody)
+	pkts, err := packets(h, call.Body, c.opts.MaxFragmentBody)
+	if err != nil {
+		return nil, err
+	}
 
 	cc := &clientCall{act: act, in: make(chan []byte, 64), done: make(chan struct{})}
 	c.mu.Lock()
@@ -413,9 +415,7 @@ func (c *Client) reply(addr net.Addr, rh *Header, t PacketType, body []byte) {
 	h.Flags1 = 0
 	h.Flags2 = 0
 	h.DRep = c.drep
-	h.BodyLen = uint16(len(body))
-	b := h.AppendTo(make([]byte, 0, HeaderLen+len(body)))
-	b = append(b, body...)
+	b := single(h, body)
 	if _, err := c.conn.WriteTo(b, addr); err != nil {
 		c.log.Debugf("rpc: send %s to %s: %v", t, addr, err)
 	}

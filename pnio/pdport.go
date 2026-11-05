@@ -4,6 +4,7 @@ package pnio
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/ethernet"
@@ -64,10 +65,11 @@ func (r *reader) align4() {
 }
 
 func appendString8(b []byte, s string) []byte {
-	if len(s) > 255 {
-		s = s[:255]
+	n := len(s)
+	if n > math.MaxUint8 {
+		n = math.MaxUint8
 	}
-	return append(append(b, uint8(len(s))), s...)
+	return append(append(b, uint8(n)), s[:n]...)
 }
 
 func (r *reader) string8() string { return string(r.bytes(int(r.u8()))) }

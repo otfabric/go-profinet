@@ -4,6 +4,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/model"
@@ -51,6 +52,11 @@ func mrpParameters(m *model.Device, s *MRPSetting) ([]Parameter, error) {
 	if name == "" {
 		name = "mrpdomain-1"
 	}
+	// The device side (device.Device) refuses a MRP_DomainName longer
+	// than 240 octets, and the encoder would truncate it at 255.
+	if len(name) > maxNameLen {
+		return nil, fmt.Errorf("controller: %w: MRP domain name of %d octets (at most %d)", profinet.ErrInvalidConfig, len(name), maxNameLen)
+	}
 	if _, ok := m.Submodule(0, model.SubslotInterface); !ok {
 		return nil, fmt.Errorf("controller: %w: MRP needs the interface submodule %#x", profinet.ErrInvalidConfig, model.SubslotInterface)
 	}
@@ -67,8 +73,13 @@ func mrpParameters(m *model.Device, s *MRPSetting) ([]Parameter, error) {
 		return out, nil
 	}
 	for _, p := range ports {
+		// Ports beyond the subslot range would wrap onto a port of the
+		// model (0x8001 + p-1 modulo 2^16).
+		if p < 1 || p > math.MaxUint16-int(model.SubslotPort1)+1 {
+			return nil, fmt.Errorf("controller: %w: MRP ring port %d is not a port of the model", profinet.ErrInvalidConfig, p)
+		}
 		sub := model.SubslotPort1 + uint16(p-1)
-		if _, ok := m.Submodule(0, sub); !ok || p < 1 {
+		if _, ok := m.Submodule(0, sub); !ok {
 			return nil, fmt.Errorf("controller: %w: MRP ring port %d is not a port of the model", profinet.ErrInvalidConfig, p)
 		}
 		pa := pnio.PDPortMrpData{Domain: domain}

@@ -4,6 +4,7 @@ package rt
 
 import (
 	"container/heap"
+	"math"
 	"sync"
 	"time"
 )
@@ -45,7 +46,7 @@ func (t *Task) Stats() TaskStats {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	s := t.stats
-	if s.Cycles > 0 {
+	if s.Cycles > 0 && s.Cycles <= math.MaxInt64 {
 		s.MeanLateness = t.sumLate / time.Duration(s.Cycles)
 	}
 	return s
@@ -192,8 +193,12 @@ func (s *Scheduler) run() {
 		late := now.Sub(deadline)
 		var missed uint64
 		if late >= t.period {
-			missed = uint64(late / t.period)
-			t.next = deadline.Add(time.Duration(missed+1) * t.period)
+			// late ≥ period > 0, so at least one period was missed.
+			n := late / t.period
+			if n > 0 {
+				missed = uint64(n)
+			}
+			t.next = deadline.Add((n + 1) * t.period)
 		} else {
 			t.next = deadline.Add(t.period)
 		}

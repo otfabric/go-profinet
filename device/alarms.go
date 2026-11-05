@@ -120,12 +120,15 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 		Specifier: al.Specifier&^pnio.AlarmSpecSeqMask | seq,
 		HasItem:   al.HasItem, USI: al.USI, Data: al.Data,
 	}
-	body := n.Append(nil)
+	body, err := encodeSafely(func() ([]byte, error) { return n.Append(nil), nil })
 	d.met.OnAlarm(a.ctrlName, al.Type.String(), al.High)
-	if len(body) > int(a.maxAlarmData) {
+	if err != nil || len(body) > int(a.maxAlarmData) {
 		a.mu.Lock()
 		delete(a.ackWait, seq)
 		a.mu.Unlock()
+		if err != nil {
+			return seq, fmt.Errorf("device: alarm: %w", err)
+		}
 		return seq, fmt.Errorf("device: alarm: %w: %d octets exceed MaxAlarmDataLength %d", profinet.ErrInvalidConfig, len(body), a.maxAlarmData)
 	}
 	ep := a.alarmLow
@@ -137,7 +140,7 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 		delete(a.ackWait, seq)
 		a.mu.Unlock()
 		if errors.Is(err, profinet.ErrTimeout) {
-			go d.abort(a, pnio.AbortAlarmSend, true)
+			d.goAbort(a, pnio.AbortAlarmSend, true)
 		}
 		// The AR ended (release, abort) while the transport waited for its
 		// acknowledgement: its endpoint was closed under it. Only a closed

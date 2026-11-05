@@ -40,7 +40,7 @@ func (a *ARBlockReq) Append(b []byte) []byte {
 	b = appendU32(b, a.Properties)
 	b = appendU16(b, a.ActivityTimeoutFactor)
 	b = appendU16(b, a.UDPRTPort)
-	b = appendU16(b, uint16(len(a.StationName)))
+	b = appendLen16(b, "StationName", len(a.StationName))
 	b = append(b, a.StationName...)
 	return endBlock(b, s)
 }
@@ -159,16 +159,16 @@ func (c *IOCRBlockReq) Append(b []byte) []byte {
 	b = appendU16(b, c.DataHoldFactor)
 	b = appendU16(b, c.TagHeader)
 	b = append(b, c.MulticastMAC[:]...)
-	b = appendU16(b, uint16(len(c.APIs)))
+	b = appendLen16(b, "APIs", len(c.APIs))
 	for _, a := range c.APIs {
 		b = appendU32(b, a.API)
-		b = appendU16(b, uint16(len(a.IODataObjects)))
+		b = appendLen16(b, "IODataObjects", len(a.IODataObjects))
 		for _, o := range a.IODataObjects {
 			b = appendU16(b, o.Slot)
 			b = appendU16(b, o.Subslot)
 			b = appendU16(b, o.FrameOffset)
 		}
-		b = appendU16(b, uint16(len(a.IOCS)))
+		b = appendLen16(b, "IOCS", len(a.IOCS))
 		for _, o := range a.IOCS {
 			b = appendU16(b, o.Slot)
 			b = appendU16(b, o.Subslot)
@@ -389,13 +389,13 @@ func NewDataDescriptions(t SubmoduleType, in, out uint16) []DataDescription {
 // Append appends the block.
 func (e *ExpectedSubmoduleBlockReq) Append(b []byte) []byte {
 	b, s := beginBlock(b, BlockExpectedSubmReq, 1, 0)
-	b = appendU16(b, uint16(len(e.Modules)))
+	b = appendLen16(b, "Modules", len(e.Modules))
 	for _, m := range e.Modules {
 		b = appendU32(b, m.API)
 		b = appendU16(b, m.Slot)
 		b = appendU32(b, m.IdentNumber)
 		b = appendU16(b, m.Properties)
-		b = appendU16(b, uint16(len(m.Submodules)))
+		b = appendLen16(b, "Submodules", len(m.Submodules))
 		for _, sm := range m.Submodules {
 			b = appendU16(b, sm.Subslot)
 			b = appendU32(b, sm.IdentNumber)
@@ -473,15 +473,15 @@ type ModuleDiffBlock struct {
 // Append appends the block.
 func (m *ModuleDiffBlock) Append(b []byte) []byte {
 	b, s := beginBlock(b, BlockModuleDiff, 1, 0)
-	b = appendU16(b, uint16(len(m.APIs)))
+	b = appendLen16(b, "APIs", len(m.APIs))
 	for _, a := range m.APIs {
 		b = appendU32(b, a.API)
-		b = appendU16(b, uint16(len(a.Modules)))
+		b = appendLen16(b, "Modules", len(a.Modules))
 		for _, md := range a.Modules {
 			b = appendU16(b, md.Slot)
 			b = appendU32(b, md.IdentNumber)
 			b = appendU16(b, md.State)
-			b = appendU16(b, uint16(len(md.Submodules)))
+			b = appendLen16(b, "Submodules", len(md.Submodules))
 			for _, sm := range md.Submodules {
 				b = appendU16(b, sm.Subslot)
 				b = appendU32(b, sm.IdentNumber)
@@ -521,7 +521,7 @@ type ARServerBlock struct {
 // Append appends the block, padded to a multiple of four octets.
 func (a *ARServerBlock) Append(b []byte) []byte {
 	b, s := beginBlock(b, BlockARServer, 1, 0)
-	b = appendU16(b, uint16(len(a.StationName)))
+	b = appendLen16(b, "StationName", len(a.StationName))
 	b = append(b, a.StationName...)
 	b = padTo(b, s, 4)
 	return endBlock(b, s)

@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/netip"
 	"os"
@@ -497,14 +498,21 @@ func (s *Stack) sendUDP(ctx context.Context, sport uint16, dst netip.AddrPort, d
 	if !src.IsValid() {
 		src = netip.IPv4Unspecified()
 	}
+	// The IPv4 Total Length and UDP Length are 16 bits: a port whose MTU
+	// exceeds them must not wrap them.
 	total := ipHeaderLen + udpHeaderLen + len(data)
+	if total > math.MaxUint16 {
+		return fmt.Errorf("netstack: %w: datagram of %d octets exceeds an IPv4 packet", profinet.ErrInvalidConfig, len(data))
+	}
+	udpLen := uint16(total - ipHeaderLen)
 	b := make([]byte, 0, ethernet.HeaderLen+total+ethernet.MinFrameLen)
 	hdr := ethernet.Frame{Dst: mac, Src: s.mac, EtherType: ethernet.EtherTypeIPv4}
 	b = hdr.AppendHeader(b)
 	ip := len(b)
 	b = append(b, 0x45, 0)
-	b = binary.BigEndian.AppendUint16(b, uint16(total))
-	b = binary.BigEndian.AppendUint16(b, uint16(s.ipID.Add(1)))
+	b = binary.BigEndian.AppendUint16(b, udpLen+ipHeaderLen)
+	// The Identification field wraps by design.
+	b = binary.BigEndian.AppendUint16(b, uint16(s.ipID.Add(1)&0xFFFF))
 	b = binary.BigEndian.AppendUint16(b, 0x4000) // DF
 	b = append(b, 64, protoUDP, 0, 0)
 	s4, d4 := src.As4(), dst.Addr().As4()
@@ -514,10 +522,10 @@ func (s *Stack) sendUDP(ctx context.Context, sport uint16, dst netip.AddrPort, d
 	u := len(b)
 	b = binary.BigEndian.AppendUint16(b, sport)
 	b = binary.BigEndian.AppendUint16(b, dst.Port())
-	b = binary.BigEndian.AppendUint16(b, uint16(udpHeaderLen+len(data)))
+	b = binary.BigEndian.AppendUint16(b, udpLen)
 	b = append(b, 0, 0)
 	b = append(b, data...)
-	sum := checksum(b[u:], pseudoSum(src, dst.Addr(), udpHeaderLen+len(data)))
+	sum := checksum(b[u:], pseudoSum(src, dst.Addr(), int(udpLen)))
 	if sum == 0 {
 		sum = 0xFFFF
 	}
@@ -537,7 +545,8 @@ func pseudoSum(src, dst netip.Addr, length int) uint32 {
 	sum += uint32(d4[0])<<8 | uint32(d4[1])
 	sum += uint32(d4[2])<<8 | uint32(d4[3])
 	sum += protoUDP
-	sum += uint32(length)
+	// The pseudo-header carries the 16-bit UDP Length.
+	sum += uint32(length & 0xFFFF)
 	return sum
 }
 
@@ -635,13 +644,17 @@ func (c *PacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 		return 0, fmt.Errorf("netstack: %w: address %v", profinet.ErrInvalidConfig, addr)
 	}
 	ip = ip.Unmap()
+	if ua.Port < 0 || ua.Port > math.MaxUint16 {
+		return 0, fmt.Errorf("netstack: %w: port %d", profinet.ErrInvalidConfig, ua.Port)
+	}
+	port := uint16(ua.Port)
 	ctx := context.Background()
 	if d := c.wdl.Load(); d != nil && !d.t.IsZero() {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, d.t)
 		defer cancel()
 	}
-	if err := c.stack.sendUDP(ctx, c.port, netip.AddrPortFrom(ip, uint16(ua.Port)), p); err != nil {
+	if err := c.stack.sendUDP(ctx, c.port, netip.AddrPortFrom(ip, port), p); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			return 0, os.ErrDeadlineExceeded
 		}

@@ -300,7 +300,7 @@ func AppendWriteMultiple(b []byte, items []WriteMultipleItem) []byte {
 	start := len(b)
 	for i, it := range items {
 		h := it.Header
-		h.Length = uint32(len(it.Data))
+		h.Length = len32("WriteMultiple record length", len(it.Data))
 		b = h.Append(b)
 		b = append(b, it.Data...)
 		if i < len(items)-1 {
@@ -323,7 +323,7 @@ func SplitWriteMultiple(b []byte) ([]WriteMultipleItem, error) {
 		if err != nil {
 			return out, err
 		}
-		if int(h.Length) > len(rest) {
+		if uint64(h.Length) > uint64(len(rest)) {
 			return out, fmt.Errorf("pnio: %w: WriteMultiple record of %d octets exceeds the %d present", profinet.ErrMalformed, h.Length, len(rest))
 		}
 		out = append(out, WriteMultipleItem{Header: h, Data: rest[:h.Length]})

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -386,4 +387,59 @@ func FuzzDecodeFile(f *testing.F) {
 			t.Fatal("accepted a file that does not re-encode to itself")
 		}
 	})
+}
+
+// TestDirContained: a key cannot name a file outside the directory, and a
+// symbolic link in the directory that points outside it is not followed.
+func TestDirContained(t *testing.T) {
+	ctx := context.Background()
+	parent := t.TempDir()
+	d, err := OpenDir(filepath.Join(parent, "store"), DirOptions{NoSync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(parent, "secret.v")
+	if err := os.WriteFile(secret, encodeFile([]byte("outside")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"../secret", "..", "a/../../secret", `..\secret`, "/etc/passwd", "secret\x00"} {
+		if _, err := d.Load(ctx, k); !errors.Is(err, profinet.ErrInvalidConfig) {
+			t.Fatalf("Load(%q): %v", k, err)
+		}
+		if err := d.Save(ctx, k, []byte("x")); !errors.Is(err, profinet.ErrInvalidConfig) {
+			t.Fatalf("Save(%q): %v", k, err)
+		}
+	}
+	if err := os.Symlink(secret, filepath.Join(d.Path(), "link.v")); err != nil {
+		t.Skipf("no symbolic links: %v", err)
+	}
+	if v, err := d.Load(ctx, "link"); err == nil {
+		t.Fatalf("Load followed a link out of the directory: %q", v)
+	}
+	// A link that stays in the directory is still read.
+	if err := d.Save(ctx, "real", []byte("inside")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real.v", filepath.Join(d.Path(), "alias.v")); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := d.Load(ctx, "alias"); err != nil || string(v) != "inside" {
+		t.Fatalf("alias: %q %v", v, err)
+	}
+}
+
+// TestDirMaxValueSizeCap: the 32-bit length of the file format caps
+// MaxValueSize, so that no value is written with a wrapped length.
+func TestDirMaxValueSizeCap(t *testing.T) {
+	if math.MaxInt <= math.MaxUint32 {
+		t.Skip("int cannot exceed the cap")
+	}
+	big := math.MaxInt
+	d, err := OpenDir(t.TempDir(), DirOptions{MaxValueSize: big, NoSync: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int64(d.opts.MaxValueSize) != math.MaxUint32 {
+		t.Fatalf("MaxValueSize %d", d.opts.MaxValueSize)
+	}
 }

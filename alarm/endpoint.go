@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -58,7 +59,8 @@ type Endpoint struct {
 	sendSeq  uint16 // the last DATA PDU sent, InitialAckSeq before any
 	lastRecv uint16
 	expect   uint16
-	waitSeq  int32 // the sequence number awaiting its ACK, -1 when none
+	waiting  bool   // a DATA PDU awaits its ACK
+	waitSeq  uint16 // the sequence number of that DATA PDU
 	acked    chan struct{}
 	nacked   chan struct{}
 
@@ -85,7 +87,6 @@ func newEndpoint(m *Manager, cfg EndpointConfig) *Endpoint {
 		sendSeq:  InitialAckSeq,
 		lastRecv: InitialAckSeq,
 		expect:   InitialSendSeq,
-		waitSeq:  -1,
 		deliver:  make(chan []byte, 32),
 		done:     make(chan struct{}),
 	}
@@ -134,8 +135,13 @@ func (e *Endpoint) transmit(ctx context.Context, p *PDU) error {
 // Send transmits a DATA PDU carrying varPart and waits for its transport
 // acknowledgement, retransmitting it every Timeout up to Retries times.
 // It returns an error matching profinet.ErrTimeout when the peer never
-// acknowledged (the owner then aborts the AR).
+// acknowledged (the owner then aborts the AR), and one matching
+// profinet.ErrInvalidConfig, before any sequence number is used, for a
+// varPart longer than 65535 octets.
 func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
+	if len(varPart) > math.MaxUint16 {
+		return varPartTooLong(len(varPart))
+	}
 	e.sendMu.Lock()
 	defer e.sendMu.Unlock()
 	select {
@@ -147,7 +153,7 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	seq := e.nextSend
 	e.nextSend = nextSeq(seq)
 	e.sendSeq = seq
-	e.waitSeq = int32(seq)
+	e.waiting, e.waitSeq = true, seq
 	acked := make(chan struct{})
 	nacked := make(chan struct{}, 1)
 	e.acked, e.nacked = acked, nacked
@@ -155,7 +161,7 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	e.mu.Unlock()
 	defer func() {
 		e.mu.Lock()
-		e.waitSeq = -1
+		e.waiting = false
 		e.mu.Unlock()
 	}()
 
@@ -199,8 +205,8 @@ func (e *Endpoint) SendErr(ctx context.Context, status pnio.Status) error {
 }
 
 func (e *Endpoint) ackLocked(seq uint16) {
-	if e.waitSeq >= 0 && uint16(e.waitSeq) == seq {
-		e.waitSeq = -1
+	if e.waiting && e.waitSeq == seq {
+		e.waiting = false
 		close(e.acked)
 	}
 }
@@ -225,7 +231,7 @@ func (e *Endpoint) handle(p *PDU) {
 	case PDUNack:
 		e.nacks.Add(1)
 		e.mu.Lock()
-		if e.waitSeq >= 0 {
+		if e.waiting {
 			select {
 			case e.nacked <- struct{}{}:
 			default:

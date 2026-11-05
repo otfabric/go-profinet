@@ -4,6 +4,7 @@ package rpc
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-profinet"
 )
@@ -20,33 +21,63 @@ const DefaultMaxMessage = 64 * 1024
 // MaxFragments bounds the fragments of one message.
 const MaxFragments = 256
 
-// packets splits a body into the packets of one request or response,
-// derived from the template header h.
-func packets(h Header, body []byte, maxFrag int) [][]byte {
-	if maxFrag <= 0 {
-		maxFrag = DefaultMaxFragmentBody
+// maxFragmentBodyLimit is the largest fragment body: a UDP datagram of
+// 65507 octets, the largest IPv4 carries, less the packet header. A
+// MaxFragmentBody above it is reduced to it, since the 16-bit fragment
+// length of the header cannot describe more.
+const maxFragmentBodyLimit = 65507 - HeaderLen
+
+// fragmentBody returns the fragment body size for the option value n.
+func fragmentBody(n int) int {
+	if n <= 0 {
+		return DefaultMaxFragmentBody
 	}
-	n := (len(body) + maxFrag - 1) / maxFrag
-	if n == 0 {
-		n = 1
+	return min(n, maxFragmentBodyLimit)
+}
+
+// bodyLen returns the length n of a packet body, which its callers bound
+// to at most maxFragmentBodyLimit octets, as the 16-bit header field.
+func bodyLen(n int) uint16 {
+	if n < 0 || n > math.MaxUint16 {
+		return math.MaxUint16 // not reached: callers bound n
+	}
+	return uint16(n)
+}
+
+// single encodes the one packet of a body that is never fragmented: an
+// acknowledgement, a FACK, a fault or a reject.
+func single(h Header, body []byte) []byte {
+	h.BodyLen = bodyLen(len(body))
+	b := h.AppendTo(make([]byte, 0, HeaderLen+len(body)))
+	return append(b, body...)
+}
+
+// packets splits a body into the packets of one request or response,
+// derived from the template header h. A body that needs more fragments
+// than the 16-bit fragment number counts is refused.
+func packets(h Header, body []byte, maxFrag int) ([][]byte, error) {
+	maxFrag = fragmentBody(maxFrag)
+	n := max((len(body)+maxFrag-1)/maxFrag, 1)
+	if n-1 > math.MaxUint16 {
+		return nil, fmt.Errorf("rpc: %w: body of %d octets needs %d fragments of %d octets, more than %d", profinet.ErrInvalidConfig, len(body), n, maxFrag, math.MaxUint16+1)
 	}
 	out := make([][]byte, 0, n)
+	var frag uint16 // i as the fragment number: n-1 fits, checked above
 	for i := 0; i < n; i++ {
 		lo := i * maxFrag
 		hi := min(lo+maxFrag, len(body))
 		p := h
-		p.FragNum = uint16(i)
-		p.BodyLen = uint16(hi - lo)
+		p.FragNum = frag
+		frag++
 		if n > 1 {
 			p.Flags1 |= FlagFrag | FlagNoFack
 			if i == n-1 {
 				p.Flags1 |= FlagLastFrag
 			}
 		}
-		b := p.AppendTo(make([]byte, 0, HeaderLen+hi-lo))
-		out = append(out, append(b, body[lo:hi]...))
+		out = append(out, single(p, body[lo:hi]))
 	}
-	return out
+	return out, nil
 }
 
 // reassembly collects the fragments of one message.

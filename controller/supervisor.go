@@ -50,10 +50,13 @@ func (r *RecordClient) OpenSupervisor(ctx context.Context, cfg SupervisorConfig)
 	if cfg.StationName == "" {
 		cfg.StationName = "go-profinet-supervisor"
 	}
+	if len(cfg.StationName) > maxNameLen {
+		return nil, fmt.Errorf("controller: %w: supervisor StationName of %d octets (at most %d)", profinet.ErrInvalidConfig, len(cfg.StationName), maxNameLen)
+	}
 	if cfg.ActivityTimeout == 0 {
 		cfg.ActivityTimeout = 10 * time.Second
 	}
-	s := &SupervisorAR{rc: r, uuid: rpc.NewRandomUUID(), key: uint16(sessionKeys.Add(1))}
+	s := &SupervisorAR{rc: r, uuid: rpc.NewRandomUUID(), key: next16(&sessionKeys)}
 	req := &pnio.ConnectRequest{AR: pnio.ARBlockReq{
 		Type: pnio.ARTypeIOSAR, ARUUID: s.uuid, SessionKey: s.key,
 		InitiatorMAC: cfg.InitiatorMAC, InitiatorObject: cfg.InitiatorObject,

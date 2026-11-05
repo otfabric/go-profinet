@@ -5,7 +5,9 @@ package controller
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"math"
 	"net"
 	"sync/atomic"
 
@@ -26,6 +28,21 @@ type RecordClient struct {
 	addr   net.Addr
 	object rpc.UUID
 	seq    atomic.Uint32
+}
+
+// next16 advances a 16-bit sequence counter (a PNIO sequence number or
+// session key) kept in c; the counter wraps modulo 2^16 by definition.
+func next16(c *atomic.Uint32) uint16 {
+	return uint16(c.Add(1) & math.MaxUint16)
+}
+
+// recordLength returns n as the 32-bit RecordDataLength of a write
+// request, or an error when n does not fit.
+func recordLength(n int) (uint32, error) {
+	if n < 0 || uint64(n) > math.MaxUint32 {
+		return 0, fmt.Errorf("%w: record data length %d does not fit 32 bits", profinet.ErrInvalidConfig, n)
+	}
+	return uint32(n), nil
 }
 
 // NewRecordClient returns a client for the device at addr (its RPC
@@ -76,7 +93,7 @@ func (r *RecordClient) Read(ctx context.Context, ar rpc.UUID, rec Record, maxLen
 	if ar.IsNil() {
 		op = pnio.OpReadImplicit
 	}
-	q := pnio.ReadReq{Seq: uint16(r.seq.Add(1)), ARUUID: ar, API: rec.API, Slot: rec.Slot, Subslot: rec.Subslot, Index: rec.Index, Length: maxLen}
+	q := pnio.ReadReq{Seq: next16(&r.seq), ARUUID: ar, API: rec.API, Slot: rec.Slot, Subslot: rec.Subslot, Index: rec.Index, Length: maxLen}
 	st, blocks, err := r.call(ctx, op, q.Append(nil))
 	if err != nil {
 		return nil, fmt.Errorf("controller: read %s: %w", rec, err)
@@ -92,15 +109,22 @@ func (r *RecordClient) Read(ctx context.Context, ar rpc.UUID, rec Record, maxLen
 	if err != nil {
 		return nil, fmt.Errorf("controller: read %s: %w", rec, err)
 	}
-	if int(h.Length) > len(rest) {
+	if uint64(h.Length) > uint64(len(rest)) {
 		return nil, fmt.Errorf("controller: read %s: %w: RecordDataLength %d, %d octets present", rec, profinet.ErrMalformed, h.Length, len(rest))
+	}
+	if h.Length > maxLen {
+		return nil, fmt.Errorf("controller: read %s: %w: RecordDataLength %d exceeds the requested %d", rec, profinet.ErrMalformed, h.Length, maxLen)
 	}
 	return append([]byte(nil), rest[:h.Length]...), nil
 }
 
 // Write writes a record within an AR.
 func (r *RecordClient) Write(ctx context.Context, ar rpc.UUID, rec Record, data []byte) error {
-	q := pnio.WriteReq{Seq: uint16(r.seq.Add(1)), ARUUID: ar, API: rec.API, Slot: rec.Slot, Subslot: rec.Subslot, Index: rec.Index, Length: uint32(len(data))}
+	n, err := recordLength(len(data))
+	if err != nil {
+		return fmt.Errorf("controller: write %s: %w", rec, err)
+	}
+	q := pnio.WriteReq{Seq: next16(&r.seq), ARUUID: ar, API: rec.API, Slot: rec.Slot, Subslot: rec.Subslot, Index: rec.Index, Length: n}
 	st, blocks, err := r.call(ctx, pnio.OpWrite, append(q.Append(nil), data...))
 	if err != nil {
 		return fmt.Errorf("controller: write %s: %w", rec, err)
@@ -129,12 +153,19 @@ func (r *RecordClient) WriteMultiple(ctx context.Context, ar rpc.UUID, items []W
 	mi := make([]pnio.WriteMultipleItem, len(items))
 	for i, it := range items {
 		mi[i] = pnio.WriteMultipleItem{
-			Header: pnio.WriteReq{Seq: uint16(r.seq.Add(1)), ARUUID: ar, API: it.Record.API, Slot: it.Record.Slot, Subslot: it.Record.Subslot, Index: it.Record.Index},
+			Header: pnio.WriteReq{Seq: next16(&r.seq), ARUUID: ar, API: it.Record.API, Slot: it.Record.Slot, Subslot: it.Record.Subslot, Index: it.Record.Index},
 			Data:   it.Data,
 		}
 	}
-	data := pnio.AppendWriteMultiple(nil, mi)
-	q := pnio.WriteReq{Seq: uint16(r.seq.Add(1)), ARUUID: ar, API: 0xFFFFFFFF, Slot: 0xFFFF, Subslot: 0xFFFF, Index: pnio.IndexWriteMultiple, Length: uint32(len(data))}
+	data, err := encodeSafely(func() ([]byte, error) { return pnio.AppendWriteMultiple(nil, mi), nil })
+	if err != nil {
+		return nil, fmt.Errorf("controller: write multiple: %w", err)
+	}
+	n, err := recordLength(len(data))
+	if err != nil {
+		return nil, fmt.Errorf("controller: write multiple: %w", err)
+	}
+	q := pnio.WriteReq{Seq: next16(&r.seq), ARUUID: ar, API: 0xFFFFFFFF, Slot: 0xFFFF, Subslot: 0xFFFF, Index: pnio.IndexWriteMultiple, Length: n}
 	st, blocks, err := r.call(ctx, pnio.OpWrite, append(q.Append(nil), data...))
 	if err != nil {
 		return nil, fmt.Errorf("controller: write multiple: %w", err)
@@ -158,6 +189,9 @@ func (r *RecordClient) WriteMultiple(ctx context.Context, ar rpc.UUID, items []W
 			continue
 		}
 		out = append(out, res.Status)
+	}
+	if len(out) > len(items) {
+		return nil, fmt.Errorf("controller: write multiple: %w: %d results for %d items", profinet.ErrMalformed, len(out), len(items))
 	}
 	return out, nil
 }
@@ -192,7 +226,11 @@ func (r *RecordClient) Control(ctx context.Context, c pnio.ControlBlock) error {
 
 // Connect sends a Connect request and returns the decoded response.
 func (r *RecordClient) Connect(ctx context.Context, req *pnio.ConnectRequest) (*pnio.ConnectResponse, error) {
-	st, blocks, err := r.call(ctx, pnio.OpConnect, req.Append(nil))
+	body, err := encodeSafely(func() ([]byte, error) { return req.Append(nil), nil })
+	if err != nil {
+		return nil, fmt.Errorf("controller: connect: %w", err)
+	}
+	st, blocks, err := r.call(ctx, pnio.OpConnect, body)
 	if err != nil {
 		return nil, fmt.Errorf("controller: connect: %w", err)
 	}
@@ -243,4 +281,21 @@ func (r *RecordClient) ReadDiagnosis(ctx context.Context, ar rpc.UUID, slot, sub
 		out = append(out, d)
 	}
 	return out, nil
+}
+
+// encodeSafely runs f, which encodes with the pnio and alarm encoders.
+// Those panic with an error matching profinet.ErrInvalidConfig when a
+// length or count does not fit its field; encodeSafely returns that panic
+// as the error. Any other panic is a bug elsewhere and propagates.
+func encodeSafely(f func() ([]byte, error)) (b []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			e, ok := r.(error)
+			if !ok || !errors.Is(e, profinet.ErrInvalidConfig) {
+				panic(r)
+			}
+			b, err = nil, e
+		}
+	}()
+	return f()
 }

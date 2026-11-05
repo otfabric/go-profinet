@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/otfabric/go-profinet/gsdml"
 )
@@ -23,7 +24,15 @@ func main() {
 	if len(os.Args) > 1 {
 		path = os.Args[1]
 	}
-	f, err := os.Open(path)
+	// The file is opened in its directory with os.Root, so that a path
+	// cannot climb out of it through a symbolic link.
+	path = filepath.Clean(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(path))
 	if err != nil {
 		log.Fatal(err)
 	}

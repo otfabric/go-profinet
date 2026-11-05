@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"math"
 	"net"
 	"net/netip"
 	"os"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1013,5 +1015,62 @@ func TestARPCacheClearedDuringResolve(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("writer not woken")
+	}
+}
+
+// A UDP port outside 0 to 65535 is refused, not wrapped.
+func TestWriteToPortOutOfRange(t *testing.T) {
+	n := vnet.New(1)
+	s, _, _ := newStackCfg(t, n, 1, Config{Addr: ip4("10.0.0.1"), Mask: mask24})
+	c, _ := s.ListenUDP(0)
+	for _, p := range []int{-1, 65536, 65536 + 7} {
+		if _, err := c.WriteTo([]byte{1}, &net.UDPAddr{IP: net.IPv4bcast, Port: p}); !errors.Is(err, profinet.ErrInvalidConfig) {
+			t.Fatalf("port %d: %v", p, err)
+		}
+	}
+	if st := s.Stats(); st.SentIP != 0 {
+		t.Fatalf("stats %+v", st)
+	}
+}
+
+// hugeMTUPort reports an MTU beyond what an IPv4 packet holds and
+// accepts frames of any size.
+type hugeMTUPort struct {
+	*vnet.Endpoint
+	sent *atomic.Int32
+}
+
+func (hugeMTUPort) MTU() int { return 1 << 17 }
+
+func (p hugeMTUPort) WriteFrame(context.Context, []byte) error {
+	p.sent.Add(1)
+	return nil
+}
+
+// A datagram that fits the port's MTU but not the 16-bit IPv4 Total
+// Length is refused, not sent with a wrapped length.
+func TestSendUDPBeyondIPv4Packet(t *testing.T) {
+	n := vnet.New(1)
+	ep, err := n.NewEndpoint(vnet.EndpointConfig{MAC: macOf(1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sent atomic.Int32
+	mux := l2.NewMux(hugeMTUPort{Endpoint: ep, sent: &sent})
+	s, err := New(mux, Config{Addr: ip4("10.0.0.1"), Mask: mask24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = s.Close()
+		_ = mux.Close()
+		_ = ep.Close()
+	})
+	c, _ := s.ListenUDP(0)
+	if _, err := c.WriteTo(make([]byte, math.MaxUint16-ipHeaderLen-udpHeaderLen+1), &net.UDPAddr{IP: net.IPv4bcast, Port: 1}); !errors.Is(err, profinet.ErrInvalidConfig) {
+		t.Fatalf("beyond IPv4: %v", err)
+	}
+	if st := s.Stats(); st.SentIP != 0 || sent.Load() != 0 {
+		t.Fatalf("stats %+v, %d frames", st, sent.Load())
 	}
 }

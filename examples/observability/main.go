@@ -39,9 +39,9 @@ func (c *counters) inc(name string, labels ...string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var k strings.Builder
-	k.WriteString(fmt.Sprintf("profinet_%s_total{role=%q", name, c.role))
+	fmt.Fprintf(&k, "profinet_%s_total{role=%q", name, c.role)
 	for i := 0; i+1 < len(labels); i += 2 {
-		k.WriteString(fmt.Sprintf(",%s=%q", labels[i], labels[i+1]))
+		fmt.Fprintf(&k, ",%s=%q", labels[i], labels[i+1])
 	}
 	c.n[k.String()+"}"]++
 }

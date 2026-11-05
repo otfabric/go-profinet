@@ -168,6 +168,9 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 				if tp := ar.TimingProperties; tp != nil && tp.ReductionRatio != "" {
 					if rr, err := ParseValueList(tp.ReductionRatio, 64); err == nil {
 						for _, v := range rr {
+							if v > math.MaxUint16 {
+								continue // not a reduction ratio; Check reports it
+							}
 							m.Capabilities.ReductionRatios = append(m.Capabilities.ReductionRatios, uint16(v))
 						}
 					}
@@ -299,7 +302,11 @@ func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16) (mo
 	s := model.Submodule{Name: textOf(doc, vs.ModuleInfo), IdentNumber: id, Subslot: defSubslot}
 	if vs.FixedInSubslots != "" {
 		if l, err := ParseValueList(vs.FixedInSubslots, 64); err == nil && len(l) > 0 {
-			s.Subslot = uint16(l[0])
+			first := l[0]
+			if first > math.MaxUint16 {
+				return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s FixedInSubslots %q beyond the subslot range", profinet.ErrMalformed, vs.ID, vs.FixedInSubslots)
+			}
+			s.Subslot = uint16(first)
 		}
 	}
 	if io := vs.IOData; io != nil {
@@ -366,7 +373,7 @@ func parseOctets(s string) ([]byte, error) {
 	var out []byte
 	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' || r == '\n' }) {
 		v, err := parseUint(p, 8)
-		if err != nil {
+		if err != nil || v > math.MaxUint8 {
 			return nil, fmt.Errorf("gsdml: %w: Const data %q", profinet.ErrMalformed, s)
 		}
 		out = append(out, byte(v))
@@ -388,11 +395,15 @@ func applyRef(rec []byte, r *Ref) error {
 			width, _ = ParseUint16(r.BitLength)
 		}
 		v, err := strconv.ParseUint(strings.TrimSpace(r.DefaultValue), 0, 64)
-		if err != nil || int(off) >= len(rec) || bit+width > 8 || width == 0 {
+		if err != nil || int(off) >= len(rec) || bit >= 8 || width == 0 || bit+width > 8 {
 			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d", profinet.ErrMalformed, off, bit)
 		}
-		mask := byte((1<<width)-1) << bit
-		rec[off] = rec[off]&^mask | byte(v<<bit)&mask
+		shifted := v << bit
+		if v >= 1<<width || shifted > math.MaxUint8 {
+			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d default %d does not fit %d bits", profinet.ErrMalformed, off, bit, v, width)
+		}
+		mask := byte(0xFF) >> (8 - width) << bit
+		rec[off] = rec[off]&^mask | byte(shifted)
 		return nil
 	}
 	size, err := DataItemSize(r.DataType, r.Length)
@@ -430,7 +441,13 @@ func applyRef(rec []byte, r *Ref) error {
 		if err != nil {
 			return fmt.Errorf("gsdml: %w: %s default %q", profinet.ErrMalformed, t, dv)
 		}
-		putUint(dst, uint64(v))
+		// Two's complement, big endian, truncated to the item size: v fits
+		// size octets, so the dropped leading octets are sign extension.
+		var b [8]byte
+		if _, err := binary.Encode(b[:], binary.BigEndian, v); err != nil {
+			return fmt.Errorf("gsdml: %s default %q: %w", t, dv, err)
+		}
+		copy(dst, b[8-size:])
 	default:
 		v, err := strconv.ParseUint(dv, 0, min(size*8, 64))
 		if err != nil {

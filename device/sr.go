@@ -192,7 +192,7 @@ func (d *Device) srExpire(s *srSet) {
 	s.mu.Unlock()
 	d.log.Warnf("device: AR set: no primary AR for the redundancy data hold time: aborting %d AR(s)", len(ars))
 	for _, a := range ars {
-		go d.abort(a, pnio.AbortSRRDHTExpired, true)
+		d.goAbort(a, pnio.AbortSRRDHTExpired, true)
 	}
 }
 

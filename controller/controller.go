@@ -16,6 +16,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strconv"
 	"sync"
@@ -70,6 +71,8 @@ type Controller struct {
 	log    profinet.Logger
 	met    profinet.Metrics
 	object rpc.UUID
+	// rpcPort is cfg.RPCPort, validated by New.
+	rpcPort uint16
 
 	mux    *l2.Mux
 	dcp    *dcp.Client
@@ -90,6 +93,10 @@ type Controller struct {
 	wg     sync.WaitGroup
 }
 
+// maxNameLen is the longest NameOfStation (and MRP domain name): 240
+// octets, as dcp.ValidateStationName enforces for station names.
+const maxNameLen = 240
+
 // New starts a controller.
 func New(cfg Config) (*Controller, error) {
 	if cfg.Mux == nil {
@@ -98,8 +105,15 @@ func New(cfg Config) (*Controller, error) {
 	if cfg.RPCPort == 0 {
 		cfg.RPCPort = rpc.Port
 	}
+	if cfg.RPCPort < 0 || cfg.RPCPort > math.MaxUint16 {
+		return nil, fmt.Errorf("controller: %w: RPCPort %d out of range", profinet.ErrInvalidConfig, cfg.RPCPort)
+	}
+	rpcPort := uint16(cfg.RPCPort)
 	if cfg.StationName == "" {
 		cfg.StationName = "go-profinet-controller"
+	}
+	if len(cfg.StationName) > maxNameLen {
+		return nil, fmt.Errorf("controller: %w: StationName of %d octets (at most %d)", profinet.ErrInvalidConfig, len(cfg.StationName), maxNameLen)
 	}
 	if cfg.ListenPacket == nil {
 		lc := &net.ListenConfig{}
@@ -126,6 +140,7 @@ func New(cfg Config) (*Controller, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Controller{
 		cfg:     cfg,
+		rpcPort: rpcPort,
 		log:     log,
 		met:     met,
 		object:  pnio.ObjectUUID(cfg.Instance, cfg.DeviceID, cfg.VendorID),
@@ -284,11 +299,16 @@ func (c *Controller) allocInputFrameID(cls pnio.RTClass) uint16 {
 	if next < lo || next > hi {
 		next = lo
 	}
-	for i := 0; i <= int(hi-lo); i++ {
-		id := lo + uint16((int(next-lo)+i)%int(hi-lo+1))
+	id := next
+	for range int(hi-lo) + 1 {
 		if !used[id] {
 			c.nextIn[cls] = id + 1
 			return id
+		}
+		if id == hi {
+			id = lo
+		} else {
+			id++
 		}
 	}
 	return lo

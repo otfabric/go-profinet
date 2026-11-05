@@ -4,9 +4,10 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/rand/v2"
 	"net"
 	"slices"
 	"strings"
@@ -653,6 +654,14 @@ func (d *Device) stopping() bool {
 	}
 }
 
+// jitter returns a uniformly distributed value in [0, 1) for the
+// reconnect backoff, from crypto/rand.
+func jitter() float64 {
+	var b [8]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read never returns an error (Go 1.24+)
+	return float64(binary.BigEndian.Uint64(b[:])>>11) / (1 << 53)
+}
+
 // run is the device's lifecycle.
 func (d *Device) run() {
 	defer d.c.wg.Done()
@@ -669,7 +678,7 @@ func (d *Device) run() {
 			attempt = 0
 		}
 		attempt++
-		backoff := bo.Delay(attempt, rand.Float64())
+		backoff := bo.Delay(attempt, jitter())
 		if d.stopping() {
 			d.setState(StateStopped, nil)
 			return
@@ -877,7 +886,7 @@ func (d *Device) connect(ctx context.Context, id dcp.Identity) (*arState, error)
 	a := &arState{
 		plugPending: map[uint16]subKey{},
 		uuid:        rpc.NewRandomUUID(),
-		sessionKey:  uint16(sessionKeys.Add(1)),
+		sessionKey:  next16(&sessionKeys),
 		inFrameID:   inID,
 		inLayout:    inL,
 		outLayout:   outL,
@@ -921,8 +930,8 @@ func (d *Device) connect(ctx context.Context, id dcp.Identity) (*arState, error)
 		},
 		Expected: cfg.Model.Expected(),
 	}
-	if d.c.cfg.RPCPort != rpc.Port {
-		req.ARRPC = &pnio.ARRPCBlockReq{InitiatorRPCServerPort: uint16(d.c.cfg.RPCPort)}
+	if d.c.rpcPort != rpc.Port {
+		req.ARRPC = &pnio.ARRPCBlockReq{InitiatorRPCServerPort: d.c.rpcPort}
 	}
 	// The AR is known before the response, because the device may send
 	// ApplicationReady quickly.

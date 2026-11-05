@@ -13,6 +13,7 @@ package alarm
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/ethernet"
@@ -120,8 +121,15 @@ func Decode(b []byte) (PDU, error) {
 	return p, nil
 }
 
-// AppendPayload appends the PROFINET payload of the PDU.
+// AppendPayload appends the PROFINET payload of the PDU. A VarPart longer
+// than its 16-bit VarPartLen (65535 octets) cannot be encoded: it panics
+// with an error matching profinet.ErrInvalidConfig rather than encode a
+// wrapped length; [Endpoint] refuses such a payload with an error.
 func (p *PDU) AppendPayload(dst []byte) []byte {
+	n := len(p.VarPart)
+	if n > math.MaxUint16 {
+		panic(varPartTooLong(n))
+	}
 	dst = binary.BigEndian.AppendUint16(dst, p.FrameID)
 	dst = binary.BigEndian.AppendUint16(dst, p.Dst)
 	dst = binary.BigEndian.AppendUint16(dst, p.Src)
@@ -132,8 +140,12 @@ func (p *PDU) AppendPayload(dst []byte) []byte {
 	dst = append(dst, v<<4|uint8(p.Type)&0x0F, p.AddFlags)
 	dst = binary.BigEndian.AppendUint16(dst, p.SendSeq)
 	dst = binary.BigEndian.AppendUint16(dst, p.AckSeq)
-	dst = binary.BigEndian.AppendUint16(dst, uint16(len(p.VarPart)))
+	dst = binary.BigEndian.AppendUint16(dst, uint16(n))
 	return append(dst, p.VarPart...)
+}
+
+func varPartTooLong(n int) error {
+	return fmt.Errorf("alarm: %w: VarPart of %d octets exceeds %d", profinet.ErrInvalidConfig, n, math.MaxUint16)
 }
 
 // Priority returns the VLAN priority of the PDU's FrameID: 6 high, 5 low.
