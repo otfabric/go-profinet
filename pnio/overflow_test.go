@@ -94,3 +94,15 @@ func TestDecodeConnectRequestModuleDiffBound(t *testing.T) {
 		t.Fatalf("bound %d", n)
 	}
 }
+
+// TestAppendString8Truncates: a string8 field holds at most 255 octets; a
+// longer string is cut to 255, with a length octet that matches.
+func TestAppendString8Truncates(t *testing.T) {
+	b := appendString8(nil, strings.Repeat("x", 300))
+	if len(b) != 1+math.MaxUint8 || b[0] != math.MaxUint8 {
+		t.Fatalf("%d octets, length octet %d", len(b), b[0])
+	}
+	if b := appendString8(nil, "port-001"); len(b) != 9 || b[0] != 8 {
+		t.Fatalf("short: % x", b)
+	}
+}

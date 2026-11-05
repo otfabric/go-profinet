@@ -160,3 +160,29 @@ func TestEncodeSafely(t *testing.T) {
 		}()
 	}
 }
+
+// TestWriteRecordLengthLimit: a write whose data, a WriteMultiple item or
+// the WriteMultiple as a whole exceeds the 32-bit RecordDataLength is
+// refused before anything is sent (maxRecordData lowered to stand in for
+// 4 GiB).
+func TestWriteRecordLengthLimit(t *testing.T) {
+	old := maxRecordData
+	maxRecordData = 60
+	t.Cleanup(func() { maxRecordData = old })
+	n := newNet(t)
+	c, _ := n.controller()
+	rc := NewRecordClient(c.RPC(), devAddr(), pnio.ObjectUUID(1, 2, 3))
+	ar := rpc.NewRandomUUID()
+	ctx := context.Background()
+	rec := Record{Subslot: 1, Index: 0x10}
+	if err := rc.Write(ctx, ar, rec, make([]byte, 61)); !errors.Is(err, profinet.ErrInvalidConfig) {
+		t.Fatalf("Write of 61 octets: %v", err)
+	}
+	if _, err := rc.WriteMultiple(ctx, ar, []WriteItem{{Record: rec, Data: make([]byte, 61)}}); !errors.Is(err, profinet.ErrInvalidConfig) {
+		t.Fatalf("WriteMultiple item of 61 octets: %v", err)
+	}
+	// Each item fits, the request with its WriteReq headers does not.
+	if _, err := rc.WriteMultiple(ctx, ar, []WriteItem{{Record: rec, Data: make([]byte, 8)}}); !errors.Is(err, profinet.ErrInvalidConfig) {
+		t.Fatalf("WriteMultiple over the total: %v", err)
+	}
+}

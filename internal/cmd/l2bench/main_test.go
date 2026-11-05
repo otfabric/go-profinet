@@ -5,6 +5,7 @@
 package main
 
 import (
+	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -25,8 +26,9 @@ func TestTimespecNano(t *testing.T) {
 	}
 }
 
-func TestCstr(t *testing.T) {
-	if got := cstr([]int8{'6', '.', '1', -61, 0, 'x'}); got != "6.1?" {
-		t.Fatalf("%q", got)
+func TestKernelRelease(t *testing.T) {
+	got := kernelRelease()
+	if got == "" || strings.ContainsAny(got, "\n\x00") {
+		t.Fatalf("kernel release %q", got)
 	}
 }

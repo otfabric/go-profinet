@@ -36,13 +36,18 @@ func next16(c *atomic.Uint32) uint16 {
 	return uint16(c.Add(1) & math.MaxUint16)
 }
 
+// maxRecordData is the largest RecordDataLength of a write request: the
+// 32-bit field's range. Tests lower it to reach the refusal without
+// gigabytes of data; it is never above math.MaxUint32.
+var maxRecordData int64 = math.MaxUint32
+
 // recordLength returns n as the 32-bit RecordDataLength of a write
 // request, or an error when n does not fit.
 func recordLength(n int) (uint32, error) {
-	if n < 0 || uint64(n) > math.MaxUint32 {
+	if n < 0 || int64(n) > maxRecordData {
 		return 0, fmt.Errorf("%w: record data length %d does not fit 32 bits", profinet.ErrInvalidConfig, n)
 	}
-	return uint32(n), nil
+	return uint32(int64(n) & math.MaxUint32), nil
 }
 
 // NewRecordClient returns a client for the device at addr (its RPC
@@ -152,15 +157,17 @@ type WriteItem struct {
 func (r *RecordClient) WriteMultiple(ctx context.Context, ar rpc.UUID, items []WriteItem) ([]pnio.Status, error) {
 	mi := make([]pnio.WriteMultipleItem, len(items))
 	for i, it := range items {
+		// Each item's RecordDataLength fits 32 bits, so the encoder
+		// cannot panic; the total is checked below.
+		if _, err := recordLength(len(it.Data)); err != nil {
+			return nil, fmt.Errorf("controller: write multiple: item %d: %w", i, err)
+		}
 		mi[i] = pnio.WriteMultipleItem{
 			Header: pnio.WriteReq{Seq: next16(&r.seq), ARUUID: ar, API: it.Record.API, Slot: it.Record.Slot, Subslot: it.Record.Subslot, Index: it.Record.Index},
 			Data:   it.Data,
 		}
 	}
-	data, err := encodeSafely(func() ([]byte, error) { return pnio.AppendWriteMultiple(nil, mi), nil })
-	if err != nil {
-		return nil, fmt.Errorf("controller: write multiple: %w", err)
-	}
+	data := pnio.AppendWriteMultiple(nil, mi)
 	n, err := recordLength(len(data))
 	if err != nil {
 		return nil, fmt.Errorf("controller: write multiple: %w", err)

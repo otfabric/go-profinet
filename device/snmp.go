@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-profinet"
+	"github.com/otfabric/go-profinet/lldp"
 	"github.com/otfabric/go-profinet/snmp"
 )
 
@@ -127,11 +128,9 @@ func (d *Device) snmpLLDPLocal() snmp.LLDPLocal {
 		if i == 0 {
 			l = snmp.LLDPLocal{ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, SysName: f.SystemName, SysDesc: f.SystemDescription}
 		}
-		num, ok := snmpIndex(int64(p.n))
-		if !ok {
-			continue
+		if num, ok := snmpIndex(int64(p.n)); ok {
+			l.Ports = append(l.Ports, snmp.LLDPLocalPort{Num: num, IDSubtype: int32(f.PortSubtype), ID: f.PortID, Desc: f.PortDescription})
 		}
-		l.Ports = append(l.Ports, snmp.LLDPLocalPort{Num: num, IDSubtype: int32(f.PortSubtype), ID: f.PortID, Desc: f.PortDescription})
 	}
 	return l
 }
@@ -148,21 +147,23 @@ func (d *Device) snmpLLDPRemote() []snmp.LLDPRemote {
 			continue
 		}
 		for _, n := range p.lldpA.Neighbors() {
-			idx, ok := snmpIndex(int64(n.Index))
-			if !ok {
-				continue
+			if idx, ok := snmpIndex(int64(n.Index)); ok {
+				out = append(out, d.snmpRemoteRow(num, idx, n.Changed, &n.Frame))
 			}
-			f := &n.Frame
-			var mark uint32
-			if since := n.Changed.Sub(d.snmpStart); since > 0 {
-				mark = uint32(min(since/(10*time.Millisecond), math.MaxUint32))
-			}
-			out = append(out, snmp.LLDPRemote{
-				TimeMark: mark, LocalPortNum: num, Index: idx,
-				ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, PortIDSubtype: int32(f.PortSubtype), PortID: f.PortID,
-				PortDesc: f.PortDescription, SysName: f.SystemName, SysDesc: f.SystemDescription,
-			})
 		}
 	}
 	return out
+}
+
+// snmpRemoteRow is one lldpRemTable row.
+func (d *Device) snmpRemoteRow(num, idx int32, changed time.Time, f *lldp.Frame) snmp.LLDPRemote {
+	var mark uint32
+	if since := changed.Sub(d.snmpStart); since > 0 {
+		mark = uint32(min(since/(10*time.Millisecond), math.MaxUint32))
+	}
+	return snmp.LLDPRemote{
+		TimeMark: mark, LocalPortNum: num, Index: idx,
+		ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, PortIDSubtype: int32(f.PortSubtype), PortID: f.PortID,
+		PortDesc: f.PortDescription, SysName: f.SystemName, SysDesc: f.SystemDescription,
+	}
 }

@@ -443,11 +443,9 @@ func applyRef(rec []byte, r *Ref) error {
 		}
 		// Two's complement, big endian, truncated to the item size: v fits
 		// size octets, so the dropped leading octets are sign extension.
-		var b [8]byte
-		if _, err := binary.Encode(b[:], binary.BigEndian, v); err != nil {
-			return fmt.Errorf("gsdml: %s default %q: %w", t, dv, err)
+		for i := range size {
+			dst[size-1-i] = byte((v >> (8 * i)) & 0xFF)
 		}
-		copy(dst, b[8-size:])
 	default:
 		v, err := strconv.ParseUint(dv, 0, min(size*8, 64))
 		if err != nil {

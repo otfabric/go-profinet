@@ -42,6 +42,7 @@ import (
 	"runtime/pprof"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -151,9 +152,7 @@ func main() {
 			_ = f.Close()
 		}()
 	}
-	var uts syscall.Utsname
-	_ = syscall.Uname(&uts)
-	rep := Report{Label: *label, Date: time.Now().UTC(), GoVersion: runtime.Version(), Kernel: cstr(uts.Release[:]), CPUs: runtime.NumCPU(), GOARCH: runtime.GOARCH}
+	rep := Report{Label: *label, Date: time.Now().UTC(), GoVersion: runtime.Version(), Kernel: kernelRelease(), CPUs: runtime.NumCPU(), GOARCH: runtime.GOARCH}
 	if *only == "" || *only == "flood" {
 		if rep.Flood, err = flood(*a, *b, *frames); err != nil {
 			fail(err)
@@ -183,18 +182,15 @@ func fail(err error) {
 	os.Exit(1)
 }
 
-func cstr(b []int8) string {
-	out := make([]byte, 0, len(b))
-	for _, c := range b {
-		if c == 0 {
-			break
-		}
-		if c < 0 {
-			c = '?' // not ASCII
-		}
-		out = append(out, byte(c))
+// kernelRelease returns the kernel release (uname -r), or "" when it
+// cannot be read. syscall.Utsname differs per architecture ([65]int8 on
+// amd64, [65]uint8 on arm), /proc/sys/kernel/osrelease does not.
+func kernelRelease() string {
+	b, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return ""
 	}
-	return string(out)
+	return strings.TrimSpace(string(b))
 }
 
 // benchType is the EtherType of the flood and ping-pong frames (IEEE 802
