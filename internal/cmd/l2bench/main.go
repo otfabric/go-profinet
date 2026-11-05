@@ -34,17 +34,19 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"math/bits"
 	"net"
 	"net/netip"
 	"os"
 	"runtime"
 	"runtime/pprof"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/controller"
@@ -127,7 +129,7 @@ func main() {
 	a := flag.String("a", "pnA", "first end of the veth pair (controller)")
 	b := flag.String("b", "pnB", "second end (device)")
 	dur := flag.Duration("duration", 30*time.Second, "length of the cyclic measurement")
-	rr := flag.Uint("rr", 1, "reduction ratio (send clock 1 ms × rr / 1)")
+	rrFlag := flag.String("rr", "1", "reduction ratio (send clock 1 ms × rr / 1)")
 	frames := flag.Int("frames", 200000, "frames of the flood")
 	pings := flag.Int("pings", 20000, "round trips of the ping-pong")
 	label := flag.String("label", "", "a name for this run")
@@ -135,6 +137,10 @@ func main() {
 	only := flag.String("only", "", "run one measurement: flood, pingpong or cyclic")
 	memprofile := flag.String("memprofile", "", "write an allocation profile to this file at the end")
 	flag.Parse()
+	rr, err := strconv.ParseUint(*rrFlag, 10, 16)
+	if err != nil {
+		fail(fmt.Errorf("-rr: %w", err))
+	}
 	if *memprofile != "" {
 		runtime.MemProfileRate = 1
 		defer func() {
@@ -146,10 +152,7 @@ func main() {
 			_ = f.Close()
 		}()
 	}
-	var uts syscall.Utsname
-	_ = syscall.Uname(&uts)
-	rep := Report{Label: *label, Date: time.Now().UTC(), GoVersion: runtime.Version(), Kernel: cstr(uts.Release[:]), CPUs: runtime.NumCPU(), GOARCH: runtime.GOARCH}
-	var err error
+	rep := Report{Label: *label, Date: time.Now().UTC(), GoVersion: runtime.Version(), Kernel: kernelRelease(), CPUs: runtime.NumCPU(), GOARCH: runtime.GOARCH}
 	if *only == "" || *only == "flood" {
 		if rep.Flood, err = flood(*a, *b, *frames); err != nil {
 			fail(err)
@@ -161,7 +164,7 @@ func main() {
 		}
 	}
 	if *only == "" || *only == "cyclic" {
-		if rep.Cyclic, err = cyclic(*a, *b, *dur, uint16(*rr)); err != nil {
+		if rep.Cyclic, err = cyclic(*a, *b, *dur, uint16(rr)); err != nil {
 			fail(err)
 		}
 	}
@@ -179,15 +182,15 @@ func fail(err error) {
 	os.Exit(1)
 }
 
-func cstr(b []int8) string {
-	out := make([]byte, 0, len(b))
-	for _, c := range b {
-		if c == 0 {
-			break
-		}
-		out = append(out, byte(c))
+// kernelRelease returns the kernel release (uname -r), or "" when it
+// cannot be read. syscall.Utsname differs per architecture ([65]int8 on
+// amd64, [65]uint8 on arm), /proc/sys/kernel/osrelease does not.
+func kernelRelease() string {
+	b, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return ""
 	}
-	return string(out)
+	return strings.TrimSpace(string(b))
 }
 
 // benchType is the EtherType of the flood and ping-pong frames (IEEE 802
@@ -440,9 +443,10 @@ func rxTime(oob []byte) (int64, bool) {
 		return 0, false
 	}
 	for _, m := range msgs {
-		if m.Header.Level == syscall.SOL_SOCKET && m.Header.Type == syscall.SO_TIMESTAMPNS && len(m.Data) >= int(unsafe.Sizeof(syscall.Timespec{})) {
-			ts := (*syscall.Timespec)(unsafe.Pointer(&m.Data[0]))
-			return ts.Nano(), true
+		if m.Header.Level == syscall.SOL_SOCKET && m.Header.Type == syscall.SO_TIMESTAMPNS {
+			if ns, ok := timespecNano(m.Data); ok {
+				return ns, true
+			}
 		}
 	}
 	return 0, false
@@ -608,4 +612,24 @@ func cyclic(a, b string, d time.Duration, rr uint16) (*Cyclic, error) {
 		GCPauseTotalUs:   float64(u1.pause-u0.pause) / 1000,
 		GCPauseMaxUs:     float64(maxPause) / 1000,
 	}, nil
+}
+
+// timespecNano decodes a struct timespec (two longs, tv_sec and tv_nsec,
+// in host byte order) of a receive timestamp as nanoseconds; false for a
+// short or negative one.
+func timespecNano(b []byte) (int64, bool) {
+	const long = bits.UintSize / 8
+	if len(b) < 2*long {
+		return 0, false
+	}
+	var sec, nsec uint64
+	if long == 8 {
+		sec, nsec = binary.NativeEndian.Uint64(b), binary.NativeEndian.Uint64(b[8:])
+	} else {
+		sec, nsec = uint64(binary.NativeEndian.Uint32(b)), uint64(binary.NativeEndian.Uint32(b[4:]))
+	}
+	if sec > math.MaxInt64/1_000_000_000-1 || nsec >= 1_000_000_000 {
+		return 0, false
+	}
+	return int64(sec)*1e9 + int64(nsec), true
 }

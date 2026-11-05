@@ -139,13 +139,11 @@ func (r *Responder) StartHello(opts HelloOptions) error {
 	done := make(chan struct{})
 	r.helloStop = cancel
 	r.helloDone = done
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		defer close(done)
 		defer cancel()
 		r.helloSequence(ctx, opts)
-	}()
+	})
 	return nil
 }
 

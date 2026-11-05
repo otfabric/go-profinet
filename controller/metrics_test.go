@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -61,12 +62,7 @@ func (r *recorder) OnRetry(station string, attempt int, wait time.Duration, err 
 func (r *recorder) has(e string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, x := range r.events {
-		if x == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.events, e)
 }
 
 // TestMetrics: a controller's and a device's Metrics see the same AR from

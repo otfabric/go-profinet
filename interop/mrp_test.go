@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -181,9 +182,9 @@ type otfRing struct {
 func (e *env) otfRing(container string) otfRing {
 	var r otfRing
 	evs := e.events(container)
-	for i := len(evs) - 1; i >= 0; i-- {
-		if evs[i]["event"] == "ring" || evs[i]["event"] == "stats" {
-			b, _ := json.Marshal(evs[i])
+	for _, ev := range slices.Backward(evs) {
+		if ev["event"] == "ring" || ev["event"] == "stats" {
+			b, _ := json.Marshal(ev)
 			_ = json.Unmarshal(b, &r)
 			break
 		}

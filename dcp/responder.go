@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"hash/fnv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -124,13 +123,24 @@ func NewResponder(mux *l2.Mux, station Station, opts ResponderOptions) (*Respond
 		identifyLim: newLimiter(pol.IdentifyLimit, pol.Sources), setLim: newLimiter(pol.SetLimit, pol.Sources)}
 	// The spread of Identify responses: a fixed fraction of the window,
 	// derived from the MAC address as IEC 61158-6-10 suggests.
-	h := fnv.New32a()
-	m := mux.HardwareAddr()
-	h.Write(m[:])
-	r.delay = time.Duration(h.Sum32()%1000) * time.Microsecond * 10
+	r.delay = identifyDelay(mux.HardwareAddr())
 	r.wg.Add(1)
 	go r.run(ctx)
 	return r, nil
+}
+
+// identifyDelay is the spread of Identify responses for the MAC address
+// m: its 32-bit FNV-1a hash (the algorithm of hash/fnv's New32a, computed
+// here so that no hash.Hash error needs discarding) modulo 1000, in units
+// of 10 µs.
+func identifyDelay(m ethernet.MAC) time.Duration {
+	const offset32, prime32 = 2166136261, 16777619
+	h := uint32(offset32)
+	for _, c := range m {
+		h ^= uint32(c)
+		h *= prime32
+	}
+	return time.Duration(h%1000) * time.Microsecond * 10
 }
 
 // Stats returns a snapshot of the counters.
@@ -251,9 +261,7 @@ func (r *Responder) handleIdentify(ctx context.Context, src ethernet.MAC, f *Fra
 		return
 	}
 	r.pendingIdentify.Add(1)
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		defer r.pendingIdentify.Add(-1)
 		t := time.NewTimer(delay)
 		defer t.Stop()
@@ -262,7 +270,7 @@ func (r *Responder) handleIdentify(ctx context.Context, src ethernet.MAC, f *Fra
 			r.reply(ctx, src, resp)
 		case <-ctx.Done():
 		}
-	}()
+	})
 }
 
 func (r *Responder) handleGet(ctx context.Context, src ethernet.MAC, f *Frame) {

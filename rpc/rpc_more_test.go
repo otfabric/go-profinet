@@ -157,7 +157,10 @@ func TestUUIDText(t *testing.T) {
 }
 
 func TestPacketsDefaults(t *testing.T) {
-	ps := packets(Header{DRep: [3]byte{DRepLittleEndian}}, make([]byte, DefaultMaxFragmentBody+1), 0)
+	ps, err := packets(Header{DRep: [3]byte{DRepLittleEndian}}, make([]byte, DefaultMaxFragmentBody+1), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(ps) != 2 {
 		t.Fatalf("%d packets", len(ps))
 	}
@@ -167,7 +170,9 @@ func TestPacketsDefaults(t *testing.T) {
 		t.Fatalf("headers %+v %+v", h0, h1)
 	}
 	// An empty body is one packet without fragment flags.
-	ps = packets(Header{}, nil, 10)
+	if ps, err = packets(Header{}, nil, 10); err != nil {
+		t.Fatal(err)
+	}
 	if h, _, _ := DecodeHeader(ps[0]); len(ps) != 1 || h.Flags1 != 0 {
 		t.Fatalf("empty: %d packets", len(ps))
 	}
@@ -471,7 +476,7 @@ func TestClientActivities(t *testing.T) {
 	// A call after Close fails with ErrClosed every time, although an
 	// activity is free (regression: the select picked at random and the
 	// call failed with the socket's error).
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		if _, err := c.Do(context.Background(), n2.LocalAddr(), Call{}); !errors.Is(err, profinet.ErrClosed) {
 			t.Fatalf("after close: %v", err)
 		}

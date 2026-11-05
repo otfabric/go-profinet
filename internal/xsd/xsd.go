@@ -71,6 +71,11 @@ type loader struct {
 
 // LoadDir reads every .xsd file of dir.
 func LoadDir(dir string) (*Schema, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
 	paths, err := filepath.Glob(filepath.Join(dir, "*.xsd"))
 	if err != nil {
 		return nil, err
@@ -81,7 +86,7 @@ func LoadDir(dir string) (*Schema, error) {
 	sort.Strings(paths)
 	var roots []*node
 	for _, p := range paths {
-		f, err := os.Open(p)
+		f, err := root.Open(filepath.Base(p))
 		if err != nil {
 			return nil, err
 		}

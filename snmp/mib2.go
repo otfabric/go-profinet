@@ -3,6 +3,7 @@
 package snmp
 
 import (
+	"math"
 	"time"
 	"unicode/utf8"
 )
@@ -140,7 +141,7 @@ type InterfaceCounters struct {
 // AddInterfaces adds ifNumber and the ifTable (RFC 2863 section 6) with
 // the interfaces fn returns. Rows whose Index is below 1 are left out.
 func (m *MIB) AddInterfaces(fn func() []Interface) error {
-	if err := m.AddScalar(OIDInterfaces.Append(1), func() Value { return Integer(int32(len(fn()))) }); err != nil {
+	if err := m.AddScalar(OIDInterfaces.Append(1), func() Value { return Integer(saturateInt32(len(fn()))) }); err != nil {
 		return err
 	}
 	entry := OIDInterfaces.Append(2, 1)
@@ -150,7 +151,8 @@ func (m *MIB) AddInterfaces(fn func() []Interface) error {
 			if it.Index < 1 {
 				continue
 			}
-			col := func(c uint32, v Value) { out = append(out, VarBind{Name: entry.Append(c, uint32(it.Index)), Value: v}) }
+			idx := uint32(it.Index)
+			col := func(c uint32, v Value) { out = append(out, VarBind{Name: entry.Append(c, idx), Value: v}) }
 			col(1, Integer(it.Index))
 			col(2, displayString(it.Descr))
 			col(3, Integer(it.Type))
@@ -203,7 +205,7 @@ func (m *MIB) AddSNMPGroup(fn func() Stats) error {
 	for _, o := range objs {
 		get := o.get
 		// Counter32 wraps at 2^32 (RFC 2578 section 7.1.6).
-		if err := m.AddScalar(OIDSNMP.Append(o.sub), func() Value { return Counter32(uint32(get(fn()))) }); err != nil {
+		if err := m.AddScalar(OIDSNMP.Append(o.sub), func() Value { return Counter32(uint32(get(fn()) & math.MaxUint32)) }); err != nil {
 			return err
 		}
 	}

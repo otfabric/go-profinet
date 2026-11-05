@@ -10,6 +10,7 @@ import (
 	"hash/crc32"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,6 +25,9 @@ import (
 const (
 	headerLen   = 16
 	fileVersion = 1
+	// maxFileValue is the largest value the 32-bit length holds; an int
+	// on a 32-bit platform is smaller still.
+	maxFileValue = min(math.MaxUint32, math.MaxInt)
 )
 
 var (
@@ -73,6 +77,10 @@ func OpenDir(path string, opts DirOptions) (*Dir, error) {
 	if opts.MaxValueSize <= 0 {
 		opts.MaxValueSize = DefaultMaxValueSize
 	}
+	// The header stores the length in 32 bits.
+	if int64(opts.MaxValueSize) > maxFileValue {
+		opts.MaxValueSize = maxFileValue
+	}
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
@@ -89,7 +97,11 @@ func OpenDir(path string, opts DirOptions) (*Dir, error) {
 // Path returns the directory.
 func (d *Dir) Path() string { return d.path }
 
-func (d *Dir) file(key string) string { return filepath.Join(d.path, key+".v") }
+// base is the name of the file of key in the directory. ValidKey keeps
+// it a single path element.
+func base(key string) string { return key + ".v" }
+
+func (d *Dir) file(key string) string { return filepath.Join(d.path, base(key)) }
 
 // Load implements Store.
 func (d *Dir) Load(ctx context.Context, key string) ([]byte, error) {
@@ -98,11 +110,11 @@ func (d *Dir) Load(ctx context.Context, key string) ([]byte, error) {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	v, err := d.read(d.file(key))
+	v, err := d.read(base(key))
 	if err == nil {
 		return v, nil
 	}
-	prev, perr := d.read(d.file(key) + ".prev")
+	prev, perr := d.read(base(key) + ".prev")
 	if perr != nil {
 		if isNotFound(err) && isNotFound(perr) {
 			return nil, ErrNotFound
@@ -118,9 +130,11 @@ func (d *Dir) Load(ctx context.Context, key string) ([]byte, error) {
 	return prev, nil
 }
 
-// read reads and checks one file.
+// read reads and checks the file name of the directory. It opens the file
+// through an os.Root, so that neither a name nor a symbolic link in the
+// directory can make it read a file outside the directory.
 func (d *Dir) read(name string) ([]byte, error) {
-	f, err := os.Open(name)
+	f, err := os.OpenInRoot(d.path, name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, ErrNotFound
 	}
@@ -130,9 +144,9 @@ func (d *Dir) read(name string) ([]byte, error) {
 	defer func() { _ = f.Close() }()
 	var h [headerLen]byte
 	if _, err := io.ReadFull(f, h[:]); err != nil {
-		return nil, fmt.Errorf("%w: %s: short header", ErrCorrupt, filepath.Base(name))
+		return nil, fmt.Errorf("%w: %s: short header", ErrCorrupt, name)
 	}
-	return decodeFile(h, f, d.opts.MaxValueSize, filepath.Base(name))
+	return decodeFile(h, f, d.opts.MaxValueSize, name)
 }
 
 // decodeFile checks a header and reads the value that follows it from r.
@@ -141,7 +155,7 @@ func decodeFile(h [headerLen]byte, r io.Reader, maxSize int, name string) ([]byt
 		return nil, fmt.Errorf("%w: %s: bad header", ErrCorrupt, name)
 	}
 	n := binary.BigEndian.Uint32(h[8:12])
-	if uint64(n) > uint64(maxSize) {
+	if int64(n) > int64(maxSize) {
 		return nil, fmt.Errorf("%w: %s: length %d exceeds %d", ErrCorrupt, name, n, maxSize)
 	}
 	v := make([]byte, n)
@@ -157,12 +171,13 @@ func decodeFile(h [headerLen]byte, r io.Reader, maxSize int, name string) ([]byt
 	return v, nil
 }
 
-// encodeFile returns the file of a value.
+// encodeFile returns the file of a value. Save bounds v to MaxValueSize,
+// which OpenDir caps at maxFileValue, so the masked length is exact.
 func encodeFile(v []byte) []byte {
 	b := make([]byte, headerLen, headerLen+len(v))
 	copy(b, magic[:])
 	b[4] = fileVersion
-	binary.BigEndian.PutUint32(b[8:12], uint32(len(v)))
+	binary.BigEndian.PutUint32(b[8:12], uint32(int64(len(v))&math.MaxUint32))
 	binary.BigEndian.PutUint32(b[12:16], crc32.Checksum(v, crcTab))
 	return append(b, v...)
 }
@@ -199,7 +214,7 @@ func (d *Dir) Save(ctx context.Context, key string, value []byte) error {
 	}
 	// The current version becomes the previous one, if it is intact: a
 	// corrupt current file must not replace a good previous one.
-	if _, err := d.read(cur); err == nil {
+	if _, err := d.read(base(key)); err == nil {
 		if err := rename(cur, cur+".prev"); err != nil {
 			_ = os.Remove(tmp.Name())
 			return fmt.Errorf("store: %w", err)

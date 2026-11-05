@@ -223,7 +223,7 @@ func TestOverflow(t *testing.T) {
 	s := newSetup(t)
 	sub, _ := s.mux.Subscribe(MatchEtherType(etTest), 2)
 	other, _ := s.mux.Subscribe(MatchEtherType(etTest), 16)
-	for i := byte(0); i < 5; i++ {
+	for i := range byte(5) {
 		s.send(t, etTest, i)
 	}
 	waitFor(t, "5 frames", func() bool { return s.mux.handled.Load() == 5 })
@@ -231,12 +231,12 @@ func TestOverflow(t *testing.T) {
 		t.Fatalf("overflow %d/%d/%d", sub.Overflow(), other.Overflow(), s.mux.Stats().Overflow)
 	}
 	// The oldest frames were kept.
-	for i := byte(0); i < 2; i++ {
+	for i := range byte(2) {
 		if f := recv(t, sub); f.Payload[0] != i {
 			t.Fatalf("got %d, want %d", f.Payload[0], i)
 		}
 	}
-	for i := byte(0); i < 5; i++ {
+	for i := range byte(5) {
 		if f := recv(t, other); f.Payload[0] != i {
 			t.Fatalf("other got %d", f.Payload[0])
 		}
@@ -447,9 +447,7 @@ func TestConcurrentSubscribe(t *testing.T) {
 	s := newSetup(t)
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -462,8 +460,8 @@ func TestConcurrentSubscribe(t *testing.T) {
 				return
 			}
 		}
-	}()
-	for i := 0; i < 50; i++ {
+	})
+	for range 50 {
 		sub, err := s.mux.Subscribe(MatchEtherType(etTest), 2)
 		if err != nil {
 			t.Fatal(err)
@@ -489,7 +487,7 @@ func BenchmarkMuxDispatch(b *testing.B) {
 	m := NewMux(rx)
 	defer func() { _ = m.Close() }()
 	// Decoy subscriptions that the dispatcher evaluates first.
-	for i := uint16(0); i < 4; i++ {
+	for i := range uint16(4) {
 		s, _ := m.Subscribe(MatchFrameIDs(0x100*i, 0x100*i+0xFF), 4)
 		defer s.Close()
 	}

@@ -100,7 +100,7 @@ func monkey(t *testing.T, seed uint64, steps int) {
 		endpoints = append(endpoints, m.node.ep)
 	}
 	ctx := context.Background()
-	for i := 0; i < steps; i++ {
+	for i := range steps {
 		m := devs[rng.IntN(len(devs))]
 		switch k := rng.IntN(9); k {
 		case 0:
@@ -147,10 +147,10 @@ func monkey(t *testing.T, seed uint64, steps int) {
 			addToController(m)
 		case 6:
 			t.Logf("step %d: diagnosis storm on %s", i, m.name)
-			for j := 0; j < 5; j++ {
+			for j := range 5 {
 				_ = m.dev.AddDiagnosis(ctx, 1, 1, pnio.DiagnosisItem{ChannelNumber: uint16(j), ErrorType: pnio.ChannelErrOverload})
 			}
-			for j := 0; j < 5; j++ {
+			for j := range 5 {
 				_ = m.dev.RemoveDiagnosis(ctx, 1, 1, uint16(j), pnio.ChannelErrOverload)
 			}
 		case 7:

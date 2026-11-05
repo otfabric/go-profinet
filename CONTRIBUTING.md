@@ -8,7 +8,7 @@ cd go-profinet
 make test
 ```
 
-The Makefile sets `GOWORK=off`. Go 1.23 or later; the Docker-based suites
+The Makefile sets `GOWORK=off`. Go 1.26 or later; the Docker-based suites
 (`make l2-test`, `make interop`) need Docker.
 
 ## Before you open a pull request

@@ -42,7 +42,7 @@ func newEnv(t *testing.T, n int, cfg Config) *env {
 	e := &env{t: t}
 	pm := []ethernet.MAC{p1MAC, p2MAC, p3MAC}
 	hm := []ethernet.MAC{hostA, hostB, hostC}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		net := vnet.New(uint64(i + 1))
 		t.Cleanup(func() { _ = net.Close() })
 		p, err := net.NewEndpoint(vnet.EndpointConfig{Name: "port", MAC: pm[i], Promiscuous: true})
@@ -374,7 +374,7 @@ func TestFDBBoundAndFlush(t *testing.T) {
 
 func TestQueueOverflowAndClose(t *testing.T) {
 	e := newEnv(t, 1, Config{QueueLen: 2})
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		send(t, e.hosts[0], frame(cpuMAC, hostA, 1))
 	}
 	deadline := time.Now().Add(wait)
@@ -437,7 +437,7 @@ func TestLine(t *testing.T) {
 	left := ep(segs[0], hostA, false)
 	right := ep(segs[3], hostB, false)
 	var cpus []l2.Port
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		a := ep(segs[i], ethernet.MAC{0x02, 0xD0, byte(i), 0, 0, 1}, true)
 		b := ep(segs[i+1], ethernet.MAC{0x02, 0xD0, byte(i), 0, 0, 2}, true)
 		br, err := New(Config{Ports: []l2.Port{a, b}, MAC: ethernet.MAC{0x02, 0xD0, byte(i), 0, 0, 0}})

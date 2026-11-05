@@ -62,8 +62,10 @@ type Delay struct {
 	HasPortTime bool
 }
 
+// appendTLV appends a TLV with a 7-bit type and a 9-bit length; the
+// callers pass the package's TLV types and values of at most 8 octets.
 func appendTLV(b []byte, typ int, value []byte) []byte {
-	b = binary.BigEndian.AppendUint16(b, uint16(typ)<<9|uint16(len(value))&0x1FF)
+	b = binary.BigEndian.AppendUint16(b, uint16(typ&0x7F)<<9|uint16(len(value)&0x1FF))
 	return append(b, value...)
 }
 

@@ -317,7 +317,7 @@ func TestManyDevices(t *testing.T) {
 	const n = 12
 	devs := make([]*device.Device, n)
 	cds := make([]*controller.Device, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		name := fmt.Sprintf("dev-%02d", i)
 		devs[i], _ = e.device(name, fmt.Sprintf("192.168.0.%d", 10+i), testModel(), nil)
 		var err error
@@ -327,11 +327,11 @@ func TestManyDevices(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		waitState(t, cds[i], controller.StateRunning, 20*time.Second)
 	}
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for i := range n {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

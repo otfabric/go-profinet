@@ -288,7 +288,9 @@ func (s Status) Uint32() uint32 {
 
 // StatusFromUint32 is the inverse of Uint32.
 func StatusFromUint32(v uint32) Status {
-	return Status{Code: uint8(v >> 24), Decode: uint8(v >> 16), Code1: uint8(v >> 8), Code2: uint8(v)}
+	var o [4]byte
+	binary.BigEndian.PutUint32(o[:], v)
+	return Status{Code: o[0], Decode: o[1], Code1: o[2], Code2: o[3]}
 }
 
 // Append appends the four octets.

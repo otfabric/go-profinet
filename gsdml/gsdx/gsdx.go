@@ -28,7 +28,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -178,7 +180,7 @@ func (p *Package) issue(part, format string, a ...any) {
 
 // OpenFile opens the package in the file at path with the default Options.
 func OpenFile(path string) (*Package, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +208,14 @@ func Open(r io.ReaderAt, size int64, opts Options) (*Package, error) {
 	if len(zr.File) > opts.MaxParts {
 		return nil, errLimit("%d ZIP entries, at most %d", len(zr.File), opts.MaxParts)
 	}
+	// withDefaults made every limit positive.
+	maxPart, maxRatio := uint64(DefaultMaxPartSize), uint64(DefaultMaxRatio)
+	if opts.MaxPartSize > 0 {
+		maxPart = uint64(opts.MaxPartSize)
+	}
+	if opts.MaxRatio > 0 {
+		maxRatio = uint64(opts.MaxRatio)
+	}
 	p := &Package{Comment: zr.Comment, byName: map[string]*entry{}}
 	seen := map[string]string{}
 	var total int64
@@ -222,19 +232,21 @@ func Open(r io.ReaderAt, size int64, opts Options) (*Package, error) {
 			return nil, errMalformed("ZIP entries %q and %q are equivalent names", prev, f.Name)
 		}
 		seen[folded] = f.Name
-		if f.UncompressedSize64 > uint64(opts.MaxPartSize) {
-			return nil, errLimit("entry %q: %d octets uncompressed, at most %d", f.Name, f.UncompressedSize64, opts.MaxPartSize)
+		usize := f.UncompressedSize64
+		if usize > maxPart || usize > math.MaxInt64 {
+			return nil, errLimit("entry %q: %d octets uncompressed, at most %d", f.Name, usize, maxPart)
 		}
-		if f.UncompressedSize64 > RatioFloor {
-			if f.CompressedSize64 == 0 || f.UncompressedSize64/f.CompressedSize64 > uint64(opts.MaxRatio) {
-				return nil, errLimit("entry %q: compression ratio above %d", f.Name, opts.MaxRatio)
+		if usize > RatioFloor {
+			if f.CompressedSize64 == 0 || usize/f.CompressedSize64 > maxRatio {
+				return nil, errLimit("entry %q: compression ratio above %d", f.Name, maxRatio)
 			}
 		}
-		total += int64(f.UncompressedSize64)
+		size := int64(usize)
+		total += size
 		if total > opts.MaxTotalSize {
 			return nil, errLimit("more than %d octets uncompressed in total", opts.MaxTotalSize)
 		}
-		data, err := readEntry(f)
+		data, err := readEntry(f, size)
 		if err != nil {
 			return nil, err
 		}
@@ -279,11 +291,10 @@ func Open(r io.ReaderAt, size int64, opts Options) (*Package, error) {
 }
 
 // readEntry decompresses an entry, reading at most one octet more than its
-// header declares (which Open has bounded), and checks its CRC-32: an
-// entry that inflates beyond its declared size is rejected before it costs
-// more memory than the limits allow.
-func readEntry(f *zip.File) ([]byte, error) {
-	limit := int64(f.UncompressedSize64)
+// header declares (limit, which Open has bounded), and checks its CRC-32:
+// an entry that inflates beyond its declared size is rejected before it
+// costs more memory than the limits allow.
+func readEntry(f *zip.File, limit int64) ([]byte, error) {
 	if f.Method != zip.Store && f.Method != zip.Deflate {
 		return nil, fmt.Errorf("gsdx: %w: entry %q: compression method %d", profinet.ErrUnsupported, f.Name, f.Method)
 	}

@@ -257,7 +257,7 @@ func TestNetSNMPErrors(t *testing.T) {
 
 	// A Get of 120 names whose answer exceeds the message size: tooBig.
 	var names []string
-	for i := 0; i < 120; i++ {
+	for range 120 {
 		names = append(names, oidSysDescr)
 	}
 	r = e.netsnmp(2, "get", names...)

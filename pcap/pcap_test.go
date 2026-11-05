@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -107,12 +108,12 @@ func TestWriterConcurrent(t *testing.T) {
 	w, _ := NewWriter(&buf)
 	var wg sync.WaitGroup
 	const n, per = 8, 50
-	for g := 0; g < n; g++ {
+	for g := range n {
 		wg.Add(1)
 		go func(g int) {
 			defer wg.Done()
 			f := bytes.Repeat([]byte{byte(g)}, 60+g)
-			for i := 0; i < per; i++ {
+			for range per {
 				if err := w.WriteFrame(time.Now(), f); err != nil {
 					t.Error(err)
 				}
@@ -227,6 +228,8 @@ func TestReaderErrors(t *testing.T) {
 		{"truncated record", file(le, magicMicro, linkEthernet, rec[:18])},
 		{"truncated empty record", file(le, magicMicro, linkEthernet, rec[:16])},
 		{"oversized record", file(le, magicMicro, linkEthernet, big)},
+		{"microseconds of a second or more", file(le, magicMicro, linkEthernet, record(le, 1, 1_000_000, nil))},
+		{"nanoseconds of a second or more", file(le, 0xA1B23C4D, linkEthernet, record(le, 1, 1_000_000_000, nil))},
 	}
 	for _, c := range next {
 		r, err := NewReader(bytes.NewReader(c.b))
@@ -320,4 +323,30 @@ func FuzzDecode(f *testing.F) {
 			t.Fatalf("trailing data: %v", err)
 		}
 	})
+}
+
+// The classic header stores unsigned 32-bit seconds: a time outside it is
+// refused, not written wrapped.
+func TestWriteFrameTimestampRange(t *testing.T) {
+	var buf bytes.Buffer
+	w, _ := NewWriter(&buf)
+	for _, ts := range []time.Time{time.Unix(-1, 0), time.Unix(math.MaxUint32+1, 0), time.Date(1969, 12, 31, 0, 0, 0, 0, time.UTC)} {
+		if err := w.WriteFrame(ts, []byte{1}); !errors.Is(err, profinet.ErrInvalidConfig) {
+			t.Fatalf("%v: %v", ts, err)
+		}
+	}
+	if buf.Len() != 24 {
+		t.Fatalf("%d octets written for refused frames", buf.Len())
+	}
+	// The last second of the range and the first one are kept exactly.
+	for _, ts := range []time.Time{time.Unix(0, 0), time.Unix(math.MaxUint32, 999_999_000)} {
+		buf.Truncate(24)
+		if err := w.WriteFrame(ts, []byte{1}); err != nil {
+			t.Fatal(err)
+		}
+		rec := buf.Bytes()[24:]
+		if sec, us := binary.LittleEndian.Uint32(rec[0:]), binary.LittleEndian.Uint32(rec[4:]); int64(sec) != ts.Unix() || int(us) != ts.Nanosecond()/1000 {
+			t.Fatalf("%v: sec %d us %d", ts, sec, us)
+		}
+	}
 }

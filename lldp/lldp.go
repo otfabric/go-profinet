@@ -100,7 +100,7 @@ type Frame struct {
 	PortDescription   string        `json:"portDescription,omitempty"`
 	SystemName        string        `json:"systemName,omitempty"`
 	SystemDescription string        `json:"systemDescription,omitempty"`
-	ManagementAddr    netip.Addr    `json:"managementAddress,omitempty"`
+	ManagementAddr    netip.Addr    `json:"managementAddress"`
 	PortStatus        *PortStatus   `json:"portStatus,omitempty"`
 	ChassisMAC        *ethernet.MAC `json:"chassisMac,omitempty"`
 	Delay             *Delay        `json:"delay,omitempty"`
@@ -125,8 +125,10 @@ func idString(sub, macSub uint8, b []byte) string {
 	return string(b)
 }
 
+// appendTLV appends a TLV: a 7-bit type and a 9-bit length. AppendTo
+// bounds every value to 511 octets and every type to 127 first.
 func appendTLV(b []byte, t uint8, v []byte) []byte {
-	b = binary.BigEndian.AppendUint16(b, uint16(t)<<9|uint16(len(v)))
+	b = binary.BigEndian.AppendUint16(b, uint16(t&0x7F)<<9|uint16(len(v)&0x1FF))
 	return append(b, v...)
 }
 

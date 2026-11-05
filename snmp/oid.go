@@ -123,7 +123,7 @@ func appendBase128(b []byte, v uint32) []byte {
 		n++
 	}
 	for i := n - 1; i > 0; i-- {
-		b = append(b, byte(v>>(7*i))|0x80)
+		b = append(b, byte(v>>(7*i)&0x7F)|0x80)
 	}
 	return append(b, byte(v&0x7F))
 }

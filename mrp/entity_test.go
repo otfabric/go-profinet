@@ -139,7 +139,7 @@ func once(t *testing.T, nodes []*node, from int) {
 	t.Helper()
 	mgr := nodes[0].ent
 	var got []int64
-	for try := 0; try < 3; try++ {
+	for try := range 3 {
 		tr := mgr.Status().Transitions
 		before := make([]int64, len(nodes))
 		for i, nd := range nodes {
@@ -320,10 +320,25 @@ func TestEntityConfig(t *testing.T) {
 		"no switch":  {Role: RoleClient, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, MAC: mac},
 		"no MAC":     {Role: RoleClient, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, Switch: br},
 		"same index": {Role: RoleClient, Ports: [2]*l2.Mux{m, m}, Switch: br, MAC: mac},
+		// The frames carry the intervals in 16-bit milliseconds: they must
+		// not wrap.
+		"long topology change interval": {Role: RoleManager, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, Switch: br, MAC: mac,
+			Profile: Profile{Name: "x", TopChangeInterval: 70 * time.Second, TopChangeRepeat: 1, TestInterval: time.Millisecond, TestMax: 1, LinkInterval: time.Millisecond, LinkRepeat: 1}},
+		"negative link interval": {Role: RoleClient, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, Switch: br, MAC: mac,
+			Profile: Profile{Name: "x", TopChangeInterval: time.Millisecond, TopChangeRepeat: 1, TestInterval: time.Millisecond, TestMax: 1, LinkInterval: -time.Millisecond, LinkRepeat: 1}},
 	} {
 		if _, err := New(c); !errors.Is(err, profinet.ErrInvalidConfig) {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+	// The conversion helpers clamp instead of wrapping.
+	for d, want := range map[time.Duration]uint16{-time.Millisecond: 0, 0: 0, 20 * time.Millisecond: 20, maxFrameInterval: 65535, maxFrameInterval + time.Millisecond: 65535} {
+		if got := frameInterval(d); got != want {
+			t.Errorf("frameInterval(%v) = %d, want %d", d, got, want)
+		}
+	}
+	if portRole(0) != PortPrimary || portRole(1) != PortSecondary {
+		t.Error("portRole")
 	}
 	for r, want := range map[Role]string{RoleClient: "client", RoleManager: "manager", RoleDisabled: "disabled"} {
 		if r.String() != want {

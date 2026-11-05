@@ -277,6 +277,13 @@ func TestValueLists(t *testing.T) {
 	if _, err := ParseValueList("1..100000", 10); !errors.Is(err, profinet.ErrResourceExhausted) {
 		t.Fatal(err)
 	}
+	// A negative limit allows no values instead of wrapping to no bound.
+	if _, err := ParseValueList("1..4", -1); !errors.Is(err, profinet.ErrResourceExhausted) {
+		t.Fatal(err)
+	}
+	if v, err := ParseValueList("4294967295", 1); err != nil || len(v) != 1 || v[0] != 4294967295 {
+		t.Fatal(v, err)
+	}
 	for _, bad := range []string{"a", "3..1", "1..b"} {
 		if _, err := ParseValueList(bad, 10); err == nil {
 			t.Fatalf("parsed %q", bad)

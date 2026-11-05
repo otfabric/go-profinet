@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-profinet"
+	"github.com/otfabric/go-profinet/lldp"
 	"github.com/otfabric/go-profinet/snmp"
 )
 
@@ -80,27 +81,38 @@ func (d *Device) startSNMP() error {
 	if err != nil {
 		return err
 	}
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
+	d.wg.Go(func() {
 		if err := a.Serve(d.ctx); err != nil && d.ctx.Err() == nil {
 			d.log.Warnf("device: SNMP: %v", err)
 		}
-	}()
+	})
 	return nil
+}
+
+// snmpIndex returns v as an SNMP table index (Integer32 from 1); ok is
+// false for a value an index cannot hold, whose row is then left out.
+func snmpIndex(v int64) (int32, bool) {
+	if v < 1 || v > math.MaxInt32 {
+		return 0, false
+	}
+	return int32(v), true
 }
 
 // snmpInterfaces is the ifTable: one row per Ethernet port.
 func (d *Device) snmpInterfaces() []snmp.Interface {
 	out := make([]snmp.Interface, 0, len(d.ports))
 	for _, p := range d.ports {
+		idx, ok := snmpIndex(int64(p.n))
+		if !ok {
+			continue
+		}
 		mac := p.mux.HardwareAddr()
 		oper := snmp.IfStatusUp
 		if !p.linkUp() {
 			oper = snmp.IfStatusDown
 		}
 		out = append(out, snmp.Interface{
-			Index: int32(p.n), Descr: p.name(), Type: snmp.IfTypeEthernetCsmacd, MTU: 1500, Speed: ifSpeed,
+			Index: idx, Descr: p.name(), Type: snmp.IfTypeEthernetCsmacd, MTU: 1500, Speed: ifSpeed,
 			PhysAddress: mac[:], AdminStatus: snmp.IfStatusUp, OperStatus: oper,
 		})
 	}
@@ -116,7 +128,9 @@ func (d *Device) snmpLLDPLocal() snmp.LLDPLocal {
 		if i == 0 {
 			l = snmp.LLDPLocal{ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, SysName: f.SystemName, SysDesc: f.SystemDescription}
 		}
-		l.Ports = append(l.Ports, snmp.LLDPLocalPort{Num: int32(p.n), IDSubtype: int32(f.PortSubtype), ID: f.PortID, Desc: f.PortDescription})
+		if num, ok := snmpIndex(int64(p.n)); ok {
+			l.Ports = append(l.Ports, snmp.LLDPLocalPort{Num: num, IDSubtype: int32(f.PortSubtype), ID: f.PortID, Desc: f.PortDescription})
+		}
 	}
 	return l
 }
@@ -128,21 +142,28 @@ func (d *Device) snmpLLDPLocal() snmp.LLDPLocal {
 func (d *Device) snmpLLDPRemote() []snmp.LLDPRemote {
 	var out []snmp.LLDPRemote
 	for _, p := range d.ports {
-		if p.lldpA == nil {
+		num, ok := snmpIndex(int64(p.n))
+		if !ok || p.lldpA == nil {
 			continue
 		}
 		for _, n := range p.lldpA.Neighbors() {
-			f := &n.Frame
-			var mark uint32
-			if since := n.Changed.Sub(d.snmpStart); since > 0 {
-				mark = uint32(min(since/(10*time.Millisecond), math.MaxUint32))
+			if idx, ok := snmpIndex(int64(n.Index)); ok {
+				out = append(out, d.snmpRemoteRow(num, idx, n.Changed, &n.Frame))
 			}
-			out = append(out, snmp.LLDPRemote{
-				TimeMark: mark, LocalPortNum: int32(p.n), Index: int32(n.Index),
-				ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, PortIDSubtype: int32(f.PortSubtype), PortID: f.PortID,
-				PortDesc: f.PortDescription, SysName: f.SystemName, SysDesc: f.SystemDescription,
-			})
 		}
 	}
 	return out
+}
+
+// snmpRemoteRow is one lldpRemTable row.
+func (d *Device) snmpRemoteRow(num, idx int32, changed time.Time, f *lldp.Frame) snmp.LLDPRemote {
+	var mark uint32
+	if since := changed.Sub(d.snmpStart); since > 0 {
+		mark = uint32(min(since/(10*time.Millisecond), math.MaxUint32))
+	}
+	return snmp.LLDPRemote{
+		TimeMark: mark, LocalPortNum: num, Index: idx,
+		ChassisIDSubtype: int32(f.ChassisSubtype), ChassisID: f.ChassisID, PortIDSubtype: int32(f.PortSubtype), PortID: f.PortID,
+		PortDesc: f.PortDescription, SysName: f.SystemName, SysDesc: f.SystemDescription,
+	}
 }

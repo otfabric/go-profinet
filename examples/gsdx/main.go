@@ -42,7 +42,12 @@ func main() {
 			`<Relationship Id="r1" Type="urn:example:gsdml" Target="GSDML/GSDML-V2.35-Example.xml"/></Relationships>`},
 		{"GSDML/GSDML-V2.35-Example.xml", string(g)},
 	}
-	f, err := os.Create(name)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Create(filepath.Base(name))
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -34,7 +34,7 @@ func main() {
 		return
 	}
 	name := filepath.Join(*dir, gsdml.FileName(m, "", time.Now()))
-	if err := os.WriteFile(name, b, 0o644); err != nil {
+	if err := os.WriteFile(name, b, 0o600); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("wrote", name)

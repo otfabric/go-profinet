@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/otfabric/go-profinet/gsdml"
 )
@@ -23,7 +24,15 @@ func main() {
 	if len(os.Args) > 1 {
 		path = os.Args[1]
 	}
-	f, err := os.Open(path)
+	// The file is opened in its directory with os.Root, so that a path
+	// cannot climb out of it through a symbolic link.
+	path = filepath.Clean(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := root.Open(filepath.Base(path))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,8 +42,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if err := gsdml.Validate(doc); err != nil {
-		var ve *gsdml.ValidationError
-		if errors.As(err, &ve) {
+		if ve, ok := errors.AsType[*gsdml.ValidationError](err); ok {
 			fmt.Printf("%d validation issue(s), first: %s\n", len(ve.Issues), ve.Issues[0])
 		}
 	} else {

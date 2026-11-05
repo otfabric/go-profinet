@@ -5,6 +5,7 @@ package device
 import (
 	"context"
 	"net"
+	"slices"
 
 	"github.com/otfabric/go-profinet/dcp"
 	"github.com/otfabric/go-profinet/ethernet"
@@ -161,12 +162,7 @@ var transitions = map[ARState][]ARState{
 
 // CanTransition reports whether the state machine allows from → to.
 func CanTransition(from, to ARState) bool {
-	for _, s := range transitions[from] {
-		if s == to {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(transitions[from], to)
 }
 
 // ARInfo describes an application relationship.

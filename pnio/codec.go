@@ -14,6 +14,7 @@ package pnio
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/ethernet"
@@ -138,6 +139,36 @@ func (r *reader) end() error {
 
 func appendU16(b []byte, v uint16) []byte { return binary.BigEndian.AppendUint16(b, v) }
 func appendU32(b []byte, v uint32) []byte { return binary.BigEndian.AppendUint32(b, v) }
+
+// tooLarge is the value an encoder panics with when a length or count does
+// not fit its field. Append methods have no error result; a value they
+// cannot represent is a programming error of the caller, reported as
+// loudly as strings.Repeat or bytes.Buffer report theirs rather than
+// encoded with a wrapped length. Decoders bound everything a peer sends,
+// so that no response a peer can provoke reaches this. It matches
+// profinet.ErrInvalidConfig.
+func tooLarge(what string, n int, limit uint64) error {
+	return fmt.Errorf("pnio: %w: %s of %d exceeds %d", profinet.ErrInvalidConfig, what, n, limit)
+}
+
+// len16 returns n, a length or element count, as a 16-bit field.
+func len16(what string, n int) uint16 {
+	if n < 0 || n > math.MaxUint16 {
+		panic(tooLarge(what, n, math.MaxUint16))
+	}
+	return uint16(n)
+}
+
+// len32 returns n, a length, as a 32-bit field.
+func len32(what string, n int) uint32 {
+	if n < 0 || uint64(n) > math.MaxUint32 {
+		panic(tooLarge(what, n, math.MaxUint32))
+	}
+	return uint32(n)
+}
+
+// appendLen16 appends n as a 16-bit length or count field.
+func appendLen16(b []byte, what string, n int) []byte { return appendU16(b, len16(what, n)) }
 
 // padTo appends zeros until the length of b since start is a multiple of
 // align.

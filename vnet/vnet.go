@@ -159,7 +159,7 @@ func (n *Network) NewEndpoint(cfg EndpointConfig) (*Endpoint, error) {
 		cfg.QueueLen = DefaultQueueLen
 	}
 	h := fnv.New64a()
-	h.Write(cfg.MAC[:])
+	_, _ = h.Write(cfg.MAC[:]) // hash.Hash.Write never returns an error
 	e := &Endpoint{
 		net:    n,
 		cfg:    cfg,

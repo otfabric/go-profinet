@@ -223,7 +223,7 @@ func TestSharedOwnershipTimeout(t *testing.T) {
 // TestSharedRace: two controllers connect at the same moment and both want
 // slot 2: exactly one owns it.
 func TestSharedRace(t *testing.T) {
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		e := newEnv(t, uint64(83+i))
 		dev, _ := e.device("shared", "192.168.0.10", sharedModel(), nil)
 		var cds [2]*controller.Device
@@ -266,7 +266,7 @@ func TestSharedChurn(t *testing.T) {
 		go func(j int, slots []uint16) {
 			defer wg.Done()
 			ctrl, _ := e.controller(fmt.Sprintf("192.168.0.%d", j+1))
-			for round := 0; round < 4; round++ {
+			for round := range 4 {
 				cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "shared", Model: sharedModel().WithSlots(slots...),
 					ReconnectMin: 50 * time.Millisecond, ReconnectMax: 200 * time.Millisecond})
 				if err != nil {

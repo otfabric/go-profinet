@@ -113,7 +113,8 @@ func AppendDHCPParameter(dst []byte, p DHCPParameter) ([]byte, error) {
 	if err := p.Validate(); err != nil {
 		return dst, err
 	}
-	dst = append(dst, p.Code, byte(len(p.Data)))
+	// Validate bounds the data to 255 octets.
+	dst = append(dst, p.Code, byte(len(p.Data)&0xFF))
 	return append(dst, p.Data...), nil
 }
 

@@ -113,7 +113,7 @@ func NewBlockID(o Option, sub uint8) BlockID { return BlockID(uint16(o)<<8 | uin
 func (b BlockID) Option() Option { return Option(b >> 8) }
 
 // Suboption returns the suboption.
-func (b BlockID) Suboption() uint8 { return uint8(b) }
+func (b BlockID) Suboption() uint8 { return uint8(b & 0xFF) }
 
 // Block IDs. The names follow IEC 61158-6-10.
 const (
@@ -415,7 +415,7 @@ func (f *Frame) AppendTo(dst []byte) ([]byte, error) {
 		}
 	}
 	n := len(dst) - lenAt - 2
-	if n > MaxDataLen {
+	if n < 0 || n > MaxDataLen {
 		return dst[:start], fmt.Errorf("dcp: %w: DCPDataLength %d exceeds %d", profinet.ErrInvalidConfig, n, MaxDataLen)
 	}
 	binary.BigEndian.PutUint16(dst[lenAt:], uint16(n))

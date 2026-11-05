@@ -209,16 +209,14 @@ func TestSchedulerManyTasksConcurrent(t *testing.T) {
 	defer s.Close()
 	var wg sync.WaitGroup
 	var total atomic.Int64
-	for i := 0; i < 8; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 20; j++ {
+	for range 8 {
+		wg.Go(func() {
+			for j := range 20 {
 				task := s.Add(time.Duration(1+j%3)*time.Millisecond, func(time.Time) { total.Add(1) })
 				time.Sleep(time.Millisecond)
 				s.Remove(task)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	// Every task is gone: no further runs after a grace period.

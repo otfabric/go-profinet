@@ -27,3 +27,6 @@ interop-results/
 /internal/cmd/gengsdml/gengsdml
 /internal/cmd/l2bench/l2bench
 /interop/otfnode/otfnode
+
+# go build ./internal/cmd/l2bench in the root
+/l2bench

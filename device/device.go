@@ -16,6 +16,7 @@ package device
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"strconv"
 	"sync"
@@ -227,9 +228,15 @@ type Device struct {
 	// srSets are the AR sets of system redundancy, guarded by mu.
 	srSets map[[14]byte]*srSet
 
+	// rpcPort is cfg.RPCPort, validated by New.
+	rpcPort uint16
+
 	ctx    context.Context
 	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	// wg tracks the device's goroutines; Close waits for them. A
+	// goroutine started after Close began (d.closed) would race with
+	// Wait, so goAbort checks closed under mu.
+	wg sync.WaitGroup
 }
 
 type recKey struct {
@@ -273,6 +280,13 @@ func New(cfg Config) (*Device, error) {
 	if cfg.ControllerRPCPort == 0 {
 		cfg.ControllerRPCPort = rpc.Port
 	}
+	if cfg.RPCPort < 0 || cfg.RPCPort > math.MaxUint16 {
+		return nil, fmt.Errorf("device: %w: RPCPort %d out of range", profinet.ErrInvalidConfig, cfg.RPCPort)
+	}
+	if cfg.ControllerRPCPort < 0 || cfg.ControllerRPCPort > math.MaxUint16 {
+		return nil, fmt.Errorf("device: %w: ControllerRPCPort %d out of range", profinet.ErrInvalidConfig, cfg.ControllerRPCPort)
+	}
+	rpcPort := uint16(cfg.RPCPort)
 	if cfg.ApplicationReadyTimeout <= 0 {
 		cfg.ApplicationReadyTimeout = 6 * time.Second
 	}
@@ -298,6 +312,7 @@ func New(cfg Config) (*Device, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Device{
 		cfg:       cfg,
+		rpcPort:   rpcPort,
 		log:       log,
 		met:       met,
 		model:     cfg.Model,

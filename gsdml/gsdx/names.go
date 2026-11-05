@@ -60,7 +60,7 @@ func partNameIssues(name string) []string {
 	if pieceName.MatchString(name) {
 		out = append(out, "interleaved part piece: pieces are not reassembled, the entry is kept as it is")
 	}
-	for _, s := range strings.Split(name[1:], "/") {
+	for s := range strings.SplitSeq(name[1:], "/") {
 		if strings.HasSuffix(s, ".") {
 			out = append(out, "part name segment ends with \".\"")
 		}

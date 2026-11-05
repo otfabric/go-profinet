@@ -74,7 +74,7 @@ func TestRoundTrip(t *testing.T) {
 		p += 2 + int(binary.BigEndian.Uint16(b2[p:])&0x1FF)
 		bounds = append(bounds, p)
 	}
-	for n := 0; n < len(b2); n++ {
+	for n := range b2 {
 		p, h := 0, 0
 		for i, q := range bounds {
 			if q <= n {
@@ -608,6 +608,30 @@ func BenchmarkAppendTo(b *testing.B) {
 		var err error
 		if buf, err = full.AppendTo(buf[:0]); err != nil {
 			b.Fatal(err)
+		}
+	}
+}
+
+// The announced TTL saturates in 16 bits and never wraps: a receive-only
+// agent (negative interval) asked to SendNow announced 65532 s before.
+func TestAnnouncedTTL(t *testing.T) {
+	for _, c := range []struct {
+		interval time.Duration
+		factor   int
+		want     uint16
+	}{
+		{5 * time.Second, 4, 20},
+		{1500 * time.Millisecond, 4, 4},
+		{500 * time.Millisecond, 4, 1},
+		{-time.Second, 4, 1},
+		{time.Second, 0, 1},
+		{time.Second, 65535, 65535},
+		{time.Second, 65536, 65535},
+		{math.MaxInt64, math.MaxInt, 65535},
+		{20000 * time.Second, 4, 65535},
+	} {
+		if got := announcedTTL(c.interval, c.factor); got != c.want {
+			t.Errorf("announcedTTL(%v, %d) = %d, want %d", c.interval, c.factor, got, c.want)
 		}
 	}
 }

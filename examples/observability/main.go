@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,11 +38,12 @@ type counters struct {
 func (c *counters) inc(name string, labels ...string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	k := fmt.Sprintf("profinet_%s_total{role=%q", name, c.role)
+	var k strings.Builder
+	fmt.Fprintf(&k, "profinet_%s_total{role=%q", name, c.role)
 	for i := 0; i+1 < len(labels); i += 2 {
-		k += fmt.Sprintf(",%s=%q", labels[i], labels[i+1])
+		fmt.Fprintf(&k, ",%s=%q", labels[i], labels[i+1])
 	}
-	c.n[k+"}"]++
+	c.n[k.String()+"}"]++
 }
 
 func result(err error) string {

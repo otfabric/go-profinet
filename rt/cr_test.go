@@ -87,7 +87,7 @@ func TestProviderTick(t *testing.T) {
 	// The counter advances by the step, wrapping at 16 bits.
 	p.SetDataStatus(DefaultDataStatus &^ DataValid)
 	p.SetDestination(ethernet.MAC{2, 0, 0, 0, 0, 0x0c})
-	for i := 0; i < 2047; i++ {
+	for range 2047 {
 		p.Tick(ctx)
 	}
 	e, f = c.last(t)

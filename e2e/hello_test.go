@@ -141,7 +141,7 @@ func TestHelloLinkFlap(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitState(t, cd, controller.StateRunning, 10*time.Second)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		dn.ep.SetLinkUp(false)
 		eventually(t, 10*time.Second, "AR lost", func() bool { st, _ := cd.State(); return st != controller.StateRunning })
 		// The failed reconnects stretch the backoff to 20 s.

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"math"
 	"net/netip"
 	"strings"
 	"testing"
@@ -461,6 +462,10 @@ func FuzzDecodeOID(f *testing.F) {
 
 func FuzzDecodeValue(f *testing.F) {
 	f.Add(byte(0x02), unhex(f, "ff 7f"))
+	f.Add(byte(0x02), unhex(f, "80 00 00 00"))
+	f.Add(byte(0x02), unhex(f, "7f ff ff ff"))
+	f.Add(byte(0x02), unhex(f, "00 80 00 00 00"))
+	f.Add(byte(0x02), unhex(f, "ff 7f ff ff ff"))
 	f.Add(byte(0x46), unhex(f, "00 ff ff ff ff ff ff ff ff"))
 	f.Add(byte(0x40), unhex(f, "c0 a8 00 01"))
 	f.Add(byte(0x06), unhex(f, "2b 06"))
@@ -482,4 +487,41 @@ func FuzzDecodeValue(f *testing.F) {
 			t.Fatalf("% x re-encodes as % x", c, c2)
 		}
 	})
+}
+
+// decodeInt32 sign-extends and fills exactly 32 bits; saturateInt32
+// clamps instead of wrapping.
+func TestInt32Bounds(t *testing.T) {
+	for _, c := range []struct {
+		hex  string
+		want int32
+	}{
+		{"00", 0}, {"7f", 127}, {"80", -128}, {"ff", -1}, {"ff 7f", -129}, {"00 80", 128},
+		{"7f ff ff ff", math.MaxInt32}, {"80 00 00 00", math.MinInt32}, {"ff 7f ff ff", -8388609},
+	} {
+		got, err := decodeInt32(unhex(t, c.hex))
+		if err != nil || got != c.want {
+			t.Errorf("% s: %d %v, want %d", c.hex, got, err, c.want)
+		}
+		var tmp [9]byte
+		if enc := appendInt(tmp[:0], int64(c.want)); !bytes.Equal(enc, unhex(t, c.hex)) {
+			t.Errorf("%d encodes as % x, want %s", c.want, enc, c.hex)
+		}
+	}
+	for _, h := range []string{"00 80 00 00 00", "ff 7f ff ff ff", "01 00 00 00 00"} {
+		if _, err := decodeInt32(unhex(t, h)); !errors.Is(err, profinet.ErrMalformed) {
+			t.Errorf("%s: %v", h, err)
+		}
+	}
+	for n, want := range map[int]int32{0: 0, -5: -5, math.MaxInt32: math.MaxInt32, math.MinInt32: math.MinInt32} {
+		if got := saturateInt32(n); got != want {
+			t.Errorf("saturateInt32(%d) = %d", n, got)
+		}
+	}
+	if math.MaxInt > math.MaxInt32 {
+		big := int64(math.MaxInt32) + 1
+		if saturateInt32(int(big)) != math.MaxInt32 || saturateInt32(int(-big-1)) != math.MinInt32 {
+			t.Error("saturateInt32 does not saturate")
+		}
+	}
 }

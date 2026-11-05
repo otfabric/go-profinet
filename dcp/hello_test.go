@@ -141,7 +141,7 @@ func TestHelloSequence(t *testing.T) {
 	}
 	var times []time.Time
 	xids := map[uint32]bool{}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		dst, f, at, ok := recvHello(t, raw, 2*time.Second)
 		if !ok {
 			t.Fatalf("Hello %d missing", i+1)

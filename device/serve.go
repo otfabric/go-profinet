@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/otfabric/go-profinet"
@@ -62,9 +63,8 @@ func (d *Device) serveRPC(ctx context.Context, req *rpc.Request) ([]byte, error)
 
 // statusResponse returns the NDR response of a failed call.
 func (d *Device) statusResponse(o rpc.ByteOrder, op pnio.OpNum, err error, argsMax uint32) []byte {
-	var se *pnio.StatusError
 	st := pnio.ServiceStatus(serviceCode(op), pnio.Code1CMRPC, pnio.CMRPCStateConflict)
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 		st = se.Status
 		if st.Code == 0 || st.Code == pnio.CodePNIO {
 			st.Code = serviceCode(op)
@@ -124,7 +124,7 @@ func (d *Device) control(op pnio.OpNum, blocks []byte) ([]byte, error) {
 	case op == pnio.OpRelease && c.Type == pnio.BlockReleaseReq && c.Command&pnio.CmdRelease != 0:
 		out := resp.Append(nil)
 		// The response goes out before the AR is torn down.
-		go d.abort(a, 0, false)
+		d.goAbort(a, 0, false)
 		return out, nil
 	case op == pnio.OpControl && c.Type == pnio.BlockPrmEndReq && c.Command&pnio.CmdPrmEnd != 0:
 		if err := a.transition(ARStateAppReadyPending); err != nil {
@@ -180,14 +180,18 @@ func (d *Device) read(ctx context.Context, implicit bool, blocks []byte) ([]byte
 		a = d.ars[q.TargetARUUID]
 		d.mu.Unlock()
 	}
-	data, err := d.readRecord(ctx, a, q)
+	// A record a peer can make too large for its block (diagnoses the
+	// application kept adding, say) is answered with an error status.
+	data, err := encodeSafely(func() ([]byte, error) { return d.readRecord(ctx, a, q) })
 	if err != nil {
 		return nil, asStatus(err, false)
 	}
-	if uint32(len(data)) > q.Length {
-		data = data[:q.Length]
+	n, ok := len32(len(data))
+	if !ok || n > q.Length {
+		n = q.Length
+		data = data[:n]
 	}
-	h := pnio.ReadRes{Seq: q.Seq, ARUUID: q.ARUUID, API: q.API, Slot: q.Slot, Subslot: q.Subslot, Index: q.Index, Length: uint32(len(data))}
+	h := pnio.ReadRes{Seq: q.Seq, ARUUID: q.ARUUID, API: q.API, Slot: q.Slot, Subslot: q.Subslot, Index: q.Index, Length: n}
 	return append(h.Append(nil), data...), pnio.Status{}
 }
 
@@ -201,7 +205,7 @@ func (d *Device) write(ctx context.Context, blocks []byte) ([]byte, pnio.Status)
 	if err != nil {
 		return nil, asStatus(err, true)
 	}
-	if int(q.Length) > len(rest) {
+	if uint64(q.Length) > uint64(len(rest)) {
 		st := pnio.RWStatus(true, pnio.RWWriteLength, 0)
 		return d.writeRes(q, st), st
 	}
@@ -249,8 +253,7 @@ func asStatus(err error, write bool) pnio.Status {
 	if err == nil {
 		return pnio.Status{}
 	}
-	var se *pnio.StatusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 		st := se.Status
 		if st.Code == 0 || st.Code == pnio.CodePNIO {
 			st.Code = pnio.CodeRead
@@ -280,3 +283,28 @@ var errInvalidIndex = RecordError(pnio.RWInvalidIndex, 0)
 func rwErr(code1 uint8) error { return RecordError(code1, 0) }
 
 var _ = fmt.Sprint
+
+// len32 returns a length as uint32; ok is false when it does not fit.
+func len32(n int) (uint32, bool) {
+	if n < 0 || uint64(n) > math.MaxUint32 {
+		return 0, false
+	}
+	return uint32(n), true
+}
+
+// encodeSafely runs f, which encodes with the pnio and alarm encoders.
+// Those panic with an error matching profinet.ErrInvalidConfig when a
+// length or count does not fit its field; encodeSafely returns that panic
+// as the error. Any other panic is a bug elsewhere and propagates.
+func encodeSafely(f func() ([]byte, error)) (b []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			e, ok := r.(error)
+			if !ok || !errors.Is(e, profinet.ErrInvalidConfig) {
+				panic(r)
+			}
+			b, err = nil, e
+		}
+	}()
+	return f()
+}

@@ -519,7 +519,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 		AR: pnio.ARBlockRes{Type: arb.Type, ARUUID: arb.ARUUID, SessionKey: arb.SessionKey, ResponderMAC: d.mux.HardwareAddr(), UDPRTPort: pnio.LT},
 	}
 	if req.ARRPC != nil {
-		resp.ARRPC = &pnio.ARRPCBlockReq{InitiatorRPCServerPort: uint16(d.cfg.RPCPort)}
+		resp.ARRPC = &pnio.ARRPCBlockReq{InitiatorRPCServerPort: d.rpcPort}
 	}
 	resp.ModuleDiff = diff
 	resp.ARServer = &pnio.ARServerBlock{StationName: d.StationName()}
@@ -586,10 +586,13 @@ func (d *Device) allocFrameID(out *pnio.IOCRBlockReq) (uint16, error) {
 		d.frameIDs[out.FrameID] = true
 		return out.FrameID, nil
 	}
-	for id := uint32(lo); id <= uint32(hi); id++ {
-		if !d.frameIDs[uint16(id)] {
-			d.frameIDs[uint16(id)] = true
-			return uint16(id), nil
+	for id := lo; lo <= hi; id++ {
+		if !d.frameIDs[id] {
+			d.frameIDs[id] = true
+			return id, nil
+		}
+		if id == hi {
+			break
 		}
 	}
 	return 0, fmt.Errorf("device: %w: no free FrameID", profinet.ErrResourceExhausted)
@@ -614,7 +617,7 @@ func (d *Device) openAlarms(a *ar, req *pnio.AlarmCRBlockReq) error {
 		OnData:    func(b []byte) { d.alarmData(a, b) },
 		OnErr: func(st pnio.Status) {
 			d.log.Infof("device: AR %s aborted by the controller: %s", a.uuid, st)
-			go d.abort(a, pnio.AbortReason(st.Code2), false)
+			d.goAbort(a, pnio.AbortReason(st.Code2), false)
 		},
 	}
 	var err error
@@ -661,7 +664,7 @@ func (d *Device) startCyclic(a *ar, in, out *pnio.IOCRBlockReq, outID uint16) {
 	a.wdTask = d.sched.Add(outCycle, func(now time.Time) {
 		if a.consumer.Check(now) {
 			d.log.Warnf("device: AR %s: output data hold time expired", a.uuid)
-			go d.abort(a, pnio.AbortConsumerDHT, true)
+			d.goAbort(a, pnio.AbortConsumerDHT, true)
 		}
 	})
 }
@@ -724,9 +727,7 @@ func (d *Device) storeOutputs(a *ar, c []byte, s rt.DataStatus) {
 
 // watchIdle releases an IOSAR without traffic for its activity timeout.
 func (d *Device) watchIdle(a *ar) {
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
+	d.wg.Go(func() {
 		t := time.NewTicker(max(a.cmiTimeout/4, 50*time.Millisecond))
 		defer t.Stop()
 		for {
@@ -748,7 +749,7 @@ func (d *Device) watchIdle(a *ar) {
 				return
 			}
 		}
-	}()
+	})
 }
 
 // controllerName is the station name of the AR's controller; empty for
@@ -762,6 +763,22 @@ func (a *ar) controllerName() string {
 
 // abort closes an AR. When notify is true the controller is told with an
 // ERR PDU; a release passes reason 0 and notify false.
+// goAbort aborts a in a goroutine that Close waits for. Once Close has
+// begun it does nothing: Close aborts every AR itself.
+func (d *Device) goAbort(a *ar, reason pnio.AbortReason, notify bool) {
+	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return
+	}
+	d.wg.Add(1)
+	d.mu.Unlock()
+	go func() {
+		defer d.wg.Done()
+		d.abort(a, reason, notify)
+	}()
+}
+
 func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 	a.mu.Lock()
 	if a.state == ARStateClosed {
@@ -781,7 +798,7 @@ func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 		d.met.OnAbort(a.ctrlName, fmt.Errorf("device: AR %s: %w: %s", a.uuid, profinet.ErrAborted, reason))
 	}
 	if notify && a.alarmLow != nil && reason != 0 {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, cancel := context.WithTimeout(d.ctx, 100*time.Millisecond)
 		if err := a.alarmLow.SendErr(ctx, pnio.AbortStatus(reason)); err != nil && !errors.Is(err, profinet.ErrClosed) {
 			d.log.Debugf("device: AR %s: send abort: %v", a.uuid, err)
 		}
@@ -825,9 +842,7 @@ func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 // prmEnd handles the end of parameterization: the response is sent by the
 // caller; the application is asked and ApplicationReady is sent here.
 func (d *Device) prmEnd(a *ar) {
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
+	d.wg.Go(func() {
 		ctx, cancel := context.WithTimeout(d.ctx, a.cmiTimeout)
 		defer cancel()
 		if err := d.handler.PrmEnd(ctx, a.info()); err != nil {
@@ -862,7 +877,7 @@ func (d *Device) prmEnd(a *ar) {
 			return
 		}
 		a.consumer.Arm(time.Now())
-	}()
+	})
 }
 
 // applicationReady calls the controller's Control operation with the

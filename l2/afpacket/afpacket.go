@@ -21,6 +21,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
+	"math/bits"
 	"net"
 	"os"
 	"sync"
@@ -57,7 +59,7 @@ type Port struct {
 	readMu   sync.Mutex
 	rbuf     []byte
 	oob      [cmsgSpaceAux]byte
-	from     syscall.RawSockaddrLinklayer
+	from     [syscall.SizeofSockaddrLinklayer]byte
 	iov      syscall.Iovec
 	msg      syscall.Msghdr
 	watched  context.Context
@@ -101,24 +103,41 @@ const (
 // to spare: the ancillary data of one frame.
 const cmsgSpaceAux = 64
 
-// tpacketAuxdata is struct tpacket_auxdata.
-type tpacketAuxdata struct {
-	Status   uint32
-	Len      uint32
-	SnapLen  uint32
-	Mac      uint16
-	Net      uint16
-	VLANTCI  uint16
-	VLANTPID uint16
-}
+// The layout of struct tpacket_auxdata (linux/if_packet.h), in host
+// byte order: tp_status, tp_len, tp_snaplen (__u32), tp_mac, tp_net,
+// tp_vlan_tci, tp_vlan_tpid (__u16).
+const (
+	auxStatusOff   = 0
+	auxVLANTCIOff  = 16
+	auxVLANTPIDOff = 18
+	sizeofAuxdata  = 20
+)
 
-// packetMreq is struct packet_mreq.
-type packetMreq struct {
-	Ifindex int32
-	Type    uint16
-	Alen    uint16
-	Address [8]byte
-}
+// The layout of struct packet_mreq (linux/if_packet.h), in host byte
+// order: mr_ifindex (int), mr_type, mr_alen (unsigned short),
+// mr_address[8].
+const (
+	mreqTypeOff    = 4
+	mreqAlenOff    = 6
+	mreqAddressOff = 8
+	sizeofMreq     = 16
+)
+
+// sockaddrPkttypeOff is the offset of sll_pkttype in struct sockaddr_ll:
+// sll_family, sll_protocol (2 octets each), sll_ifindex (4), sll_hatype
+// (2).
+const sockaddrPkttypeOff = 10
+
+// ifrFlagsOff is the offset of ifr_flags in struct ifreq: the union after
+// the name.
+const ifrFlagsOff = syscall.IFNAMSIZ
+
+// The layout of struct cmsghdr: cmsg_len is a size_t, then cmsg_level and
+// cmsg_type (int).
+const (
+	cmsgLevelOff = bits.UintSize / 8
+	cmsgTypeOff  = cmsgLevelOff + 4
+)
 
 func htons(v uint16) uint16 { return v<<8 | v>>8 }
 
@@ -187,12 +206,30 @@ func Open(name string, opts Options) (*Port, error) {
 }
 
 func setMembership(fd, ifindex, op int, typ uint16, addr []byte) error {
-	m := packetMreq{Ifindex: int32(ifindex), Type: typ, Alen: uint16(len(addr))}
-	copy(m.Address[:], addr)
+	m, err := packetMreq(ifindex, typ, addr)
+	if err != nil {
+		return err
+	}
 	// SetsockoptString passes the octets and their length, which is what
 	// setsockopt needs, on every architecture (386 included).
-	raw := (*[unsafe.Sizeof(packetMreq{})]byte)(unsafe.Pointer(&m))
-	return syscall.SetsockoptString(fd, syscall.SOL_PACKET, op, string(raw[:]))
+	return syscall.SetsockoptString(fd, syscall.SOL_PACKET, op, string(m[:]))
+}
+
+// packetMreq encodes struct packet_mreq.
+func packetMreq(ifindex int, typ uint16, addr []byte) ([sizeofMreq]byte, error) {
+	var m [sizeofMreq]byte
+	if ifindex < 0 || ifindex > math.MaxInt32 {
+		return m, fmt.Errorf("afpacket: %w: interface index %d", profinet.ErrInvalidConfig, ifindex)
+	}
+	alen := len(addr)
+	if alen > sizeofMreq-mreqAddressOff {
+		return m, fmt.Errorf("afpacket: %w: %d-octet membership address", profinet.ErrInvalidConfig, alen)
+	}
+	binary.NativeEndian.PutUint32(m[:], uint32(ifindex))
+	binary.NativeEndian.PutUint16(m[mreqTypeOff:], typ)
+	binary.NativeEndian.PutUint16(m[mreqAlenOff:], uint16(alen))
+	copy(m[mreqAddressOff:], addr)
+	return m, nil
 }
 
 // HardwareAddr implements l2.Port.
@@ -218,7 +255,7 @@ func (p *Port) LinkUp() bool {
 	if err := p.raw.Control(p.linkFn); err != nil || p.linkErr != 0 {
 		return false
 	}
-	flags := *(*uint16)(unsafe.Pointer(&p.ifr[syscall.IFNAMSIZ]))
+	flags := binary.NativeEndian.Uint16(p.ifr[ifrFlagsOff:])
 	return flags&syscall.IFF_UP != 0 && flags&syscall.IFF_RUNNING != 0
 }
 
@@ -328,7 +365,7 @@ func (p *Port) unwatch() {
 func (p *Port) recv(buf []byte) (n, oobn int, pkttype uint8, err error) {
 	p.iov.Base = &buf[0]
 	p.iov.SetLen(len(buf))
-	p.msg.Name = (*byte)(unsafe.Pointer(&p.from))
+	p.msg.Name = &p.from[0]
 	p.msg.Namelen = uint32(syscall.SizeofSockaddrLinklayer)
 	p.msg.Iov = &p.iov
 	p.msg.Iovlen = 1
@@ -350,22 +387,23 @@ func (p *Port) recv(buf []byte) (n, oobn int, pkttype uint8, err error) {
 // data (a walk over the control messages that allocates nothing).
 func vlanFromAux(oob []byte) (tci, tpid uint16, ok bool) {
 	for len(oob) >= syscall.SizeofCmsghdr {
-		h := (*syscall.Cmsghdr)(unsafe.Pointer(&oob[0]))
-		l := int(h.Len)
-		if l < syscall.SizeofCmsghdr || l > len(oob) {
+		l, ok := cmsgLen(oob)
+		if !ok || l < syscall.SizeofCmsghdr || l > len(oob) {
 			return 0, 0, false
 		}
 		data := oob[cmsgAlign(syscall.SizeofCmsghdr):l]
-		if h.Level == syscall.SOL_PACKET && h.Type == packetAuxdata && len(data) >= int(unsafe.Sizeof(tpacketAuxdata{})) {
-			aux := (*tpacketAuxdata)(unsafe.Pointer(&data[0]))
-			if aux.Status&tpStatusVLANValid == 0 {
+		level := binary.NativeEndian.Uint32(oob[cmsgLevelOff:])
+		typ := binary.NativeEndian.Uint32(oob[cmsgTypeOff:])
+		if level == syscall.SOL_PACKET && typ == packetAuxdata && len(data) >= sizeofAuxdata {
+			status := binary.NativeEndian.Uint32(data[auxStatusOff:])
+			if status&tpStatusVLANValid == 0 {
 				return 0, 0, false
 			}
 			tpid = uint16(ethernet.EtherTypeVLAN)
-			if aux.Status&tpStatusVLANTPIDValid != 0 && aux.VLANTPID != 0 {
-				tpid = aux.VLANTPID
+			if v := binary.NativeEndian.Uint16(data[auxVLANTPIDOff:]); status&tpStatusVLANTPIDValid != 0 && v != 0 {
+				tpid = v
 			}
-			return aux.VLANTCI, tpid, true
+			return binary.NativeEndian.Uint16(data[auxVLANTCIOff:]), tpid, true
 		}
 		next := cmsgAlign(l)
 		if next >= len(oob) {
@@ -376,10 +414,26 @@ func vlanFromAux(oob []byte) (tci, tpid uint16, ok bool) {
 	return 0, 0, false
 }
 
+// cmsgLen returns cmsg_len, a size_t, of the control message at the start
+// of oob (at least syscall.SizeofCmsghdr octets); false when it does not
+// fit the buffer.
+func cmsgLen(oob []byte) (int, bool) {
+	var l uint64
+	if bits.UintSize == 64 {
+		l = binary.NativeEndian.Uint64(oob)
+	} else {
+		l = uint64(binary.NativeEndian.Uint32(oob))
+	}
+	if l > cmsgSpaceAux {
+		return 0, false
+	}
+	return int(l), true
+}
+
 // cmsgAlign rounds a control message length up to the alignment of the
-// platform (CMSG_ALIGN).
+// platform (CMSG_ALIGN: sizeof(size_t)).
 func cmsgAlign(n int) int {
-	const a = int(unsafe.Sizeof(uintptr(0)))
+	const a = bits.UintSize / 8
 	return (n + a - 1) &^ (a - 1)
 }
 

@@ -99,7 +99,7 @@ func newEnv(t *testing.T, devices int) *env {
 	}
 	t.Cleanup(func() { _ = c.Close() })
 	e.client = c
-	for i := 0; i < devices; i++ {
+	for i := range devices {
 		m := mk(byte(0x20 + i))
 		st := &fakeStation{id: Identity{
 			NameOfStation: "dev-" + string(rune('a'+i)),

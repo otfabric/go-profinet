@@ -90,6 +90,36 @@ mux, the DCP client and responder, the LLDP agent, the alarm manager, the RPC
 server, the RT consumers). A decoder used directly returns an error matching
 `ErrMalformed`.
 
+## Values that do not fit their field
+
+A value that does not fit the wire field it goes into is an error, never a
+wrapped or truncated field. Checked when a component is built
+(`ErrInvalidConfig`): `Config.RPCPort` and `ControllerRPCPort` outside
+0..65535, MRP ring ports outside the device's ports, a controller station
+name or MRP domain name above 240 octets, an MRP `TopChangeInterval` or
+`LinkInterval` that is negative or 65.535 s or more, a model too large for
+its 16-bit blocks (`model.Validate`). Checked per call (`ErrInvalidConfig`):
+an RPC body that needs more than 65 536 fragments, an alarm VarPart above
+65 535 octets, `device.SendAlarm` data that does not fit the notification,
+a netstack `WriteTo` port outside 0..65535 or a datagram above 65 535
+octets, a pcap frame time before 1970 or after 2106. A record the device
+cannot encode (for example a diagnosis record grown past 64 KiB by
+`AddDiagnosis`) is answered with an RW read error, not served truncated.
+
+From a peer (`ErrMalformed` or a PNIO status): a record length above the
+octets present, compared without narrowing so 32-bit platforms reject
+0xFFFFFFFF too; a controller Read whose RecordDataLength exceeds `maxLen`;
+a WriteMultiple answer with more results than items; a pcap record
+whose sub-second field is a second or more; a Connect whose
+ModuleDiffBlock could not be encoded in 16 bits (Connect, CMRPC out of
+memory: `ErrResourceExhausted`).
+
+The block encoders of `pnio` and `alarm.PDU.AppendPayload` return no error;
+given a length that does not fit, they panic with an error matching
+`ErrInvalidConfig`, as `strings.Repeat` does on misuse. controller and
+device validate or recover at their boundary, so neither configuration nor
+a peer reaches that panic through them.
+
 ## Lifecycle errors
 
 `controller.Device.State` returns the error of the last failure of the

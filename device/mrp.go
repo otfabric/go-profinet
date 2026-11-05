@@ -53,6 +53,10 @@ type mrpState struct {
 // configured role.
 func (d *Device) startMRP() error {
 	c := *d.cfg.MRP
+	// As for a written PDInterfaceMrpDataAdjust: at most 240 octets.
+	if len(c.DomainName) > 240 {
+		return fmt.Errorf("device: MRP domain name of %d octets (at most 240): %w", len(c.DomainName), profinet.ErrInvalidConfig)
+	}
 	if d.cfg.Bridge == nil {
 		return fmt.Errorf("device: MRP needs a multiport device (Config.Bridge): %w", profinet.ErrInvalidConfig)
 	}
@@ -143,7 +147,7 @@ func (d *Device) isRingPort(subslot uint16) bool {
 		return false
 	}
 	for _, p := range d.mrpSt.cfg.RingPorts {
-		if model.SubslotPort1+uint16(p-1) == subslot {
+		if int(subslot)-int(model.SubslotPort1)+1 == p {
 			return true
 		}
 	}
@@ -186,7 +190,7 @@ func (d *Device) readMRP(q pnio.ReadReq) (b []byte, handled bool, err error) {
 				role = es.Acting
 			}
 		}
-		r := pnio.PDInterfaceMrpDataReal{Domain: st.cfg.Domain, Role: uint16(role), DomainName: st.cfg.DomainName, Version: mrp.Version}
+		r := pnio.PDInterfaceMrpDataReal{Domain: st.cfg.Domain, Role: uint16(min(max(role, mrp.RoleDisabled), mrp.RoleAuto)), DomainName: st.cfg.DomainName, Version: mrp.Version}
 		if st.ent != nil && role == mrp.RoleManager {
 			r.HasRingState = true
 			if !es.RingOpen {

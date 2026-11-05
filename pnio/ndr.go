@@ -20,11 +20,12 @@ const DefaultArgsMaximum = 16696
 // ArgsMaximum, ArgsLength and the conformant varying array header
 // (MaximumCount, Offset, ActualCount), in the byte order o.
 func AppendNDRRequest(b []byte, o rpc.ByteOrder, argsMax uint32, blocks []byte) []byte {
+	n := len32("NDR ArgsLength", len(blocks))
 	b = o.AppendUint32(b, argsMax)
-	b = o.AppendUint32(b, uint32(len(blocks)))
+	b = o.AppendUint32(b, n)
 	b = o.AppendUint32(b, argsMax)
 	b = o.AppendUint32(b, 0)
-	b = o.AppendUint32(b, uint32(len(blocks)))
+	b = o.AppendUint32(b, n)
 	return append(b, blocks...)
 }
 
@@ -48,11 +49,12 @@ func DecodeNDRRequest(body []byte, o rpc.ByteOrder) (uint32, []byte, error) {
 // AppendNDRResponse appends the NDR response header (PNIOStatus first)
 // and the blocks.
 func AppendNDRResponse(b []byte, o rpc.ByteOrder, status Status, argsMax uint32, blocks []byte) []byte {
+	n := len32("NDR ArgsLength", len(blocks))
 	b = status.Append(b)
-	b = o.AppendUint32(b, uint32(len(blocks)))
+	b = o.AppendUint32(b, n)
 	b = o.AppendUint32(b, argsMax)
 	b = o.AppendUint32(b, 0)
-	b = o.AppendUint32(b, uint32(len(blocks)))
+	b = o.AppendUint32(b, n)
 	return append(b, blocks...)
 }
 

@@ -283,9 +283,10 @@ func beginBlock(b []byte, t BlockType, vh, vl uint8) ([]byte, int) {
 	return b, start
 }
 
-// endBlock fills in the length of the block that starts at start.
+// endBlock fills in the length of the block that starts at start. A block
+// longer than its 16-bit length field can express panics (see tooLarge).
 func endBlock(b []byte, start int) []byte {
-	binary.BigEndian.PutUint16(b[start+2:], uint16(len(b)-start-4))
+	binary.BigEndian.PutUint16(b[start+2:], len16("block length", len(b)-start-4))
 	return b
 }
 

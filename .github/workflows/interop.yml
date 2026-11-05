@@ -25,7 +25,7 @@ permissions:
   contents: read
 
 env:
-  INTEROP_REF: ${{ inputs.interop_ref || 'v0.6.0' }}
+  INTEROP_REF: ${{ inputs.interop_ref || 'v0.7.1' }}
   GOWORK: "off"
 
 jobs:
@@ -40,7 +40,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.23.x"
+          go-version: "1.26.x"
 
       - name: Build the reference images
         # Once more on failure: a Debian mirror mid-sync fails apt-get with
@@ -52,9 +52,18 @@ jobs:
       - name: Interop tests
         run: make test-interop
 
+      # The hosted runners cannot run microchip-ung/mrp (switchdev built
+      # in), so its ring tests record n/a here; the Kernel MRP workflow is
+      # their evidence. profinet-interop's matrix leaves them out (since
+      # v0.7.0 it refuses a check without a stable ID), so the matrix is
+      # built from a copy without them; the upload keeps every result.
       - name: Matrix
         if: always()
-        run: make interop-matrix PROFINET_INTEROP_DIR="$RUNNER_TEMP/profinet-interop"
+        run: |
+          mkdir -p "$RUNNER_TEMP/matrix-results"
+          cp interop-results/*.json "$RUNNER_TEMP/matrix-results/"
+          rm -f "$RUNNER_TEMP"/matrix-results/TestMRP*_mrp.json
+          make interop-matrix PROFINET_INTEROP_DIR="$RUNNER_TEMP/profinet-interop" PROFINET_INTEROP_RESULTS="$RUNNER_TEMP/matrix-results"
 
       - name: Upload results
         if: always()

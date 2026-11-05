@@ -4,6 +4,7 @@ package snmp
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-profinet"
 )
@@ -35,19 +36,22 @@ func malformed(format string, a ...any) error {
 	return fmt.Errorf("snmp: %w: "+format, append([]any{profinet.ErrMalformed}, a...)...)
 }
 
-// appendLength appends a definite length in its minimal form.
+// appendLength appends a definite length in its minimal form. The octets
+// are masked: n is the size of content this package built, and Encode
+// rejects any message beyond MaxMessageSize, so a length above four octets
+// never reaches the wire.
 func appendLength(b []byte, n int) []byte {
 	switch {
 	case n < 0x80:
-		return append(b, byte(n))
+		return append(b, byte(n&0x7F))
 	case n <= 0xFF:
-		return append(b, 0x81, byte(n))
+		return append(b, 0x81, byte(n&0xFF))
 	case n <= 0xFFFF:
-		return append(b, 0x82, byte(n>>8), byte(n))
+		return append(b, 0x82, byte(n>>8&0xFF), byte(n&0xFF))
 	case n <= 0xFFFFFF:
-		return append(b, 0x83, byte(n>>16), byte(n>>8), byte(n))
+		return append(b, 0x83, byte(n>>16&0xFF), byte(n>>8&0xFF), byte(n&0xFF))
 	default:
-		return append(b, 0x84, byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+		return append(b, 0x84, byte(n>>24&0xFF), byte(n>>16&0xFF), byte(n>>8&0xFF), byte(n&0xFF))
 	}
 }
 
@@ -65,6 +69,19 @@ func lengthLen(n int) int {
 	default:
 		return 5
 	}
+}
+
+// saturateInt32 converts a count or an index to an Integer32, saturating
+// at its bounds; the counts this package converts (interfaces, variable
+// bindings of one datagram) never come near them.
+func saturateInt32(n int) int32 {
+	switch {
+	case n > math.MaxInt32:
+		return math.MaxInt32
+	case n < math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(n)
 }
 
 // tlvLen is the size of a TLV with a one-octet tag and n content octets.
@@ -131,7 +148,7 @@ func appendInt(b []byte, v int64) []byte {
 		n++
 	}
 	for i := n - 1; i >= 0; i-- {
-		b = append(b, byte(v>>(8*i)))
+		b = append(b, byte(v>>(8*i)&0xFF))
 	}
 	return b
 }
@@ -148,7 +165,7 @@ func appendUint(b []byte, v uint64) []byte {
 			b = append(b, 0)
 			continue
 		}
-		b = append(b, byte(v>>(8*i)))
+		b = append(b, byte(v>>(8*i)&0xFF))
 	}
 	return b
 }
@@ -174,11 +191,13 @@ func decodeInt32(c []byte) (int32, error) {
 	if len(c) > 4 {
 		return 0, malformed("INTEGER of %d octets exceeds Integer32", len(c))
 	}
-	v := int64(int8(c[0]))
+	// Sign-extend the first octet, then shift in the rest: at most four
+	// octets fill exactly 32 bits.
+	v := int32(c[0]&0x7F) - int32(c[0]&0x80)
 	for _, x := range c[1:] {
-		v = v<<8 | int64(x)
+		v = v<<8 | int32(x)
 	}
-	return int32(v), nil
+	return v, nil
 }
 
 // decodeUint decodes the content octets of a non-negative INTEGER of at

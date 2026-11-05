@@ -411,7 +411,7 @@ func StandardDAP(name string, ident uint32, ports int) Module {
 		{Name: name, IdentNumber: 0x00000001, Subslot: SubslotDAP},
 		{Name: "Interface", IdentNumber: 0x00008000, Subslot: SubslotInterface},
 	}}
-	for i := 0; i < ports; i++ {
+	for i := range ports {
 		m.Submodules = append(m.Submodules, Submodule{Name: fmt.Sprintf("Port %d", i+1), IdentNumber: 0x00008001 + uint32(i), Subslot: SubslotPort1 + uint16(i)})
 	}
 	return m

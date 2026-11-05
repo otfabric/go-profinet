@@ -183,7 +183,7 @@ func TestPnetAlarms(t *testing.T) {
 	time.Sleep(time.Second)
 	// Button 2 steps through process alarm, diagnosis add, update and
 	// removal, logbook entry, ... (one action per press).
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		e.exec(dev, "profinet-interop", "button2")
 		time.Sleep(1500 * time.Millisecond)
 	}

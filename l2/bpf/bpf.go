@@ -70,7 +70,7 @@ func Open(name string, opts Options) (*Port, error) {
 	}
 	fd := -1
 	var lastErr error
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		fd, err = syscall.Open(fmt.Sprintf("/dev/bpf%d", i), syscall.O_RDWR|syscall.O_CLOEXEC, 0)
 		if err == nil {
 			break
@@ -215,10 +215,7 @@ func nextRecord(b []byte) (rec, rest []byte, ok bool) {
 	if start < hdrLen-2 || end > len(b) {
 		return nil, nil, false
 	}
-	next := wordAlign(end)
-	if next > len(b) {
-		next = len(b)
-	}
+	next := min(wordAlign(end), len(b))
 	if h.Caplen < h.Datalen {
 		return nil, b[next:], true
 	}

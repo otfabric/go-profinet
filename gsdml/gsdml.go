@@ -26,6 +26,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -142,8 +143,7 @@ func walk(v reflect.Value, fn func(attrs *[]xml.Attr, n *Node)) {
 			walk(v.Index(i), fn)
 		}
 	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			f := v.Field(i)
+		for _, f := range v.Fields() {
 			if a, ok := f.Addr().Interface().(*[]xml.Attr); ok {
 				fn(a, nil)
 				continue
@@ -334,13 +334,19 @@ func parseUint(s string, bits int) (uint64, error) {
 // ParseUint32 parses a decimal or 0x hexadecimal attribute value.
 func ParseUint32(s string) (uint32, error) {
 	v, err := parseUint(s, 32)
-	return uint32(v), err
+	if err != nil || v > math.MaxUint32 {
+		return 0, err
+	}
+	return uint32(v), nil
 }
 
 // ParseUint16 parses a decimal or 0x hexadecimal attribute value.
 func ParseUint16(s string) (uint16, error) {
 	v, err := parseUint(s, 16)
-	return uint16(v), err
+	if err != nil || v > math.MaxUint16 {
+		return 0, err
+	}
+	return uint16(v), nil
 }
 
 // ParseBool parses a Boolean attribute value; empty is def.
@@ -356,13 +362,17 @@ func ParseBool(s string, def bool) bool {
 }
 
 // ParseValueList parses a ValueList attribute ("1..4 6") into its values.
-// It bounds the expansion to max values.
+// It bounds the expansion to limit values; a negative limit allows none.
 func ParseValueList(s string, limit int) ([]uint32, error) {
 	var out []uint32
-	for _, tok := range strings.Fields(s) {
+	maxValues := uint64(0)
+	if limit > 0 {
+		maxValues = uint64(limit)
+	}
+	for tok := range strings.FieldsSeq(s) {
 		lo, hi := tok, tok
-		if i := strings.Index(tok, ".."); i >= 0 {
-			lo, hi = tok[:i], tok[i+2:]
+		if before, after, ok := strings.Cut(tok, ".."); ok {
+			lo, hi = before, after
 		}
 		a, err := strconv.ParseUint(lo, 10, 32)
 		if err != nil {
@@ -372,10 +382,10 @@ func ParseValueList(s string, limit int) ([]uint32, error) {
 		if err != nil || b < a {
 			return nil, fmt.Errorf("gsdml: %w: value list %q", profinet.ErrMalformed, s)
 		}
-		if uint64(len(out))+b-a+1 > uint64(limit) {
+		if uint64(len(out))+b-a+1 > maxValues {
 			return nil, fmt.Errorf("gsdml: %w: value list %q has more than %d values", profinet.ErrResourceExhausted, s, limit)
 		}
-		for x := a; x <= b; x++ {
+		for x := a; x <= b && x <= math.MaxUint32; x++ {
 			out = append(out, uint32(x))
 		}
 	}

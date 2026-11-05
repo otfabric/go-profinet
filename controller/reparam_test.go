@@ -80,8 +80,7 @@ func TestReparameterize(t *testing.T) {
 	// stays, in Parameterizing at the device until the controller gives
 	// up on it.
 	err := cd.Reparameterize(ctx, []Parameter{{Slot: 2, Subslot: 1, Index: 0x7777, Data: []byte{1}}})
-	var se *pnio.StatusError
-	if !errors.As(err, &se) {
+	if _, ok := errors.AsType[*pnio.StatusError](err); !ok {
 		t.Fatalf("refused write: %v", err)
 	}
 	if ars := dev.ARs(); len(ars) != 1 {
