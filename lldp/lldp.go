@@ -100,7 +100,7 @@ type Frame struct {
 	PortDescription   string        `json:"portDescription,omitempty"`
 	SystemName        string        `json:"systemName,omitempty"`
 	SystemDescription string        `json:"systemDescription,omitempty"`
-	ManagementAddr    netip.Addr    `json:"managementAddress,omitempty"`
+	ManagementAddr    netip.Addr    `json:"managementAddress"`
 	PortStatus        *PortStatus   `json:"portStatus,omitempty"`
 	ChassisMAC        *ethernet.MAC `json:"chassisMac,omitempty"`
 	Delay             *Delay        `json:"delay,omitempty"`

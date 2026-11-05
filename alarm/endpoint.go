@@ -325,7 +325,7 @@ func NewManager(mux *l2.Mux) (*Manager, error) {
 func (m *Manager) AllocRef() uint16 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i := 0; i < 0xFFFE; i++ {
+	for range 0xFFFE {
 		r := m.nextRef
 		m.nextRef++
 		if m.nextRef == 0xFFFF {

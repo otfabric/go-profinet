@@ -104,7 +104,7 @@ func TestChaos(t *testing.T) {
 					// Generous: 40% loss on a loaded CI machine still makes progress.
 					ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 					defer cancel()
-					for i := 0; i < 5; i++ {
+					for range 5 {
 						ar := cd.ARUUID()
 						if _, err := cd.ReadIM0(ctx); err != nil {
 							// Under heavy loss the device may close the AR
@@ -159,7 +159,7 @@ func TestMalformedInput(t *testing.T) {
 		frameIDs := []uint16{dcp.FrameIDGetSet, dcp.FrameIDIdentifyRequest, dcp.FrameIDIdentifyResponse, pnio.FrameIDAlarmHigh, pnio.FrameIDAlarmLow, 0xC000, 0xC001, 0x8000}
 		conn, _ := attacker.stack.ListenUDP(0)
 		ctx := context.Background()
-		for i := 0; i < 3000; i++ {
+		for i := range 3000 {
 			dst := targets[rng.IntN(len(targets))]
 			n := rng.IntN(120)
 			payload := make([]byte, n)
@@ -229,9 +229,9 @@ func TestReconnectStorm(t *testing.T) {
 			devs[i], _ = e.device(fmt.Sprintf("s%d", i), fmt.Sprintf("192.168.0.%d", 10+i), testModel(), nil)
 		}
 		ctrl, _ := e.controller("192.168.0.1")
-		for round := 0; round < 5; round++ {
+		for round := range 5 {
 			done := make(chan error, n)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				go func(i int) {
 					cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: fmt.Sprintf("s%d", i), Model: testModel()})
 					if err != nil {
@@ -245,7 +245,7 @@ func TestReconnectStorm(t *testing.T) {
 					done <- err
 				}(i)
 			}
-			for i := 0; i < n; i++ {
+			for range n {
 				if err := <-done; err != nil {
 					t.Fatalf("round %d: %v", round, err)
 				}

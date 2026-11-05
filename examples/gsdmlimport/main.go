@@ -33,8 +33,7 @@ func main() {
 		log.Fatal(err)
 	}
 	if err := gsdml.Validate(doc); err != nil {
-		var ve *gsdml.ValidationError
-		if errors.As(err, &ve) {
+		if ve, ok := errors.AsType[*gsdml.ValidationError](err); ok {
 			fmt.Printf("%d validation issue(s), first: %s\n", len(ve.Issues), ve.Issues[0])
 		}
 	} else {

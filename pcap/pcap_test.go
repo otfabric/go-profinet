@@ -107,12 +107,12 @@ func TestWriterConcurrent(t *testing.T) {
 	w, _ := NewWriter(&buf)
 	var wg sync.WaitGroup
 	const n, per = 8, 50
-	for g := 0; g < n; g++ {
+	for g := range n {
 		wg.Add(1)
 		go func(g int) {
 			defer wg.Done()
 			f := bytes.Repeat([]byte{byte(g)}, 60+g)
-			for i := 0; i < per; i++ {
+			for range per {
 				if err := w.WriteFrame(time.Now(), f); err != nil {
 					t.Error(err)
 				}

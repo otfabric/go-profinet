@@ -724,9 +724,7 @@ func (d *Device) storeOutputs(a *ar, c []byte, s rt.DataStatus) {
 
 // watchIdle releases an IOSAR without traffic for its activity timeout.
 func (d *Device) watchIdle(a *ar) {
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
+	d.wg.Go(func() {
 		t := time.NewTicker(max(a.cmiTimeout/4, 50*time.Millisecond))
 		defer t.Stop()
 		for {
@@ -748,7 +746,7 @@ func (d *Device) watchIdle(a *ar) {
 				return
 			}
 		}
-	}()
+	})
 }
 
 // controllerName is the station name of the AR's controller; empty for
@@ -825,9 +823,7 @@ func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 // prmEnd handles the end of parameterization: the response is sent by the
 // caller; the application is asked and ApplicationReady is sent here.
 func (d *Device) prmEnd(a *ar) {
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
+	d.wg.Go(func() {
 		ctx, cancel := context.WithTimeout(d.ctx, a.cmiTimeout)
 		defer cancel()
 		if err := d.handler.PrmEnd(ctx, a.info()); err != nil {
@@ -862,7 +858,7 @@ func (d *Device) prmEnd(a *ar) {
 			return
 		}
 		a.consumer.Arm(time.Now())
-	}()
+	})
 }
 
 // applicationReady calls the controller's Control operation with the

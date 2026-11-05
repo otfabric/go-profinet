@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -152,12 +153,7 @@ var stateTransitions = map[State][]State{
 
 // CanTransition reports whether the lifecycle allows from → to.
 func CanTransition(from, to State) bool {
-	for _, s := range stateTransitions[from] {
-		if s == to {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(stateTransitions[from], to)
 }
 
 // DeviceStats are the counters of a device.

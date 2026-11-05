@@ -471,10 +471,10 @@ func TestHellos(t *testing.T) {
 	<-ch2
 	// A second Hello overflows ch2 (buffer 1) once it is full; it must
 	// not block delivery to ch.
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		raw.send(t, ethernet.DCPHelloMulticast, &Frame{FrameID: FrameIDHello, Service: ServiceHello, Type: TypeRequest, Xid: 100, Blocks: id.Blocks()})
 	}
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		select {
 		case <-ch:
 		case <-time.After(5 * time.Second):
@@ -540,7 +540,7 @@ func TestClientQueueFull(t *testing.T) {
 	_, c, raw := newClientEnv(t, ClientOptions{Logger: log})
 	x, _ := c.register(1)
 	defer c.unregister(x)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		raw.send(t, clientMAC, &Frame{FrameID: FrameIDGetSet, Service: ServiceGet, Type: TypeResponseSuccess, Xid: x})
 	}
 	waitFor(t, "queue full warning", func() bool { return log.has("queue of transaction") })
@@ -828,7 +828,7 @@ func delayedMAC(t *testing.T, min time.Duration) ethernet.MAC {
 	t.Helper()
 	n := vnet.New(1)
 	defer func() { _ = n.Close() }()
-	for i := 0; i < 255; i++ {
+	for i := range 255 {
 		mac := ethernet.MAC{2, 0, 0, 0, 1, byte(i)}
 		ep, err := n.NewEndpoint(vnet.EndpointConfig{MAC: mac})
 		if err != nil {

@@ -285,7 +285,7 @@ func TestStandardDAP(t *testing.T) {
 		if s, ok := m.Submodule(SubslotInterface); !ok || s.IdentNumber != 0x8000 {
 			t.Fatalf("interface %+v", s)
 		}
-		for i := 0; i < n; i++ {
+		for i := range n {
 			s, ok := m.Submodule(SubslotPort1 + uint16(i))
 			if !ok || s.IdentNumber != 0x8001+uint32(i) || s.Name != "Port "+string(rune('1'+i)) || s.Type() != pnio.SubmoduleNoIO {
 				t.Fatalf("port %d: %+v", i+1, s)

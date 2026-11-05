@@ -365,9 +365,7 @@ func (s *Server) request(addr net.Addr, h *Header, body []byte) {
 	req := &Request{Header: *h, Body: full, Addr: addr}
 	// At most one call per activity executes, so the goroutines waiting
 	// for a worker are bounded by MaxActivities.
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		select {
 		case s.sem <- struct{}{}:
 		case <-s.ctx.Done():
@@ -379,8 +377,7 @@ func (s *Server) request(addr net.Addr, h *Header, body []byte) {
 		out, err := reg.handler.ServeRPC(ctx, req)
 		var pkts [][]byte
 		if err != nil {
-			var f *Fault
-			if errors.As(err, &f) {
+			if f, ok := errors.AsType[*Fault](err); ok {
 				pkts = s.faultPackets(h, f.Reject, f.Status)
 			} else {
 				s.log.Warnf("rpc: handler for opnum %d from %s: %v", h.OpNum, addr, err)
@@ -391,7 +388,7 @@ func (s *Server) request(addr net.Addr, h *Header, body []byte) {
 			pkts = packets(rh, out, s.opts.MaxFragmentBody)
 		}
 		s.finish(h, a, pkts)
-	}()
+	})
 }
 
 // touch records a use of an activity; s.mu is held.

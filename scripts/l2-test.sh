@@ -5,7 +5,7 @@
 # Inside a Linux machine with the capabilities, run the same with
 # PROFINET_L2_INSIDE=1.
 set -eu
-GO_IMAGE=${GO_IMAGE:-golang:1.23-bookworm}
+GO_IMAGE=${GO_IMAGE:-golang:1.26-bookworm}
 if [ "${PROFINET_L2_INSIDE:-}" != 1 ]; then
 	exec docker run --rm --cap-add NET_RAW --cap-add NET_ADMIN \
 		-e PROFINET_L2_INSIDE=1 -e GOFLAGS="${GOFLAGS:-}" -e GOWORK=off \

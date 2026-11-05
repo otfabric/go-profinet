@@ -80,13 +80,11 @@ func (d *Device) startSNMP() error {
 	if err != nil {
 		return err
 	}
-	d.wg.Add(1)
-	go func() {
-		defer d.wg.Done()
+	d.wg.Go(func() {
 		if err := a.Serve(d.ctx); err != nil && d.ctx.Err() == nil {
 			d.log.Warnf("device: SNMP: %v", err)
 		}
-	}()
+	})
 	return nil
 }
 

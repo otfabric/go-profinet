@@ -85,9 +85,7 @@ func contract(t *testing.T, s Store) {
 	// Concurrent use.
 	var wg sync.WaitGroup
 	for i := range 8 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			k := fmt.Sprintf("c%d", i%3)
 			for j := range 20 {
 				if err := s.Save(ctx, k, []byte(fmt.Sprint(j))); err != nil {
@@ -99,7 +97,7 @@ func contract(t *testing.T, s Store) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

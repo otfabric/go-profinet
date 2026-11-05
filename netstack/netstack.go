@@ -222,7 +222,7 @@ func (s *Stack) ListenUDP(port uint16) (*PacketConn, error) {
 	default:
 	}
 	if port == 0 {
-		for i := 0; i < 65536-ephemeralLo; i++ {
+		for range 65536 - ephemeralLo {
 			p := s.nextEph
 			s.nextEph++
 			if s.nextEph == 0 {
@@ -458,7 +458,7 @@ func (s *Stack) resolve(ctx context.Context, dst netip.Addr) (ethernet.MAC, erro
 	s.mu.Unlock()
 
 	deadline := time.Now().Add(s.cfg.ARPTimeout)
-	for attempt := 0; attempt < 3; attempt++ {
+	for attempt := range 3 {
 		if err := s.sendARP(ctx, 1, ethernet.MAC{}, own, next); err != nil {
 			return ethernet.MAC{}, err
 		}

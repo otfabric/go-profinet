@@ -62,9 +62,8 @@ func (d *Device) serveRPC(ctx context.Context, req *rpc.Request) ([]byte, error)
 
 // statusResponse returns the NDR response of a failed call.
 func (d *Device) statusResponse(o rpc.ByteOrder, op pnio.OpNum, err error, argsMax uint32) []byte {
-	var se *pnio.StatusError
 	st := pnio.ServiceStatus(serviceCode(op), pnio.Code1CMRPC, pnio.CMRPCStateConflict)
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 		st = se.Status
 		if st.Code == 0 || st.Code == pnio.CodePNIO {
 			st.Code = serviceCode(op)
@@ -249,8 +248,7 @@ func asStatus(err error, write bool) pnio.Status {
 	if err == nil {
 		return pnio.Status{}
 	}
-	var se *pnio.StatusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 		st := se.Status
 		if st.Code == 0 || st.Code == pnio.CodePNIO {
 			st.Code = pnio.CodeRead

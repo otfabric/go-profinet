@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"errors"
+	"maps"
 	"sync"
 	"testing"
 	"time"
@@ -55,9 +56,7 @@ func (h *stateRec) snapshot() ([]device.ARState, map[pnio.Index][]byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	m := map[pnio.Index][]byte{}
-	for k, v := range h.recWrite {
-		m[k] = v
-	}
+	maps.Copy(m, h.recWrite)
 	return append([]device.ARState(nil), h.states...), m
 }
 

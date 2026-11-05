@@ -204,7 +204,7 @@ func TestConcurrentCalls(t *testing.T) {
 	defer func() { _ = c.Close() }()
 	var wg sync.WaitGroup
 	errs := make(chan error, 64)
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()

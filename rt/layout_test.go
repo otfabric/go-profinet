@@ -123,7 +123,7 @@ func TestComputeLayoutSizes(t *testing.T) {
 	}
 	// Overflow over many submodules (where a uint16 offset would wrap).
 	var many []SubmoduleIO
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		many = append(many, SubmoduleIO{Slot: uint16(i), Type: pnio.SubmoduleInput, InputLen: 1000})
 	}
 	if _, err := ComputeLayout(pnio.IOCRInput, many); !errors.Is(err, profinet.ErrInvalidConfig) {

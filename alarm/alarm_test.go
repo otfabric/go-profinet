@@ -480,7 +480,7 @@ func TestFirstSequence(t *testing.T) {
 		}
 		return false
 	}})
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if err := ea.Send(context.Background(), []byte{byte(i)}); err != nil {
 			t.Fatal(err)
 		}
@@ -503,7 +503,7 @@ func TestSequenceWrap(t *testing.T) {
 	eb.mu.Lock()
 	eb.expect, eb.lastRecv = 0x7FFE, 0x7FFD
 	eb.mu.Unlock()
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		if err := ea.Send(context.Background(), []byte{byte(i)}); err != nil {
 			t.Fatalf("send %d: %v", i, err)
 		}
@@ -676,7 +676,7 @@ func TestSlowApplication(t *testing.T) {
 	const total = 40
 	done := make(chan error, 1)
 	go func() {
-		for i := 0; i < total; i++ {
+		for i := range total {
 			if err := ea.Send(context.Background(), []byte{byte(i)}); err != nil {
 				done <- err
 				return

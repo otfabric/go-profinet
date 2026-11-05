@@ -168,13 +168,11 @@ func (c *Controller) start() error {
 	c.rpcCli = rpc.NewClient(cli, true, rpc.ClientOptions{Logger: c.log, Activities: 16, Retransmit: 500 * time.Millisecond})
 	if !c.cfg.IgnoreHello {
 		hellos := c.dcp.Hellos(c.ctx, 64)
-		c.wg.Add(1)
-		go func() {
-			defer c.wg.Done()
+		c.wg.Go(func() {
 			for id := range hellos {
 				c.hello(id)
 			}
-		}()
+		})
 	}
 	return nil
 }
@@ -327,8 +325,7 @@ func (c *Controller) serveRPC(_ context.Context, req *rpc.Request) ([]byte, erro
 	}
 	cb, err := pnio.DecodeControlBlock(blk)
 	if err != nil {
-		var se *pnio.StatusError
-		if errors.As(err, &se) {
+		if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 			return fail(se.Status)
 		}
 		return fail(pnio.ServiceStatus(pnio.CodeControl, pnio.Code1AppReady, 1))

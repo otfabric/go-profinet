@@ -167,8 +167,7 @@ func TestNoAllocations(t *testing.T) {
 		t.Skip("the race detector allocates")
 	}
 	a, b := pair(t)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	f := ethernet.Frame{Dst: b.HardwareAddr(), Src: a.HardwareAddr(), EtherType: 0x88B5, Payload: make([]byte, 46)}
 	frame := f.Encode()
 	buf := make([]byte, 1600)

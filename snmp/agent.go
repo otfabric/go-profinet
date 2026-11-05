@@ -217,9 +217,7 @@ func (a *Agent) Serve(ctx context.Context) error {
 	a.mu.Unlock()
 	quit := make(chan struct{})
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		select {
 		case <-ctx.Done():
 			a.mu.Lock()
@@ -227,7 +225,7 @@ func (a *Agent) Serve(ctx context.Context) error {
 			a.mu.Unlock()
 		case <-quit:
 		}
-	}()
+	})
 	defer func() {
 		close(quit)
 		wg.Wait()
@@ -315,8 +313,7 @@ func (a *Agent) Handle(b []byte) []byte {
 	a.c.inPkts.Add(1)
 	m, err := Decode(b)
 	if err != nil {
-		var ve *VersionError
-		if errors.As(err, &ve) {
+		if _, ok := errors.AsType[*VersionError](err); ok {
 			// A message of another version is discarded and counted
 			// (RFC 1157 section 4.1 step 2, RFC 3412 section 4.2.1).
 			a.c.inBadVersions.Add(1)
@@ -498,7 +495,7 @@ func (a *Agent) bulk(resp *Message, view *view, req *Message) []byte {
 	}
 	for rep := 0; rep < m && r > 0 && !full; rep++ {
 		ended := true
-		for j := 0; j < r; j++ {
+		for j := range r {
 			vb := next(cur[j])
 			if !add(vb) {
 				break

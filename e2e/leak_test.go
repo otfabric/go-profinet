@@ -36,7 +36,7 @@ func TestNoLeaks(t *testing.T) {
 		return runtime.NumGoroutine()
 	}
 	before := settle()
-	for round := 0; round < 3; round++ {
+	for round := range 3 {
 		session(t, uint64(round))
 	}
 	deadline := time.Now().Add(5 * time.Second)

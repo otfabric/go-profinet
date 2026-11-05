@@ -251,9 +251,7 @@ func (r *Responder) handleIdentify(ctx context.Context, src ethernet.MAC, f *Fra
 		return
 	}
 	r.pendingIdentify.Add(1)
-	r.wg.Add(1)
-	go func() {
-		defer r.wg.Done()
+	r.wg.Go(func() {
 		defer r.pendingIdentify.Add(-1)
 		t := time.NewTimer(delay)
 		defer t.Stop()
@@ -262,7 +260,7 @@ func (r *Responder) handleIdentify(ctx context.Context, src ethernet.MAC, f *Fra
 			r.reply(ctx, src, resp)
 		case <-ctx.Done():
 		}
-	}()
+	})
 }
 
 func (r *Responder) handleGet(ctx context.Context, src ethernet.MAC, f *Frame) {

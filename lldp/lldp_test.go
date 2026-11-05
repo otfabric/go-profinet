@@ -74,7 +74,7 @@ func TestRoundTrip(t *testing.T) {
 		p += 2 + int(binary.BigEndian.Uint16(b2[p:])&0x1FF)
 		bounds = append(bounds, p)
 	}
-	for n := 0; n < len(b2); n++ {
+	for n := range b2 {
 		p, h := 0, 0
 		for i, q := range bounds {
 			if q <= n {

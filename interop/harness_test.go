@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -333,10 +334,8 @@ func (e *env) waitEvent(container string, timeout time.Duration, what string, ma
 func (e *env) eventually(container string, timeout time.Duration, match func(map[string]any) bool) bool {
 	deadline := time.Now().Add(timeout)
 	for {
-		for _, ev := range e.events(container) {
-			if match(ev) {
-				return true
-			}
+		if slices.ContainsFunc(e.events(container), match) {
+			return true
 		}
 		if time.Now().After(deadline) {
 			return false
@@ -381,9 +380,9 @@ func hasEvent(evs []map[string]any, name string) bool {
 }
 
 func last(evs []map[string]any, name string) map[string]any {
-	for i := len(evs) - 1; i >= 0; i-- {
-		if evs[i]["event"] == name {
-			return evs[i]
+	for _, ev := range slices.Backward(evs) {
+		if ev["event"] == name {
+			return ev
 		}
 	}
 	return nil

@@ -942,7 +942,7 @@ func TestReadDeadlineChangeWhileBlocked(t *testing.T) {
 		errc <- err
 	}()
 	// Extending the deadline while blocked keeps the read waiting.
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		time.Sleep(5 * time.Millisecond)
 		_ = c.SetReadDeadline(time.Now().Add(time.Hour))
 	}

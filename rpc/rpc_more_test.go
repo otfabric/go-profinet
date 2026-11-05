@@ -471,7 +471,7 @@ func TestClientActivities(t *testing.T) {
 	// A call after Close fails with ErrClosed every time, although an
 	// activity is free (regression: the select picked at random and the
 	// call failed with the socket's error).
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		if _, err := c.Do(context.Background(), n2.LocalAddr(), Call{}); !errors.Is(err, profinet.ErrClosed) {
 			t.Fatalf("after close: %v", err)
 		}

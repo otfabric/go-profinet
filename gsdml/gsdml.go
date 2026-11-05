@@ -142,8 +142,7 @@ func walk(v reflect.Value, fn func(attrs *[]xml.Attr, n *Node)) {
 			walk(v.Index(i), fn)
 		}
 	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			f := v.Field(i)
+		for _, f := range v.Fields() {
 			if a, ok := f.Addr().Interface().(*[]xml.Attr); ok {
 				fn(a, nil)
 				continue
@@ -359,10 +358,10 @@ func ParseBool(s string, def bool) bool {
 // It bounds the expansion to max values.
 func ParseValueList(s string, limit int) ([]uint32, error) {
 	var out []uint32
-	for _, tok := range strings.Fields(s) {
+	for tok := range strings.FieldsSeq(s) {
 		lo, hi := tok, tok
-		if i := strings.Index(tok, ".."); i >= 0 {
-			lo, hi = tok[:i], tok[i+2:]
+		if before, after, ok := strings.Cut(tok, ".."); ok {
+			lo, hi = before, after
 		}
 		a, err := strconv.ParseUint(lo, 10, 32)
 		if err != nil {

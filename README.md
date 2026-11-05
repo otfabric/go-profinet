@@ -1,6 +1,6 @@
 # go-profinet - PROFINET IO Controller, Device, DCP, LLDP and GSDML Library for Go
 
-[![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/otfabric/go-profinet.svg)](https://pkg.go.dev/github.com/otfabric/go-profinet)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Status](https://github.com/otfabric/go-profinet/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/go-profinet/actions/workflows/ci.yml)
@@ -135,7 +135,7 @@ as of October 2026. If you spot an inaccuracy, please
 go get github.com/otfabric/go-profinet
 ```
 
-Requires Go 1.23 or later.
+Requires Go 1.26 or later.
 
 ## Project structure
 

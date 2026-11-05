@@ -139,7 +139,7 @@ func once(t *testing.T, nodes []*node, from int) {
 	t.Helper()
 	mgr := nodes[0].ent
 	var got []int64
-	for try := 0; try < 3; try++ {
+	for try := range 3 {
 		tr := mgr.Status().Transitions
 		before := make([]int64, len(nodes))
 		for i, nd := range nodes {

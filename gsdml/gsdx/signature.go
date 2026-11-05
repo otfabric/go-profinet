@@ -362,7 +362,7 @@ func certificate(source string, der []byte) Certificate {
 // query. It is percent-decoded as a URI component, not as a form: the "+"
 // of "+xml" content types stays a "+".
 func contentTypeQuery(q string) string {
-	for _, kv := range strings.Split(q, "&") {
+	for kv := range strings.SplitSeq(q, "&") {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok || k != "ContentType" {
 			continue

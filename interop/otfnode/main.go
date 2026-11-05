@@ -247,7 +247,7 @@ func runController(args []string) error {
 	}
 	if *slots != "" {
 		var nums []uint16
-		for _, s := range strings.Split(*slots, ",") {
+		for s := range strings.SplitSeq(*slots, ",") {
 			n, err := strconv.ParseUint(strings.TrimSpace(s), 0, 16)
 			if err != nil {
 				return fmt.Errorf("slots: %w", err)
@@ -399,8 +399,7 @@ func runController(args []string) error {
 		r := map[string]any{"op": "write", "slot": slot, "subslot": sub, "index": uint16(idx)}
 		if err := d.WriteRecord(rctx, controller.Record{Slot: slot, Subslot: sub, Index: idx}, data); err != nil {
 			r["error"] = err.Error()
-			var se *pnio.StatusError
-			if errors.As(err, &se) {
+			if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 				r["status"] = se.Status.String()
 			}
 		}
@@ -415,8 +414,7 @@ func runController(args []string) error {
 		v, err := d.ReadRecord(rctx, controller.Record{Slot: slot, Subslot: sub, Index: idx}, 0)
 		if err != nil {
 			r["error"] = err.Error()
-			var se *pnio.StatusError
-			if errors.As(err, &se) {
+			if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 				r["status"] = se.Status.String()
 			}
 		} else {

@@ -156,7 +156,7 @@ func TestDCPFlood(t *testing.T) {
 			t.Fatal(err)
 		}
 		flood := func(n int) {
-			for i := 0; i < n; i++ {
+			for i := range n {
 				src := ethernet.MAC{0x02, byte(rng.Uint32()), byte(rng.Uint32()), byte(rng.Uint32()), byte(rng.Uint32()), byte(rng.Uint32())}
 				dst, payload := ethernet.DCPIdentifyMulticast, identify
 				if i%2 == 1 {

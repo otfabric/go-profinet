@@ -849,9 +849,7 @@ func (e *Entity) sendLinkChange(via int, up bool, about int) {
 	e.mu.Lock()
 	gen := e.linkGen
 	e.mu.Unlock()
-	e.wg.Add(1)
-	go func() {
-		defer e.wg.Done()
+	e.wg.Go(func() {
 		for n := 0; n < e.cfg.Profile.LinkRepeat; n++ {
 			// Stop when the link changed again: a newer change started,
 			// or the port's link (read now, not as last polled) is no
@@ -870,7 +868,7 @@ func (e *Entity) sendLinkChange(via int, up bool, about int) {
 			case <-time.After(e.cfg.Profile.LinkInterval):
 			}
 		}
-	}()
+	})
 }
 
 // send sends an MRP frame on a ring port with the next sequence number.

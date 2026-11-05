@@ -37,7 +37,7 @@ func TestQueueOverflow(t *testing.T) {
 	n := New(1)
 	a := newEP(t, n, EndpointConfig{MAC: mac(1)})
 	b := newEP(t, n, EndpointConfig{MAC: mac(2), QueueLen: 2})
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		write(t, a, frame(mac(2), mac(1), uint32(i)))
 	}
 	got := drain(b)
@@ -204,7 +204,7 @@ func TestTaps(t *testing.T) {
 func TestFaultLoss(t *testing.T) {
 	_, a, b := pair(t, 7)
 	a.SetFaults(Faults{Loss: 1})
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		write(t, a, frame(mac(2), mac(1), uint32(i)))
 	}
 	if len(drain(b)) != 0 || a.Stats().Dropped != 10 || a.Stats().Sent != 10 {
@@ -212,7 +212,7 @@ func TestFaultLoss(t *testing.T) {
 	}
 	a.SetFaults(Faults{Loss: 0.5})
 	const total = 2000
-	for i := 0; i < total; i++ {
+	for i := range total {
 		write(t, a, frame(mac(2), mac(1), uint32(i)))
 	}
 	got := len(drain(b))
@@ -232,14 +232,14 @@ func TestFaultLoss(t *testing.T) {
 func TestFaultDuplicate(t *testing.T) {
 	_, a, b := pair(t, 7)
 	a.SetFaults(Faults{Duplicate: 1})
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		write(t, a, frame(mac(2), mac(1), uint32(i)))
 	}
 	got := drain(b)
 	if len(got) != 10 {
 		t.Fatalf("got %d frames", len(got))
 	}
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		if seqOf(t, got[2*i]) != uint32(i) || !bytes.Equal(got[2*i], got[2*i+1]) {
 			t.Fatalf("frame %d not duplicated in place", i)
 		}
@@ -257,7 +257,7 @@ func TestFaultDuplicate(t *testing.T) {
 func TestFaultCorrupt(t *testing.T) {
 	_, a, b := pair(t, 7)
 	a.SetFaults(Faults{Corrupt: 1})
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		orig := frame(mac(2), mac(1), uint32(i))
 		write(t, a, orig)
 		got := drain(b)
@@ -372,7 +372,7 @@ func TestFaultDelay(t *testing.T) {
 	// Delayed duplicates arrive too.
 	a.SetFaults(Faults{Delay: time.Millisecond, Duplicate: 1})
 	write(t, a, frame(mac(2), mac(1), 2))
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if s := seqOf(t, read(t, b)); s != 2 {
 			t.Fatalf("copy %d: got %d", i, s)
 		}
@@ -383,10 +383,10 @@ func TestFaultJitterKeepsOrder(t *testing.T) {
 	_, a, b := pair(t, 7)
 	a.SetFaults(Faults{Jitter: 3 * time.Millisecond})
 	const total = 300
-	for i := 0; i < total; i++ {
+	for i := range total {
 		write(t, a, frame(mac(2), mac(1), uint32(i)))
 	}
-	for i := 0; i < total; i++ {
+	for i := range total {
 		if s := seqOf(t, read(t, b)); s != uint32(i) {
 			t.Fatalf("frame %d arrived as %d", s, i)
 		}
@@ -460,7 +460,7 @@ func decisions(t *testing.T, seed uint64, noise bool) (delivered []uint32, corru
 		other.SetFaults(Faults{Loss: 0.5})
 	}
 	a.SetFaults(Faults{Loss: 0.5, Corrupt: 0.3})
-	for i := 0; i < 500; i++ {
+	for i := range 500 {
 		orig := frame(mac(2), mac(1), uint32(i))
 		write(t, a, orig)
 		if other != nil {
@@ -511,7 +511,7 @@ func TestConcurrentSenders(t *testing.T) {
 	rx := newEP(t, n, EndpointConfig{MAC: mac(100), QueueLen: 4096})
 	const senders, per = 8, 200
 	var wg sync.WaitGroup
-	for s := 0; s < senders; s++ {
+	for s := range senders {
 		e := newEP(t, n, EndpointConfig{MAC: mac(byte(s + 1))})
 		if s%2 == 0 {
 			e.SetFaults(Faults{Jitter: time.Millisecond})
@@ -519,7 +519,7 @@ func TestConcurrentSenders(t *testing.T) {
 		wg.Add(1)
 		go func(e *Endpoint) {
 			defer wg.Done()
-			for i := 0; i < per; i++ {
+			for i := range per {
 				if err := e.WriteFrame(context.Background(), frame(ethernet.Broadcast, e.HardwareAddr(), uint32(i))); err != nil {
 					t.Error(err)
 					return
@@ -528,7 +528,7 @@ func TestConcurrentSenders(t *testing.T) {
 		}(e)
 	}
 	next := make(map[byte]uint32)
-	for i := 0; i < senders*per; i++ {
+	for range senders * per {
 		f := read(t, rx)
 		src := f[11]
 		if s := seqOf(t, f); s != next[src] {

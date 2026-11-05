@@ -79,10 +79,7 @@ func (d *Device) srJoin(a *ar, req *pnio.ConnectRequest) error {
 	if info == nil {
 		return fail(pnio.Code1CMRPC, pnio.CMRPCUnknownBlocks)
 	}
-	minF := d.cfg.SystemRedundancy.MinDataHoldFactor
-	if minF < 3 {
-		minF = 3
-	}
+	minF := max(d.cfg.SystemRedundancy.MinDataHoldFactor, 3)
 	if info.RedundancyDataHoldFactor < minF {
 		return fail(pnio.Code1SRInfo, 4)
 	}

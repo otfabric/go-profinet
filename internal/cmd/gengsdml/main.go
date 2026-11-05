@@ -274,8 +274,8 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 		for _, s := range e.Attrs {
 			a, _ := parseAttr(s)
 			tag := a.name
-			if strings.HasPrefix(a.name, "xml:") {
-				tag = "http://www.w3.org/XML/1998/namespace " + strings.TrimPrefix(a.name, "xml:")
+			if after, ok := strings.CutPrefix(a.name, "xml:"); ok {
+				tag = "http://www.w3.org/XML/1998/namespace " + after
 			}
 			omit := ",omitempty"
 			if a.required || a.present {

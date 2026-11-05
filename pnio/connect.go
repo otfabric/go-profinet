@@ -95,8 +95,7 @@ func DecodeConnectRequest(b []byte) (ConnectRequest, error) {
 // asConnectError turns a decoding error into the PNIO status of the faulty
 // block.
 func asConnectError(t BlockType, err error) error {
-	var se *StatusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*StatusError](err); ok {
 		return se
 	}
 	return &StatusError{Op: "decode " + t.String(), Status: blockError(t, 1)}
