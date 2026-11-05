@@ -228,6 +228,8 @@ func TestReaderErrors(t *testing.T) {
 		{"truncated record", file(le, magicMicro, linkEthernet, rec[:18])},
 		{"truncated empty record", file(le, magicMicro, linkEthernet, rec[:16])},
 		{"oversized record", file(le, magicMicro, linkEthernet, big)},
+		{"microseconds of a second or more", file(le, magicMicro, linkEthernet, record(le, 1, 1_000_000, nil))},
+		{"nanoseconds of a second or more", file(le, 0xA1B23C4D, linkEthernet, record(le, 1, 1_000_000_000, nil))},
 	}
 	for _, c := range next {
 		r, err := NewReader(bytes.NewReader(c.b))

@@ -118,9 +118,14 @@ func (r *Reader) Next() (time.Time, []byte, error) {
 	if _, err := io.ReadFull(r.r, b); err != nil {
 		return time.Time{}, nil, fmt.Errorf("pcap: %w: truncated record", profinet.ErrMalformed)
 	}
+	// The fraction is below one second (10^6 µs, or 10^9 ns in a
+	// nanosecond file); a larger one would carry into the seconds.
 	sub := int64(r.order.Uint32(h[4:]))
 	if !r.nano {
 		sub *= 1000
+	}
+	if sub >= int64(time.Second) {
+		return time.Time{}, nil, fmt.Errorf("pcap: %w: sub-second timestamp field %d", profinet.ErrMalformed, r.order.Uint32(h[4:]))
 	}
 	return time.Unix(int64(r.order.Uint32(h[0:])), sub), b, nil
 }

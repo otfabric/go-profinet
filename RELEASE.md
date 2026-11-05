@@ -68,7 +68,8 @@ are now errors; see ERRORS.md, "Values that do not fit their field".
   refused; reconnect jitter comes from crypto/rand.
 - LLDP TTL saturates to 1..65535 (a receive-only agent announced 65532);
   netstack refuses ports outside 0..65535 and IPv4 datagrams above 65 535
-  octets; pcap refuses times outside 1970..2106; the store opens values
+  octets; pcap refuses times outside 1970..2106 and reads a record whose
+  sub-second field is a second or more as malformed; the store opens values
   through `os.OpenInRoot`, so a symlink cannot lead outside its directory.
 - `l2/afpacket` decodes the kernel structures with `binary.NativeEndian`
   instead of pointer casts (two `unsafe` calls remain, for recvmsg and the

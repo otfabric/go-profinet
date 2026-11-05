@@ -109,7 +109,8 @@ cannot encode (for example a diagnosis record grown past 64 KiB by
 From a peer (`ErrMalformed` or a PNIO status): a record length above the
 octets present, compared without narrowing so 32-bit platforms reject
 0xFFFFFFFF too; a controller Read whose RecordDataLength exceeds `maxLen`;
-a WriteMultiple answer with more results than items; a Connect whose
+a WriteMultiple answer with more results than items; a pcap record
+whose sub-second field is a second or more; a Connect whose
 ModuleDiffBlock could not be encoded in 16 bits (Connect, CMRPC out of
 memory: `ErrResourceExhausted`).
 
