@@ -116,7 +116,9 @@ func TestChaosStartupFrames(t *testing.T) {
 					ctrl, cn := e.controller("192.168.0.1")
 					dn.ep.SetFaults(c.faults)
 					cn.ep.SetFaults(c.faults)
-					cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(), ReductionRatio: 8, DataHoldFactor: 10,
+					// The faults hit the startup, not the cyclic data: the hold
+					// rides out runner stalls (stallHold).
+					cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(), DataHoldFactor: stallHold, WatchdogFactor: stallHold,
 						RPCTimeout: 2 * time.Second, ReconnectMax: 200 * time.Millisecond})
 					if err != nil {
 						t.Fatal(err)
@@ -165,6 +167,7 @@ func TestChaosAlarmAckLoss(t *testing.T) {
 				dev, dn := e.device("dut", "192.168.0.10", testModel(), nil)
 				ctrl, cn := e.controller("192.168.0.1")
 				cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(),
+					DataHoldFactor: stallHold, WatchdogFactor: stallHold,
 					RTATimeoutFactor: 1, RTARetries: 5,
 					OnAlarm: func(a controller.AlarmEvent) {
 						mu.Lock()
@@ -248,7 +251,7 @@ func TestCloseDuringPhase(t *testing.T) {
 					dn.ep.SetFaults(slow)
 					cn.ep.SetFaults(slow)
 					reached := make(chan struct{}, 1)
-					cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(), ReductionRatio: 8, DataHoldFactor: 10,
+					cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(), DataHoldFactor: stallHold, WatchdogFactor: stallHold,
 						ActivityTimeout: time.Second, ReconnectMin: time.Hour,
 						OnState: func(_, to controller.State, _ error) {
 							if to == phase {
@@ -303,7 +306,7 @@ func TestCloseDuringPhase(t *testing.T) {
 					eventually(t, 15*time.Second, "IO device without AR", func() bool { return len(dev.ARs()) == 0 })
 					// A new controller establishes an AR.
 					ctrl2, _ := e.controller("192.168.0.2")
-					cd2, err := ctrl2.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(), ReductionRatio: 8, DataHoldFactor: 10})
+					cd2, err := ctrl2.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(), DataHoldFactor: stallHold, WatchdogFactor: stallHold})
 					if err != nil {
 						t.Fatal(err)
 					}
