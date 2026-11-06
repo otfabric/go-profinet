@@ -197,6 +197,18 @@ each other):
 - **pnio-rs accepts only RT_CLASS_2 FrameIDs**: a controller must use the
   advanced startup with it.
 
+## Against our own release (not independent)
+
+`interop/otfabric_test.go` runs this commit's IO-Controller and DCP
+requester against the IO-Device of the latest released go-profinet, and that
+release's IO-Controller and DCP requester against this commit's IO-Device:
+`ghcr.io/otfabric/profinet-interop-otfabric`, built and published by hand
+by profinet-interop's **Own stack (go-profinet)** workflow. The tests run
+only when `PROFINET_INTEROP_OTFABRIC_IMAGE` names the image; the manual
+**Self-interop** workflow does that with `:latest`. They find a change on
+the wire that breaks an earlier release. They are not independent evidence
+and are not in the matrix, and no release or required check waits for them.
+
 ## Discrepancies of the peers
 
 Recorded, not worked around in go-profinet:
