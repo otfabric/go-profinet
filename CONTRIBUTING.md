@@ -23,6 +23,17 @@ runs `generate-check` (the generated GSDML types are up to date),
 and builds the examples. For changes to the transports or the protocol
 machines also run `make test-e2e` and, when you can, `make interop`.
 
+To check a change on the wire against the latest go-profinet release, run
+the otfabric tests (`interop/otfabric_test.go`) against
+`ghcr.io/otfabric/profinet-interop-otfabric`, go-profinet behind the
+profinet-interop contract. They run only when the image is named, never by
+default; the **Self-interop** workflow runs them by hand:
+
+```sh
+PROFINET_INTEROP_OTFABRIC_IMAGE=ghcr.io/otfabric/profinet-interop-otfabric:latest \
+  GOWORK=off go test -tags interop -count=1 -run '^TestOtfabric' -v ./interop/
+```
+
 ## Where things go
 
 | Change | Package |
