@@ -13,7 +13,7 @@ help: ## This help
 export GOWORK := off
 
 # docsync release of docs-check (DOC-008).
-DOCSYNC_VERSION := v0.3.0
+DOCSYNC_VERSION := v0.3.1
 
 # CI formats and lints with the Go version from go.mod, not with the toolchain installed here.
 GO_MOD_VERSION := $(shell sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' go.mod | head -n1)
