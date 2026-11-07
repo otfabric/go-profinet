@@ -4,13 +4,16 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # Parent otfabric/go.work does not list this module; isolate toolchain commands.
 export GOWORK := off
+
+# docsync release of docs-check (DOC-008).
+DOCSYNC_VERSION := v0.2.0
 
 # CI formats and lints with the Go version from go.mod, not with the toolchain installed here.
 GO_MOD_VERSION := $(shell sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' go.mod | head -n1)
@@ -157,7 +160,11 @@ cross: ## Build every package for the supported platforms
 
 e2e: test-e2e ## Alias of test-e2e
 
-check: generate-check coverpkg-check release-notes-check fmt fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples ## Run everything CI runs, except the Docker-based suites
+check: generate-check coverpkg-check release-notes-check fmt fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples docs-check ## Run everything CI runs, except the Docker-based suites
 
 clean: ## Remove generated binaries and coverage artifacts
 	@rm -rf $(BIN_DIR) coverage.out coverage.html
+
+# The documents against the code (DOC-008): docsync, as docs.yml runs it.
+docs-check: ## Check that the documents agree with the code (docsync)
+	@go run github.com/otfabric/docsync@$(DOCSYNC_VERSION) check .
