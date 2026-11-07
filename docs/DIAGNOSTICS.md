@@ -27,7 +27,7 @@ alarms in `OnAlarm`.
 | Accumulative (bit 8) | `ChanAccumulative` |
 
 Error types 0x0001–0x0009 and 0x8000/0x8001 are the standard channel errors
-(`pnio.ChannelErr*`); 0x0100–0x7FFF are manufacturer specific.
+(`pnio.ChannelErrShortCircuit` … `pnio.ChannelErrError`, `pnio.ChannelErrDataTransmiss`, `pnio.ChannelErrRemoteMismat`); 0x0100–0x7FFF are manufacturer specific.
 The device serves every diagnosis index of the standard by scope (subslot,
 slot, AR, API, device) and kind (channel, all, maintenance and qualified).
 

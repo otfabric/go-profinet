@@ -44,6 +44,7 @@ What the library retries by itself, and what it leaves to the application:
 | `*pnio.StatusError` | `Op` and the PNIOStatus (`Code`, `Decode`, `Code1`, `Code2`), as a peer answered it or a decoder produced it | `ErrRejected`; by class `ErrNotFound` (invalid index, slot or area; unknown AR UUID), `ErrUnsupported` (feature not supported, unknown blocks), `ErrInvalidState` (state conflicts), `ErrResourceExhausted` (out of ARs, busy), `ErrAborted` (RTA aborts), `ErrMalformed` (a faulty block field in a Connect or Control) |
 | `*dcp.SetError` | the MAC, the block and the `BlockError` of a DCP Set or Get the device refused | `ErrRejected`; `ErrUnsupported` for option and suboption unsupported |
 | `*rpc.Fault` | a DCE/RPC FAULT or REJECT and its status | `ErrRejected`; `ErrUnsupported` (unknown interface, operation out of range, unsupported type), `ErrResourceExhausted` (server too busy) |
+| `*snmp.VersionError` | the `Version` of an SNMP message that is neither v1 nor v2c (SNMPv3 is 3) | `ErrUnsupported` |
 | `*gsdml.ValidationError` | the `Issues` of a document (path and message) | `ErrMalformed` |
 | `dcp.ErrInvalidName` | a station name that is not a valid NameOfStation | `ErrInvalidConfig` |
 
