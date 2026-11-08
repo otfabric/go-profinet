@@ -3,6 +3,7 @@
 package dcp
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"strconv"
@@ -62,17 +63,26 @@ func (id *Identity) String() string {
 	return fmt.Sprintf("%s %q vendor 0x%04X device 0x%04X %s", id.MAC, id.NameOfStation, id.VendorID, id.DeviceID, id.IP)
 }
 
+// trimNUL returns a name block's text without trailing NUL octets. A
+// recorded SIMATIC S7-300 (DeviceID 0x0101, testdata/captures
+// ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap frame 2) answers its NameOfStation in a
+// fixed field of 108 octets padded with NULs; a NUL is no character of a
+// station or type name, so the padding is not part of the name. Wireshark
+// shows the name the same way.
+func trimNUL(d []byte) string { return string(bytes.TrimRight(d, "\x00")) }
+
 // ParseIdentity extracts the identity from the blocks of a response. The
-// strings and slices it returns do not alias f.
+// strings and slices it returns do not alias f. Trailing NUL padding of
+// NameOfStation and TypeOfStation is dropped.
 func ParseIdentity(mac ethernet.MAC, blocks []Block) (Identity, error) {
 	id := Identity{MAC: mac}
 	for _, b := range blocks {
 		d := b.Data
 		switch b.ID {
 		case DeviceName:
-			id.NameOfStation = string(d)
+			id.NameOfStation = trimNUL(d)
 		case DeviceVendor:
-			id.TypeOfStation = string(d)
+			id.TypeOfStation = trimNUL(d)
 		case DeviceID:
 			if len(d) < 4 {
 				return id, fmt.Errorf("dcp: %w: DeviceID block of %d octets", profinet.ErrMalformed, len(d))

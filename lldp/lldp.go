@@ -96,11 +96,19 @@ type Frame struct {
 	PortSubtype    uint8  `json:"portSubtype"`
 	PortID         []byte `json:"portId"`
 	// TTL is the time to live in seconds; 0 withdraws the information.
-	TTL               uint16        `json:"ttl"`
-	PortDescription   string        `json:"portDescription,omitempty"`
-	SystemName        string        `json:"systemName,omitempty"`
-	SystemDescription string        `json:"systemDescription,omitempty"`
-	ManagementAddr    netip.Addr    `json:"managementAddress"`
+	TTL               uint16     `json:"ttl"`
+	PortDescription   string     `json:"portDescription,omitempty"`
+	SystemName        string     `json:"systemName,omitempty"`
+	SystemDescription string     `json:"systemDescription,omitempty"`
+	ManagementAddr    netip.Addr `json:"managementAddress"`
+	// ManagementIfIndex is the interface number (ifIndex subtype) of the
+	// IPv4 Management Address TLV; the agent sends 1.
+	// ManagementOID is the TLV's object identifier, BER encoded without
+	// tag and length (empty when none). Siemens devices send ifIndex = the
+	// port's number and the PNO enterprise OID 1.3.6.1.4.1.24686
+	// (testdata/captures, ics-pcaps/*_lldp.pcap*).
+	ManagementIfIndex uint32        `json:"managementIfIndex,omitempty"`
+	ManagementOID     []byte        `json:"managementOid,omitempty"`
 	PortStatus        *PortStatus   `json:"portStatus,omitempty"`
 	ChassisMAC        *ethernet.MAC `json:"chassisMac,omitempty"`
 	Delay             *Delay        `json:"delay,omitempty"`
@@ -178,8 +186,15 @@ func (f *Frame) AppendTo(dst []byte) ([]byte, error) {
 		dst = appendTLV(dst, TypeOrgSpecific, org(OUIIEEE8023, 1, v))
 	}
 	if f.ManagementAddr.Is4() {
+		oidLen := len(f.ManagementOID)
+		if oidLen < 0 || oidLen > 128 {
+			return dst[:start], fmt.Errorf("lldp: %w: management address OID of %d octets", profinet.ErrInvalidConfig, oidLen)
+		}
 		a := f.ManagementAddr.As4()
-		v := []byte{5, 1, a[0], a[1], a[2], a[3], 2, 0, 0, 0, 1, 0}
+		v := []byte{5, 1, a[0], a[1], a[2], a[3], 2}
+		v = binary.BigEndian.AppendUint32(v, f.ManagementIfIndex)
+		v = append(v, byte(oidLen))
+		v = append(v, f.ManagementOID...)
 		dst = appendTLV(dst, TypeManagementAddress, v)
 	}
 	for _, t := range f.Other {
@@ -218,6 +233,12 @@ func Decode(b []byte) (Frame, error) {
 			}
 		}
 		i++
+		if i > 3 && (t == TypeChassisID || t == TypePortID || t == TypeTTL) {
+			// IEEE 802.1AB 9.2.7.7.1: exactly one of each; a recorded
+			// LLDPDU repeats the TTL TLV (testdata/captures
+			// unknown_extreme_lldp-minimal.pcap), and Wireshark flags it.
+			return f, fmt.Errorf("lldp: %w: second TLV %d", profinet.ErrMalformed, t)
+		}
 		switch t {
 		case TypeEnd:
 			return f, nil
@@ -243,8 +264,20 @@ func Decode(b []byte) (Frame, error) {
 		case TypeSystemDescription:
 			f.SystemDescription = string(v)
 		case TypeManagementAddress:
-			if n >= 6 && v[0] == 5 && v[1] == 1 {
-				f.ManagementAddr = netip.AddrFrom4([4]byte(v[2:6]))
+			// The first IPv4 address is decoded; other addresses (an
+			// Extreme switch sends its MAC, testdata/captures
+			// unknown_summit300-48_lldp.pcap) are kept in Other.
+			if f.ManagementAddr.IsValid() || n < 6 || v[0] != 5 || v[1] != 1 {
+				f.Other = append(f.Other, TLV{Type: t, Value: append([]byte(nil), v...)})
+				continue
+			}
+			f.ManagementAddr = netip.AddrFrom4([4]byte(v[2:6]))
+			// Interface subtype, number and OID (IEEE 802.1AB 8.5.9).
+			if n >= 12 {
+				f.ManagementIfIndex = binary.BigEndian.Uint32(v[7:])
+				if l := int(v[11]); l > 0 && 12+l <= n {
+					f.ManagementOID = append([]byte(nil), v[12:12+l]...)
+				}
 			}
 		case TypeOrgSpecific:
 			if !f.decodeOrg(v) {

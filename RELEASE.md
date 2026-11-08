@@ -26,6 +26,88 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.8.0
+
+**Date:** 2026-11-08
+**Previous release:** v0.7.0
+
+go-profinet is now tested against recorded traffic of real equipment
+([testdata/captures](testdata/captures/README.md)): above all the frames a
+SIMATIC S7-1500 CPU 1515-2 PN (firmware V2.9.4) sent as IO-Controller,
+recorded by pnio-rs, which the device tests send to go-profinet's device
+unchanged; and DCP, LLDP and Connect frames of older Siemens and GE
+equipment. Every recorded frame decodes as Wireshark decodes it and
+re-encodes to its bytes; the device answers the CPU's start-up (Connect,
+MultipleWrite, PrmEnd, ApplicationReady), cyclic, alarm and DCP requests
+as the recorded IO-Device (p-net, software) did, apart from classified
+differences. The recordings showed four defects, fixed here. This is
+recorded evidence, not a test against a live PLC and not a conformance
+claim.
+
+### Fixed
+
+- `device`: the AlarmSpecifier sequence number is counted per priority, not
+  per AR. The recorded device numbered its high and low priority alarms
+  separately (the first diagnosis alarm after a process alarm has
+  sequence 0) and the CPU acknowledged them so; go-profinet gave it 1.
+- `device`, `controller`: an ERR-RTA of the peer is answered with an
+  ERR-RTA "AR alarm.ind(err)" (`CF 81 FD 0B`), as the CPU answers a
+  device's ERR-RTA. Both ended the AR silently before.
+- `dcp.ParseIdentity`: trailing NUL padding of NameOfStation and
+  TypeOfStation is dropped. A recorded S7-300 answers its name in a
+  108-octet field padded with NULs, which made the name unusable for
+  matching and display.
+- `lldp`: the IPv4 Management Address TLV's interface number and OID were
+  dropped on decode and always sent as 1 and none; they are now
+  `Frame.ManagementIfIndex` and `Frame.ManagementOID` (an interface number
+  0 is sent as 0). A management address that is not IPv4 (an Extreme
+  switch's MAC) is kept in `Other` instead of dropped. A second Chassis ID,
+  Port ID or TTL TLV makes `Decode` fail with `ErrMalformed` (IEEE 802.1AB:
+  exactly one each; a recorded LLDPDU repeats its TTL TLV). The device's
+  LLDP is unchanged (ifIndex 1, no OID).
+
+### Added
+
+- `lldp.Frame.ManagementIfIndex`, `lldp.Frame.ManagementOID`.
+- testdata/captures: 37 frames from pnio-rs (MIT OR Apache-2.0), the
+  Wireshark wiki's PN-DCP sample and ten EmreEkin/ICS-Pcaps PROFINET and
+  LLDP recordings (974 frames), byte-identical under clean names, with
+  `manifest.json` (source, original name, device, direction, evidence class
+  A–D, SHA256), `SHA256SUMS` and `coverage.json`; `internal/capture` reads them.
+- Tests: decoding, byte-exact re-encoding and encoders against every
+  recorded frame (`dcp`, `lldp`, `pnio`, `rt`, `alarm`); the device against
+  the CPU's start-up, cyclic, alarm, ERR-RTA and DCP frames
+  (`device/capture_test.go`), every recorded DCP Identify request and the
+  Connect of a 2009 Siemens controller; the record client against a GE
+  device's and p-net's recorded answers; every LLDP, DCP, PNIO-CM, RT and
+  RTA frame of every file decoded and re-encoded; every truncation and
+  forced length field of every frame; 180 fuzz seeds from the recordings.
+
+### Changed
+
+- The first low priority alarm of an AR has sequence number 0 even after
+  high priority alarms (see Fixed). An application that matched
+  acknowledgements by its own count across priorities must count per
+  priority.
+- `lldp.Decode` refuses an LLDPDU with a second Chassis ID, Port ID or TTL
+  TLV; the agent's neighbor table ignores such a frame.
+
+### Known differences (recorded, classified, not changed)
+
+The device sends a ModuleDiffBlock marking every submodule
+ApplicationReadyPending where p-net sends none; it grants
+MaxAlarmDataLength 256 where p-net answers 200; it reports a channel
+diagnosis as USI 0x8000 where p-net uses 0x8002; it refuses an invalid
+NameOfStation an S7-300 accepted; it answers I&M0FilterData without the
+optional module block a GE device sends. The encoder puts the AlarmCRBlockReq
+before the expected submodules, where both Siemens controllers put it last,
+and `rt.ComputeLayout` puts the IOCS after all data, where the CPU puts
+them after each submodule. None of these is known to matter to a CPU: the
+recordings show what the CPU accepted from p-net, not what it would do
+with go-profinet's answers.
+
+---
+
 ## v0.7.0
 
 **Date:** 2026-11-05

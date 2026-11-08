@@ -251,6 +251,11 @@ make l2-test      # real AF_PACKET tests on a veth pair in a privileged containe
 make interop-images && make interop   # the interop suite (Docker), see INTEROPERABILITY.md
 ```
 
+The tests also replay traffic recorded from real equipment, among it the
+requests of a SIMATIC S7-1500 CPU 1515-2 PN to an IO-Device
+([testdata/captures](testdata/captures/README.md)): recorded evidence, not a
+test against a live PLC.
+
 [docs/TESTING.md](docs/TESTING.md) describes the test strategy,
 [docs/COVERAGE.md](docs/COVERAGE.md) the coverage per package and
 [docs/BENCHMARKS.md](docs/BENCHMARKS.md) the measured performance.

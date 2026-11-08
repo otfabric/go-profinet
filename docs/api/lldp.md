@@ -212,11 +212,19 @@ type Frame struct {
 	PortSubtype    uint8  `json:"portSubtype"`
 	PortID         []byte `json:"portId"`
 	// TTL is the time to live in seconds; 0 withdraws the information.
-	TTL               uint16        `json:"ttl"`
-	PortDescription   string        `json:"portDescription,omitempty"`
-	SystemName        string        `json:"systemName,omitempty"`
-	SystemDescription string        `json:"systemDescription,omitempty"`
-	ManagementAddr    netip.Addr    `json:"managementAddress"`
+	TTL               uint16     `json:"ttl"`
+	PortDescription   string     `json:"portDescription,omitempty"`
+	SystemName        string     `json:"systemName,omitempty"`
+	SystemDescription string     `json:"systemDescription,omitempty"`
+	ManagementAddr    netip.Addr `json:"managementAddress"`
+	// ManagementIfIndex is the interface number (ifIndex subtype) of the
+	// IPv4 Management Address TLV; the agent sends 1.
+	// ManagementOID is the TLV's object identifier, BER encoded without
+	// tag and length (empty when none). Siemens devices send ifIndex = the
+	// port's number and the PNO enterprise OID 1.3.6.1.4.1.24686
+	// (testdata/captures, ics-pcaps/*_lldp.pcap*).
+	ManagementIfIndex uint32        `json:"managementIfIndex,omitempty"`
+	ManagementOID     []byte        `json:"managementOid,omitempty"`
 	PortStatus        *PortStatus   `json:"portStatus,omitempty"`
 	ChassisMAC        *ethernet.MAC `json:"chassisMac,omitempty"`
 	Delay             *Delay        `json:"delay,omitempty"`

@@ -2,6 +2,8 @@
 coverage.out
 coverage.html
 *.pcap
+# The recorded traffic of the capture corpus is committed.
+!/testdata/captures/**/*.pcap
 .DS_Store
 interop-results/
 

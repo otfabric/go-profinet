@@ -197,6 +197,35 @@ each other):
 - **pnio-rs accepts only RT_CLASS_2 FrameIDs**: a controller must use the
   advanced startup with it.
 
+## Recorded traffic of real equipment
+
+[testdata/captures](testdata/captures/README.md) holds frames other
+projects recorded on real equipment; the tests decode, re-encode and replay
+them offline. The strongest evidence is class B: the requests of a
+**SIMATIC S7-1500 CPU 1515-2 PN** (6ES7 515-2AM02-0AB0, firmware V2.9.4) to
+an IO-Device, recorded by pnio-rs. The IO-Device in those recordings was
+**p-net v0.2.0** (and PLCSIM Advanced for DCP), software, so its answers
+are one implementation's choices, not the CPU's requirements.
+
+| Exchange | go-profinet |
+|---|---|
+| DCP Identify (name filter) and Set IP of the CPU | the device's Set response is byte for byte p-net's; its Identify response holds the blocks PLCSIM sent |
+| Connect (2 IOCRs, 5 expected submodules, AlarmCR; advanced startup, ARProperties 0x40000011) | accepted; ARBlockRes, IOCRBlockRes (FrameIDs 0x8000/0x8001), AlarmCRBlockRes and ARServerBlock as p-net's; NDR max_count echoes args_max as p-net does |
+| Write MultipleWrite (PDInterfaceAdjust, records 0x7B, 0x7C, 0x7D) | five IODWriteResHeaders as p-net's |
+| Control PrmEnd; ApplicationReady to the CPU and the CPU's recorded answer | IODControlRes and IOXControlReq byte for byte p-net's; the CPU's answer (flags1 0x0A, little endian) takes the AR to Data |
+| Cyclic 0x8001 from the CPU, 32 ms, data status 0x35 | outputs as TIA wrote them (BOOL bit order, big-endian DWORD and REAL); the device's 0x8000 frame has p-net's tag, status and IOxS positions |
+| Process and diagnosis alarms with the CPU's ACK-RTA and AlarmAck | the AlarmNotification byte for byte p-net's (process); `pnio.AckFor` builds the CPU's AlarmAck byte for byte |
+| The CPU's ERR-RTA "AR removed" | the AR ends; the device answers "AR alarm.ind(err)" as the CPU itself answers a device's ERR-RTA |
+
+Found and fixed (v0.8.0): alarm sequence numbers per AR instead of per
+priority; no answer to a peer's ERR-RTA (device and controller); a
+NUL-padded NameOfStation of an S7-300 kept with its padding; the LLDP
+management address's ifIndex and OID dropped. The differences that remain
+(ModuleDiffBlock with ApplicationReadyPending, MaxAlarmDataLength 256, USI
+0x8000, the encoder's block order and IOCS placement) are listed in
+testdata/captures/README.md; nothing recorded shows how the CPU would
+treat them.
+
 ## Against our own release (not independent)
 
 `interop/otfabric_test.go` runs this commit's IO-Controller and DCP

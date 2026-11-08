@@ -1,8 +1,9 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.6.0, profinet-interop v0.6.0 and profinetctl
-v0.6.0, released together on 2026-10-29. How go-profinet compares with other PROFINET stacks is
+what. Status: go-profinet v0.8.0 (2026-11-08) with profinet-interop v0.7.1
+and profinetctl v0.10.0; the interop matrix below is that of the v0.6.0
+release, rerun green by every Interop workflow since. How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
 what is out of scope in [LIMITATIONS.md](../LIMITATIONS.md).
 
@@ -14,7 +15,8 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.7.0** | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.6.0 | **yes** |
+| **v0.8.0** | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.10.0 | **yes** |
+| v0.7.0 | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.8.0, v0.9.0 | no: v0.8.0 fixes the alarm sequence numbers and ERR-RTA answers the recorded traffic showed |
 | v0.6.0 | 1.23 or later (CI: 1.23–1.26) | v0.6.0 (1.2) | v0.6.0 | no: v0.7.0 raises the Go floor and refuses out-of-range values |
 | v0.5.1 | 1.23 or later | v0.4.1 (1.2) | v0.3.2 | no: v0.6.0 only adds API (apidiff: compatible) |
 | v0.5.0 | 1.23 or later | v0.4.0 (1.2) | v0.3.1 | no |
@@ -142,6 +144,17 @@ RT_CLASS_1/2 besides profinet-py; CODESYS Control for Linux SL is a manual
 recipe ([INDEPENDENT-CONTROLLER.md](research/INDEPENDENT-CONTROLLER.md)).
 No engineering tool has imported the GSDML fixtures yet
 ([GSDML-TOOLS.md](research/GSDML-TOOLS.md)).
+
+### Recorded traffic
+
+Besides the independent stacks, frames recorded from real equipment check
+DCP, LLDP, Connect, records, control, cyclic data and alarms
+([testdata/captures](../testdata/captures/README.md)). Of these only the
+frames of a SIMATIC S7-1500 CPU 1515-2 PN (FW V2.9.4, recorded by pnio-rs
+against p-net) are documented hardware traffic; go-profinet's device answers
+them as p-net did, apart from the differences listed there. They add no
+✅ to the matrix above: they show what a CPU sent, not that it accepted
+go-profinet.
 
 ## 6. Evidence and limits by feature
 

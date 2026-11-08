@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("\x02\a\x04\x00\x18\xba\x98h\x8f\x04\a\aFa0/13\x06\x02\x00x\n\fS1.cisco.com\f\xbeCisco IOS Software, C3560 Software (C3560-ADVIPSERVICESK9-M), Version 12.2(44)SE, RELEASE SOFTWARE (fc1)\nCopyright (c) 1986-2008 by Cisco Systems, Inc.\nCompiled Sat 05-Jan-08 00:15 by weiliu\b\x10FastEthernet0/13\x0e\x04\x00\x14\x00\x04\xfe\x06\x00\x80\xc2\x01\x00\x01\xfe\t\x00\x12\x0f\x01\x03\x006\x00\x10\x00\x00")

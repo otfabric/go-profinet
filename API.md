@@ -112,7 +112,9 @@ signature verification ([LIMITATIONS.md](LIMITATIONS.md#gsdx-containers)).
 station name as chassis ID, port name, description, management address)
 with the PROFINET TLVs every interval (`SendNow` at once; a negative interval
 only listens) and keeps the neighbor table (`Neighbors`, `Alias`). `Decode`, `Frame.AppendTo`,
-`TLV`, `Neighbor.Alias` (the AliasName for DCP).
+`TLV`, `Neighbor.Alias` (the AliasName for DCP). `Frame.ManagementIfIndex` and
+`Frame.ManagementOID` keep the interface number and OID of the IPv4
+Management Address TLV (v0.8.0).
 
 ## rpc — connectionless DCE/RPC
 

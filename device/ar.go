@@ -62,10 +62,17 @@ type ar struct {
 	notifying    bool
 	lastActivity time.Time
 	reason       pnio.AbortReason
-	alarmSeq     uint16
-	ackWait      map[uint16]chan pnio.AlarmAck
-	iocs         map[key]uint8 // the controller's consumer status of our inputs
-	cmiTimer     *time.Timer
+	// peerAborted is set when the controller ended the AR with an ERR
+	// PDU; the device answers it with its own (see abort).
+	peerAborted bool
+	// alarmSeq is the next AlarmSpecifier sequence number of each
+	// priority (index 1 high): every alarm protocol machine counts its
+	// own, as p-net and a CPU 1515-2 PN do in the recorded traffic
+	// (testdata/captures, pnio-rs alarm frames).
+	alarmSeq [2]uint16
+	ackWait  map[ackKey]chan pnio.AlarmAck
+	iocs     map[key]uint8 // the controller's consumer status of our inputs
+	cmiTimer *time.Timer
 	// plugs are the submodules handed over to the AR whose Released
 	// alarm still has to go out; plugBusy is set while plugs are worked
 	// off (owner.go), and prmEndPlug carries the alarm sequence numbers
@@ -480,7 +487,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 		expected:     req.Expected,
 		inLayout:     inL,
 		outLayout:    outL,
-		ackWait:      map[uint16]chan pnio.AlarmAck{},
+		ackWait:      map[ackKey]chan pnio.AlarmAck{},
 		iocs:         map[key]uint8{},
 		lastActivity: time.Now(),
 		seq:          seq,
@@ -617,6 +624,9 @@ func (d *Device) openAlarms(a *ar, req *pnio.AlarmCRBlockReq) error {
 		OnData:    func(b []byte) { d.alarmData(a, b) },
 		OnErr: func(st pnio.Status) {
 			d.log.Infof("device: AR %s aborted by the controller: %s", a.uuid, st)
+			a.mu.Lock()
+			a.peerAborted = true
+			a.mu.Unlock()
 			d.goAbort(a, pnio.AbortReason(st.Code2), false)
 		},
 	}
@@ -792,14 +802,23 @@ func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 	for _, ch := range a.ackWait {
 		close(ch)
 	}
-	a.ackWait = map[uint16]chan pnio.AlarmAck{}
+	a.ackWait = map[ackKey]chan pnio.AlarmAck{}
+	peer := a.peerAborted
 	a.mu.Unlock()
 	if reason != 0 {
 		d.met.OnAbort(a.ctrlName, fmt.Errorf("device: AR %s: %w: %s", a.uuid, profinet.ErrAborted, reason))
 	}
-	if notify && a.alarmLow != nil && reason != 0 {
+	// The device tells the controller of its own abort; an abort by the
+	// controller's ERR PDU it answers with "AR alarm.ind(err)", as a
+	// CPU 1515-2 PN answers a device's ERR PDU in the recorded traffic
+	// (testdata/captures, pnio-rs s7-1500_p-net_alarm-err-rta-cpu-reply.hex).
+	status := pnio.AbortStatus(reason)
+	if peer {
+		notify, status = true, pnio.AbortStatus(pnio.AbortAlarmInd)
+	}
+	if notify && a.alarmLow != nil && (reason != 0 || peer) {
 		ctx, cancel := context.WithTimeout(d.ctx, 100*time.Millisecond)
-		if err := a.alarmLow.SendErr(ctx, pnio.AbortStatus(reason)); err != nil && !errors.Is(err, profinet.ErrClosed) {
+		if err := a.alarmLow.SendErr(ctx, status); err != nil && !errors.Is(err, profinet.ErrClosed) {
 			d.log.Debugf("device: AR %s: send abort: %v", a.uuid, err)
 		}
 		cancel()

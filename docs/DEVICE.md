@@ -100,6 +100,13 @@ err = dev.AddDiagnosis(ctx, 1, 1, pnio.DiagnosisItem{ChannelNumber: 1, ErrorType
 
 See [DIAGNOSTICS.md](DIAGNOSTICS.md).
 
+Each priority numbers its alarms separately (the AlarmSpecifier's sequence
+number, 0..0x7FF): the first low priority alarm of an AR has 0 even after
+high priority ones, as a recorded p-net device numbered them for a CPU
+1515-2 PN ([testdata/captures](../testdata/captures/README.md)). When the
+IO controller ends the AR with an ERR-RTA, the device answers with its own
+ERR-RTA "AR alarm.ind(err)" (`CF 81 FD 0B`), as the CPU answers a device's.
+
 ## ARs
 
 The device accepts IOCARs, from one or several IO controllers (shared
