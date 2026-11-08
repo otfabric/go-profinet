@@ -12,6 +12,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -63,7 +65,9 @@ func TestManifest(t *testing.T) {
 			t.Errorf("%s%s: class %q", e.Path, e.Original, e.Class)
 		}
 		if !e.Committed {
-			if e.Path != "" || e.Original == "" {
+			// A raw file make captures-extended fetches has a clean name
+			// in the cache; one that was never published has none.
+			if e.Original == "" || (e.SHA256 != "") != strings.HasPrefix(e.Path, ".cache/"+e.Source+"/") {
 				t.Errorf("referenced file %+v", e)
 			}
 			continue
@@ -126,6 +130,7 @@ func TestCoverageReport(t *testing.T) {
 	}
 	covered := map[string]bool{}
 	repo := filepath.Join(capture.Dir(), "..", "..")
+	alias := map[string]string{"capture": "internal/capture"}
 	for _, c := range rep.Cases {
 		for _, f := range c.Files {
 			covered[f] = true
@@ -135,6 +140,9 @@ func TestCoverageReport(t *testing.T) {
 			if !ok {
 				t.Errorf("%s: test %q", c.Message, name)
 				continue
+			}
+			if a, ok := alias[pkg]; ok {
+				pkg = a
 			}
 			files, _ := filepath.Glob(filepath.Join(repo, pkg, "*_test.go"))
 			found := false
@@ -176,7 +184,7 @@ func TestParseHex(t *testing.T) {
 }
 
 func TestDecodeUDP(t *testing.T) {
-	good := capture.MustHex("pnio-rs/cm/prmend_req.hex")
+	good := capture.MustHex("pnio-rs/s7-1500_p-net_prmend-req.hex")
 	u, err := capture.DecodeUDP(good)
 	if err != nil || u.Src.String() != "172.16.2.100:54766" || u.Dst.String() != "172.16.2.10:34964" || len(u.Payload) != 132 {
 		t.Fatalf("%v %v %d", u.Src, err, len(u.Payload))
@@ -187,7 +195,7 @@ func TestDecodeUDP(t *testing.T) {
 		return b
 	}
 	for name, b := range map[string][]byte{
-		"not IPv4":     capture.MustHex("pnio-rs/cm/dcp_set_res.hex"),
+		"not IPv4":     capture.MustHex("pnio-rs/s7-1500_p-net_dcp-set-ip-res.hex"),
 		"version 6":    mut(14, 0x65),
 		"short IHL":    mut(14, 0x44),
 		"total length": mut(16, 0xFF),
@@ -202,11 +210,11 @@ func TestDecodeUDP(t *testing.T) {
 }
 
 func TestReadPcap(t *testing.T) {
-	fr, err := capture.ReadPcap("wireshark/ChangeIPUsingDCP.pcap")
+	fr, err := capture.ReadPcap("wireshark/unknown_scalance-x208_dcp-set-ip.pcap")
 	if err != nil || len(fr) != 6 {
 		t.Fatalf("%d frames, %v", len(fr), err)
 	}
-	if _, err := capture.ReadPcap("pnio-rs/cm/connect_req.hex"); err == nil {
+	if _, err := capture.ReadPcap("pnio-rs/s7-1500_p-net_connect-req.hex"); err == nil {
 		t.Error("hex read as pcap")
 	}
 	// A minimal pcapng file: section header, Ethernet interface, one
@@ -250,7 +258,7 @@ func TestReadPcap(t *testing.T) {
 	}
 }
 
-// recorded returns every recorded frame.
+// recorded returns every recorded frame by its reference (capture.Load).
 func recorded(t *testing.T) map[string][]byte {
 	t.Helper()
 	m, err := capture.ReadManifest()
@@ -263,13 +271,13 @@ func recorded(t *testing.T) map[string][]byte {
 		case !e.Committed:
 		case strings.HasSuffix(e.Path, ".hex"):
 			out[e.Path] = capture.MustHex(e.Path)
-		case strings.HasSuffix(e.Path, ".pcap"):
+		case strings.HasSuffix(e.Path, ".pcap") || strings.HasSuffix(e.Path, ".pcapng"):
 			fr, err := capture.ReadPcap(e.Path)
 			if err != nil {
 				t.Fatal(err)
 			}
 			for i, f := range fr {
-				out[e.Path+"#"+string(rune('1'+i))] = f
+				out[e.Path+"#"+strconv.Itoa(i+1)] = f
 			}
 		}
 	}
@@ -355,13 +363,129 @@ func decodeAll(frame []byte) bool {
 	return err == nil || h.OpNum == uint16(pnio.OpWrite) // a MultipleWrite is not a plain block list
 }
 
-// TestRecordedFramesDecode: every recorded frame decodes completely.
-func TestRecordedFramesDecode(t *testing.T) {
-	for name, f := range recorded(t) {
-		if !decodeAll(f) && !strings.Contains(name, "ChangeIPUsingDCP.pcap#5") && !strings.Contains(name, "ChangeIPUsingDCP.pcap#6") { // ARP
-			t.Errorf("%s does not decode", name)
+// TestEveryRecordedFrame: every PROFINET, DCP, LLDP and PNIO-CM frame of
+// every committed file decodes completely and re-encodes to the recorded
+// bytes (LLDP: the same TLVs; DCP, RTA, cyclic trailer and RPC header byte
+// for byte), and each file holds the number of such frames tshark 4.6
+// counts (lldp, pn_dcp, pn_io, pn_rt). Frames of other protocols in the
+// files (ARP, CDP, SSDP, S7comm, ...) are skipped.
+func TestEveryRecordedFrame(t *testing.T) {
+	want := map[string][4]int{ // LLDP, DCP, RPC, RT/alarm
+		"wireshark/unknown_scalance-x208_dcp-set-ip.pcap":   {0, 4, 0, 0},
+		"ics-pcaps/s7-300_unknown_connect-req.pcap":         {0, 0, 1, 0},
+		"ics-pcaps/scalance_unknown_dcp-identify.pcap":      {0, 14, 0, 0},
+		"ics-pcaps/unknown_cisco-c3560_lldp.pcap":           {8, 0, 0, 0},
+		"ics-pcaps/unknown_extreme_lldp-minimal.pcap":       {0, 0, 0, 0}, // refused, see below
+		"ics-pcaps/unknown_ge-ip-device_read-implicit.pcap": {0, 0, 2, 0},
+		"ics-pcaps/unknown_procurve-2600_lldp-med.pcap":     {1, 0, 0, 0},
+		"ics-pcaps/unknown_s7-1200_lldp.pcapng":             {687, 0, 0, 0},
+		"ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap":      {0, 4, 0, 0},
+		"ics-pcaps/unknown_scalance-x200_lldp.pcap":         {23, 0, 0, 0},
+		"ics-pcaps/unknown_summit300-48_lldp.pcap":          {1, 0, 0, 0},
+	}
+	// Frames the decoders must refuse: an LLDPDU with four TTL TLVs
+	// (IEEE 802.1AB allows exactly one; Wireshark flags it too).
+	refused := map[string]bool{"ics-pcaps/unknown_extreme_lldp-minimal.pcap#1": true}
+	got := map[string][4]int{}
+	for ref, f := range recorded(t) {
+		path, _, _ := strings.Cut(ref, "#")
+		if refused[ref] {
+			if decodeAll(f) {
+				t.Errorf("%s decodes; it must be refused", ref)
+			}
+			continue
+		}
+		k, ok := roundTrip(t, ref, f)
+		if !ok {
+			continue
+		}
+		c := got[path]
+		c[k]++
+		got[path] = c
+	}
+	for path, w := range want {
+		if got[path] != w {
+			t.Errorf("%s: LLDP/DCP/RPC/RT frames %v, tshark %v", path, got[path], w)
 		}
 	}
+	for path, g := range got {
+		if _, ok := want[path]; !ok && !strings.HasSuffix(path, ".hex") && g != ([4]int{}) {
+			t.Errorf("%s: %v frames not counted by the test", path, g)
+		}
+	}
+}
+
+// roundTrip decodes and re-encodes one frame; it returns its kind (0
+// LLDP, 1 DCP, 2 RPC, 3 RT or RTA) and whether it is one of them.
+func roundTrip(t *testing.T, ref string, frame []byte) (int, bool) {
+	t.Helper()
+	if !decodeAll(frame) {
+		if e, err := ethernet.Decode(frame); err == nil && (e.EtherType == ethernet.EtherTypeLLDP || e.EtherType == ethernet.EtherTypeProfinet) {
+			t.Errorf("%s does not decode", ref)
+		}
+		return 0, false
+	}
+	e, _ := ethernet.Decode(frame)
+	switch e.EtherType {
+	case ethernet.EtherTypeLLDP:
+		f, _ := lldp.Decode(e.Payload)
+		b, err := f.AppendTo(nil)
+		if err != nil {
+			t.Errorf("%s: %v", ref, err)
+		} else if g, w := tlvSet(b), tlvSet(e.Payload); g != w {
+			t.Errorf("%s: LLDP re-encoded\n got %s\nwant %s", ref, g, w)
+		}
+		return 0, true
+	case ethernet.EtherTypeProfinet:
+		switch id := binary.BigEndian.Uint16(e.Payload); {
+		case id >= dcp.FrameIDHello:
+			f, _ := dcp.Decode(e.Payload)
+			n := int(binary.BigEndian.Uint16(e.Payload[10:]))
+			if b, err := f.AppendTo(nil); err != nil || string(b) != string(e.Payload[:12+n]) {
+				t.Errorf("%s: DCP re-encoded % x (%v)", ref, b, err)
+			}
+			return 1, true
+		case id == pnio.FrameIDAlarmHigh || id == pnio.FrameIDAlarmLow:
+			p, _ := alarm.Decode(e.Payload)
+			if b := p.AppendPayload(nil); string(b) != string(e.Payload[:len(b)]) {
+				t.Errorf("%s: RTA re-encoded % x", ref, b)
+			}
+			return 3, true
+		default:
+			f, _ := rt.Decode(e.Payload, 40)
+			if b := rt.AppendPayload(nil, &f); string(b) != string(e.Payload[:len(b)]) {
+				t.Errorf("%s: RT re-encoded % x", ref, b)
+			}
+			return 3, true
+		}
+	case ethernet.EtherTypeIPv4: // PNIO-CM over UDP, below
+	case ethernet.EtherTypeARP, ethernet.EtherTypeVLAN:
+		return 0, false
+	}
+	u, _ := capture.DecodeUDP(frame)
+	h, body, _ := rpc.DecodeHeader(u.Payload)
+	if b := h.AppendTo(nil); string(b) != string(u.Payload[:len(u.Payload)-len(body)]) {
+		t.Errorf("%s: RPC header re-encoded % x", ref, b)
+	}
+	return 2, true
+}
+
+// tlvSet returns the TLVs of an LLDPDU up to the End TLV, sorted, as text.
+func tlvSet(b []byte) string {
+	var tlvs []string
+	for len(b) >= 2 {
+		n := int(b[0]&1)<<8 | int(b[1])
+		if 2+n > len(b) {
+			return "truncated"
+		}
+		tlvs = append(tlvs, hex.EncodeToString(b[:2+n]))
+		if b[0]>>1 == 0 {
+			break
+		}
+		b = b[2+n:]
+	}
+	sort.Strings(tlvs)
+	return strings.Join(tlvs, " ")
 }
 
 // TestMalformedVariants derives malformed frames from every recorded one,
@@ -393,66 +517,5 @@ func TestMalformedVariants(t *testing.T) {
 	}
 	if n < 10000 {
 		t.Fatalf("only %d variants", n)
-	}
-}
-
-// TestExtendedCorpus checks the raw files make captures-extended fetched
-// into testdata/captures/.cache: their SHA256 is the manifest's, and every
-// committed excerpt is, byte for byte, the frame of the raw file it names.
-// Without the cache it is skipped unless PROFINET_CAPTURES_EXTENDED=1
-// requires it.
-func TestExtendedCorpus(t *testing.T) {
-	cache := capture.Path(".cache")
-	if _, err := os.Stat(cache); err != nil {
-		if os.Getenv("PROFINET_CAPTURES_EXTENDED") == "1" {
-			t.Fatalf("PROFINET_CAPTURES_EXTENDED=1 but no %s: run make captures-extended", cache)
-		}
-		t.Skip("no fetched raw captures (make captures-extended)")
-	}
-	m, err := capture.ReadManifest()
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := map[string][][]byte{}
-	for _, e := range m.Files {
-		if e.Committed || e.SHA256 == "" {
-			continue
-		}
-		p := filepath.Join(cache, e.Source, filepath.FromSlash(e.Original))
-		b, err := os.ReadFile(p)
-		if err != nil {
-			t.Errorf("%s: %v", e.Original, err)
-			continue
-		}
-		if h := sha256.Sum256(b); hex.EncodeToString(h[:]) != e.SHA256 {
-			t.Errorf("%s: sha256 %x, manifest %s", e.Original, h, e.SHA256)
-			continue
-		}
-		fr, err := capture.ReadPcap(p)
-		if err != nil {
-			t.Fatalf("%s: %v", e.Original, err)
-		}
-		raw[e.Original] = fr
-		for i, f := range fr {
-			_ = i
-			decodeAll(f)
-		}
-	}
-	for _, e := range m.Files {
-		if !e.Committed || e.Source != "ics-pcaps" {
-			continue
-		}
-		fr, ok := raw[e.Original]
-		if !ok {
-			t.Errorf("%s: raw file %s missing", e.Path, e.Original)
-			continue
-		}
-		var k int
-		for _, c := range e.Frames {
-			k = k*10 + int(c-'0')
-		}
-		if k < 1 || k > len(fr) || string(fr[k-1]) != string(capture.MustHex(e.Path)) {
-			t.Errorf("%s is not frame %d of %s", e.Path, k, e.Original)
-		}
 	}
 }

@@ -49,6 +49,7 @@ func (l LocalInfo) Build(mac ethernet.MAC, ttl uint16) Frame {
 		ChassisMAC:        &mac,
 		MACPHY:            &MACPHY{Autoneg: 0x03, PMDCapability: 0x6C00, MAUType: 16},
 		ManagementAddr:    l.IP,
+		ManagementIfIndex: 1,
 	}
 	if l.StationName == "" {
 		f.ChassisSubtype, f.ChassisID = ChassisSubtypeMAC, append([]byte(nil), mac[:]...)

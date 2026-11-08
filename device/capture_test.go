@@ -14,6 +14,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"net/netip"
 	"sync"
 	"testing"
@@ -299,7 +300,7 @@ func replayStartup(t *testing.T) replayed {
 	d, cpu := replayDevice(t, h)
 
 	// Connect (frame 50 -> 53).
-	reqFrame := capture.MustHex("pnio-rs/cm/connect_req.hex")
+	reqFrame := capture.MustLoad("pnio-rs/s7-1500_p-net_connect-req.hex")
 	_, reqH, _, reqArgsMax, reqBlocks := decodeRPC(t, reqFrame)
 	creq, err := pnio.DecodeConnectRequest(reqBlocks)
 	if err != nil {
@@ -308,7 +309,7 @@ func replayStartup(t *testing.T) replayed {
 	cpu.send(reqFrame)
 	got := cpu.next("Connect response", rpcFrom(rpc.TypeResponse))
 	gu, gh, gst, gMax, gBlocks := decodeRPC(t, got)
-	_, wh, wst, wMax, wBlocks := decodeRPC(t, capture.MustHex("pnio-rs/cm/connect_res.hex"))
+	_, wh, wst, wMax, wBlocks := decodeRPC(t, capture.MustLoad("pnio-rs/s7-1500_p-net_connect-res.hex"))
 	if gst != wst {
 		t.Fatalf("Connect refused: %v", gst)
 	}
@@ -383,10 +384,10 @@ func replayStartup(t *testing.T) replayed {
 
 	// Write, MultipleWrite of PDInterfaceAdjust and three module records
 	// (frame 54 -> 56).
-	cpu.send(capture.MustHex("pnio-rs/cm/write_req.hex"))
+	cpu.send(capture.MustLoad("pnio-rs/s7-1500_p-net_write-multiple-req.hex"))
 	got = cpu.next("Write response", rpcFrom(rpc.TypeResponse))
 	_, gh, gst, gMax, gBlocks = decodeRPC(t, got)
-	_, wh, wst, wMax, wBlocks = decodeRPC(t, capture.MustHex("pnio-rs/cm/write_res.hex"))
+	_, wh, wst, wMax, wBlocks = decodeRPC(t, capture.MustLoad("pnio-rs/s7-1500_p-net_write-multiple-res.hex"))
 	if gst != wst || gMax != wMax || gh.SeqNum != wh.SeqNum || gh.OpNum != wh.OpNum {
 		t.Errorf("Write response status/max_count/seq/op %v/%d/%d/%d, recorded %v/%d/%d/%d", gst, gMax, gh.SeqNum, gh.OpNum, wst, wMax, wh.SeqNum, wh.OpNum)
 	}
@@ -399,10 +400,10 @@ func replayStartup(t *testing.T) replayed {
 	}
 
 	// Control PrmEnd (frame 57 -> 58).
-	cpu.send(capture.MustHex("pnio-rs/cm/prmend_req.hex"))
+	cpu.send(capture.MustLoad("pnio-rs/s7-1500_p-net_prmend-req.hex"))
 	got = cpu.next("PrmEnd response", rpcFrom(rpc.TypeResponse))
 	_, gh, gst, gMax, gBlocks = decodeRPC(t, got)
-	_, wh, wst, wMax, wBlocks = decodeRPC(t, capture.MustHex("pnio-rs/cm/prmend_res.hex"))
+	_, wh, wst, wMax, wBlocks = decodeRPC(t, capture.MustLoad("pnio-rs/s7-1500_p-net_prmend-res.hex"))
 	if gst != wst || gMax != wMax || gh.SeqNum != wh.SeqNum {
 		t.Errorf("PrmEnd response status/max_count/seq %v/%d/%d, recorded %v/%d/%d", gst, gMax, gh.SeqNum, wst, wMax, wh.SeqNum)
 	}
@@ -415,7 +416,7 @@ func replayStartup(t *testing.T) replayed {
 	// sequence number are the device's, copied into the CPU's answer.
 	got = cpu.next("ApplicationReady request", rpcFrom(rpc.TypeRequest))
 	gu, gh, _, _, gBlocks = decodeRPC(t, got)
-	_, wh, _, _, wBlocks = decodeRPC(t, capture.MustHex("pnio-rs/cm/appready_req.hex"))
+	_, wh, _, _, wBlocks = decodeRPC(t, capture.MustLoad("pnio-rs/s7-1500_p-net_appready-req.hex"))
 	if gu.Dst.Addr() != recCPUIP || gu.Dst.Port() != rpc.Port {
 		t.Errorf("ApplicationReady sent to %v, want the CPU's 172.16.2.100:34964", gu.Dst)
 	}
@@ -425,7 +426,7 @@ func replayStartup(t *testing.T) replayed {
 	if !bytes.Equal(gBlocks, wBlocks) {
 		t.Errorf("IOXControlReq\n got % x\nwant % x", gBlocks, wBlocks)
 	}
-	cpuRes := capture.MustHex("pnio-rs/cm/appready_res.hex")
+	cpuRes := capture.MustLoad("pnio-rs/s7-1500_p-net_appready-res.hex")
 	ru, err := capture.DecodeUDP(cpuRes)
 	if err != nil {
 		t.Fatal(err)
@@ -443,7 +444,7 @@ func replayStartup(t *testing.T) replayed {
 
 	// Cyclic: the CPU's output frame 0x8001 (rt-cyclic, frame 2): data
 	// status 0x35, every IOPS and IOCS GOOD, outputs zero.
-	cpu.send(capture.MustHex("pnio-rs/rt/rtc_cpu_8001.hex"))
+	cpu.send(capture.MustLoad("pnio-rs/s7-1500_p-net_rt-output-8001.hex"))
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		data, iops, ok := d.Output(2, 1)
@@ -458,7 +459,7 @@ func replayStartup(t *testing.T) replayed {
 	// The echo frame: %Q0.0 = TRUE (QB0 = 0x01, slot 2) and, on the echo
 	// module (QB2..QB9), QD2 = 16#12345678 and QD6 = 1.5: declaration
 	// order, big endian, IEEE 754.
-	cpu.send(capture.MustHex("pnio-rs/rt/echo_cpu_8001.hex"))
+	cpu.send(capture.MustLoad("pnio-rs/s7-1500_p-net_rt-output-8001-echo.hex"))
 	deadline = time.Now().Add(3 * time.Second)
 	for {
 		data, _, _ := d.Output(4, 1)
@@ -478,7 +479,7 @@ func replayStartup(t *testing.T) replayed {
 		e, err := ethernet.Decode(f)
 		return err == nil && e.EtherType == ethernet.EtherTypeProfinet && len(e.Payload) >= 2 && binary.BigEndian.Uint16(e.Payload) == 0x8000
 	})
-	compareInputFrame(t, in, capture.MustHex("pnio-rs/rt/rtc_dev_8000.hex"))
+	compareInputFrame(t, in, capture.MustLoad("pnio-rs/s7-1500_p-net_rt-input-8000.hex"))
 	return replayed{d: d, cpu: cpu, h: h, res: &gres}
 }
 
@@ -487,7 +488,7 @@ func replayStartup(t *testing.T) replayed {
 // AR. Dynamic field: the cycle counter, which advances by 1024 (32 ms in
 // 31.25 µs units) per frame as in the recording.
 func (c *recordedCPU) keepCyclic() {
-	f := append([]byte(nil), capture.MustHex("pnio-rs/rt/echo_cpu_8001.hex")...)
+	f := append([]byte(nil), capture.MustLoad("pnio-rs/s7-1500_p-net_rt-output-8001-echo.hex")...)
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -620,7 +621,7 @@ func decodeRTA(t *testing.T, frame []byte) (ethernet.Frame, alarm.PDU) {
 // was 0, as the CPU's). Nothing else is changed.
 func cpuRTA(t *testing.T, rel string, devRef uint16) []byte {
 	t.Helper()
-	f := append([]byte(nil), capture.MustHex(rel)...)
+	f := append([]byte(nil), capture.MustLoad(rel)...)
 	if !bytes.Equal(f[6:12], []byte{0xec, 0x1c, 0x5d, 0x61, 0xe7, 0x3c}) || !bytes.Equal(f[0:6], recDevMAC[:]) {
 		t.Fatalf("%s: unexpected addresses % x", rel, f[:12])
 	}
@@ -661,15 +662,15 @@ func TestCaptureReplayAlarms(t *testing.T) {
 		done <- r.d.SendAlarm(context.Background(), Alarm{High: true, Type: pnio.AlarmProcess, Slot: 1, Subslot: 1, HasItem: true, USI: 0x0010, Data: []byte{0x01}})
 	}()
 	got := r.cpu.next("process alarm", alarmFrom(pnio.FrameIDAlarmHigh, alarm.PDUData))
-	want := capture.MustHex("pnio-rs/alarm/alarm_process_notif.hex")
+	want := capture.MustLoad("pnio-rs/s7-1500_p-net_alarm-high-process.hex")
 	gp, wp := compareRTA(t, "AlarmNotification", got, want)
 	if !bytes.Equal(gp.VarPart, wp.VarPart) {
 		t.Errorf("AlarmNotification\n got % x\nwant % x", gp.VarPart, wp.VarPart)
 	}
-	r.cpu.send(cpuRTA(t, "pnio-rs/alarm/alarm_ack_rta_high_cpu.hex", ref))
-	r.cpu.send(cpuRTA(t, "pnio-rs/alarm/alarm_ack_high_cpu.hex", ref))
+	r.cpu.send(cpuRTA(t, "pnio-rs/s7-1500_p-net_alarm-high-ack-rta-cpu.hex", ref))
+	r.cpu.send(cpuRTA(t, "pnio-rs/s7-1500_p-net_alarm-high-process-ack.hex", ref))
 	got = r.cpu.next("ACK-RTA of the AlarmAck", alarmFrom(pnio.FrameIDAlarmHigh, alarm.PDUAck))
-	compareRTA(t, "ACK-RTA", got, capture.MustHex("pnio-rs/alarm/alarm_ack_rta_high_dev.hex"))
+	compareRTA(t, "ACK-RTA", got, capture.MustLoad("pnio-rs/s7-1500_p-net_alarm-high-ack-rta-device.hex"))
 	select {
 	case err := <-done:
 		if err != nil {
@@ -689,13 +690,13 @@ func TestCaptureReplayAlarms(t *testing.T) {
 		done <- r.d.AddDiagnosis(context.Background(), 1, 1, pnio.DiagnosisItem{ChannelNumber: 4, ChannelProperties: 0x2801, ErrorType: 0x0001})
 	}()
 	got = r.cpu.next("diagnosis alarm", alarmFrom(pnio.FrameIDAlarmLow, alarm.PDUData))
-	want = capture.MustHex("pnio-rs/alarm/alarm_diag_notif.hex")
+	want = capture.MustLoad("pnio-rs/s7-1500_p-net_alarm-low-diagnosis-appears.hex")
 	gp, wp = compareRTA(t, "diagnosis AlarmNotification", got, want)
 	compareNotification(t, gp.VarPart, wp.VarPart)
-	r.cpu.send(cpuRTA(t, "pnio-rs/alarm/alarm_ack_rta_low_cpu.hex", ref))
-	r.cpu.send(cpuRTA(t, "pnio-rs/alarm/alarm_diag_ack_cpu.hex", ref))
+	r.cpu.send(cpuRTA(t, "pnio-rs/s7-1500_p-net_alarm-low-ack-rta-cpu.hex", ref))
+	r.cpu.send(cpuRTA(t, "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-ack.hex", ref))
 	got = r.cpu.next("ACK-RTA of the diagnosis AlarmAck", alarmFrom(pnio.FrameIDAlarmLow, alarm.PDUAck))
-	compareRTA(t, "low ACK-RTA", got, capture.MustHex("pnio-rs/alarm/alarm_ack_rta_low_dev.hex"))
+	compareRTA(t, "low ACK-RTA", got, capture.MustLoad("pnio-rs/s7-1500_p-net_alarm-low-ack-rta-device.hex"))
 	select {
 	case err := <-done:
 		if err != nil {
@@ -708,16 +709,16 @@ func TestCaptureReplayAlarms(t *testing.T) {
 	// The CPU's ERR-RTA "AR removed" (CF 81 FD 11). Its sequence numbers
 	// are those of another session (FFFE/FFFE): an ERR-RTA is taken
 	// whatever they are. p-net answered with its own ERR-RTA.
-	r.cpu.send(cpuRTA(t, "pnio-rs/alarm/alarm_err_rta_cpu_removed.hex", ref))
+	r.cpu.send(cpuRTA(t, "pnio-rs/s7-1500_p-net_alarm-err-rta-cpu-ar-removed.hex", ref))
 	got = r.cpu.next("ERR-RTA answer", alarmFrom(pnio.FrameIDAlarmLow, alarm.PDUErr))
 	// p-net echoed the CPU's status (CF 81 FD 11); this device answers
 	// "AR alarm.ind(err)" (CF 81 FD 0B), as the CPU itself answers a
-	// device's ERR-RTA (alarm_err_rta_cpu.hex). Its sequence numbers are
+	// device's ERR-RTA (s7-1500_p-net_alarm-err-rta-cpu-reply.hex). Its sequence numbers are
 	// the low channel's counters, as in the CPU's ERR-RTA: the device's
 	// one DATA (the diagnosis, 0xFFFF) and the CPU's one DATA accepted
 	// (its AlarmAck, 0xFFFF).
 	_, gp = decodeRTA(t, got)
-	_, cp := decodeRTA(t, capture.MustHex("pnio-rs/alarm/alarm_err_rta_cpu.hex"))
+	_, cp := decodeRTA(t, capture.MustLoad("pnio-rs/s7-1500_p-net_alarm-err-rta-cpu-reply.hex"))
 	if !bytes.Equal(gp.VarPart, cp.VarPart[:4]) || gp.Dst != 0 || gp.SendSeq != 0xFFFF || gp.AckSeq != 0xFFFF {
 		t.Errorf("ERR-RTA answer dst %d send/ack %#04x/%#04x status % x, want dst 0, FFFF/FFFF, % x", gp.Dst, gp.SendSeq, gp.AckSeq, gp.VarPart, cp.VarPart[:4])
 	}
@@ -788,10 +789,10 @@ func TestCaptureReplayDCP(t *testing.T) {
 
 	// Set IP: the CPU assigns 172.16.2.10/24, gateway 172.16.2.10,
 	// temporary (BlockQualifier 0), in a frame tagged with VID 0.
-	cpu.send(capture.MustHex("pnio-rs/cm/dcp_set_req.hex"))
+	cpu.send(capture.MustLoad("pnio-rs/s7-1500_p-net_dcp-set-ip-req.hex"))
 	got := cpu.next("Set response", isDCP(dcp.FrameIDGetSet))
 	ge, _ := ethernet.Decode(got)
-	we, _ := ethernet.Decode(capture.MustHex("pnio-rs/cm/dcp_set_res.hex"))
+	we, _ := ethernet.Decode(capture.MustLoad("pnio-rs/s7-1500_p-net_dcp-set-ip-res.hex"))
 	gf, err := dcp.Decode(ge.Payload)
 	if err != nil {
 		t.Fatal(err)
@@ -812,10 +813,10 @@ func TestCaptureReplayDCP(t *testing.T) {
 	}
 
 	// The tool's Set NameOfStation "%n%n%n " with End-Transaction, which
-	// the recorded S7-300 accepted (ics-pcaps set_name_res.hex: both
-	// blocks error 0). Intentional difference: this device refuses a name
+	// the recorded S7-300 accepted (unknown_s7-300ec_dcp-set-name.pcap
+	// frame 4: both blocks error 0). Intentional difference: this device refuses a name
 	// that is no valid NameOfStation and keeps its own.
-	hostile := append([]byte(nil), capture.MustHex("ics-pcaps/set_name_req.hex")...)
+	hostile := append([]byte(nil), capture.MustLoad("ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap#3")...)
 	copy(hostile[0:6], recDevMAC[:])
 	copy(hostile[6:12], recCPUMAC[:])
 	cpu.send(hostile)
@@ -840,10 +841,10 @@ func TestCaptureReplayDCP(t *testing.T) {
 	// Identify by name: rename the device to the bench-1 name first.
 	d2, cpu2 := replayDeviceNamed(t, "i-device")
 	_ = d2
-	cpu2.send(capture.MustHex("pnio-rs/dcp/identify_req_cpu.hex"))
+	cpu2.send(capture.MustLoad("pnio-rs/s7-1500_plcsim_dcp-identify-req.hex"))
 	got = cpu2.next("Identify response", isDCP(dcp.FrameIDIdentifyResponse))
 	ge, _ = ethernet.Decode(got)
-	we, _ = ethernet.Decode(capture.MustHex("pnio-rs/dcp/identify_res_plcsim.hex"))
+	we, _ = ethernet.Decode(capture.MustLoad("pnio-rs/s7-1500_plcsim_dcp-identify-res.hex"))
 	gf, err = dcp.Decode(ge.Payload)
 	if err != nil {
 		t.Fatal(err)
@@ -892,4 +893,145 @@ func replayDeviceNamed(t *testing.T, name string) (*Device, *recordedCPU) {
 	}
 	t.Cleanup(func() { _ = d.Close() })
 	return d, cpu
+}
+
+// TestCaptureReplayDCPRequests sends every recorded DCP Identify request
+// of the corpus (the SCALANCE switches' name checks, two Identify All) to
+// a device named "switch3": it answers Identify All and the two requests
+// for its own name, with their Xid, and no other.
+func TestCaptureReplayDCPRequests(t *testing.T) {
+	_, cpu := replayDeviceNamed(t, "switch3")
+	var reqs [][]byte
+	for _, p := range []string{"ics-pcaps/scalance_unknown_dcp-identify.pcap", "ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap", "wireshark/unknown_scalance-x208_dcp-set-ip.pcap"} {
+		fr, err := capture.ReadPcap(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range fr {
+			e, err := ethernet.Decode(f)
+			if err != nil || e.EtherType != ethernet.EtherTypeProfinet {
+				continue
+			}
+			if d, err := dcp.Decode(e.Payload); err == nil && d.Service == dcp.ServiceIdentify && d.Type == dcp.TypeRequest {
+				// From the CPU's port, so that the answer reaches it; the
+				// recorded destination (multicast or the device) is kept
+				// unless it named another device.
+				b := append([]byte(nil), f...)
+				if b[0]&1 == 0 {
+					copy(b[0:6], recDevMAC[:])
+				}
+				copy(b[6:12], recCPUMAC[:])
+				reqs = append(reqs, b)
+			}
+		}
+	}
+	if len(reqs) != 16 {
+		t.Fatalf("%d recorded Identify requests, tshark 16", len(reqs))
+	}
+	want := map[uint32]bool{0x0300BF9A: true, 0x0300BF9B: true, 0x01000001: true}
+	for _, r := range reqs {
+		cpu.send(r)
+	}
+	got := map[uint32]int{}
+	deadline := time.After(2 * time.Second)
+	for done := false; !done; {
+		select {
+		case f := <-cpu.frames:
+			e, err := ethernet.Decode(f)
+			if err != nil || e.EtherType != ethernet.EtherTypeProfinet {
+				continue
+			}
+			if d, err := dcp.Decode(e.Payload); err == nil && d.Service == dcp.ServiceIdentify && d.Type == dcp.TypeResponseSuccess {
+				got[d.Xid]++
+			}
+		case <-deadline:
+			done = true
+		}
+	}
+	for x := range want {
+		if got[x] == 0 {
+			t.Errorf("no answer to Xid %#08x", x)
+		}
+	}
+	for x := range got {
+		if !want[x] {
+			t.Errorf("answered Xid %#08x, a request for another name", x)
+		}
+	}
+	// The two Identify All requests share Xid 0x01000001.
+	if got[0x01000001] != 2 {
+		t.Errorf("%d answers to the two Identify All requests", got[0x01000001])
+	}
+}
+
+// TestCaptureReplayOtherControllers sends the Connect request of a 2009
+// Siemens controller and the Read Implicit of a tool (to a GE device) to
+// the device and classifies its answers against the recording.
+func TestCaptureReplayOtherControllers(t *testing.T) {
+	_, cpu := replayDevice(t, NopHandler{})
+	// The recorded addresses are those of other networks: move the
+	// requests to the device's and the CPU's (MAC, IP, IP checksum).
+	move := func(ref string) []byte {
+		u, err := capture.DecodeUDP(capture.MustLoad(ref))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return udpFrame(recDevMAC, recCPUMAC, netip.AddrPortFrom(recCPUIP, u.Src.Port()), netip.AddrPortFrom(recDevIP, u.Dst.Port()), u.Payload)
+	}
+
+	// Read Implicit I&M0FilterData: the GE device answered with a
+	// submodule, a module (slot 1 carries its own I&M0) and a device
+	// block. Legitimate difference: this device's only I&M0 carrier is the
+	// DAP, so it sends no I&M0FilterDataModule, which IEC 61158-6-10 makes
+	// optional; the other two are the same block types.
+	cpu.send(move("ics-pcaps/unknown_ge-ip-device_read-implicit.pcap#1"))
+	got := cpu.next("Read Implicit response", rpcFrom(rpc.TypeResponse))
+	_, _, gst, _, gb := decodeRPC(t, got)
+	_, _, wst, _, wb := decodeRPC(t, capture.MustLoad("ics-pcaps/unknown_ge-ip-device_read-implicit.pcap#2"))
+	types := func(b []byte) []pnio.BlockType {
+		blks, err := pnio.SplitBlocks(b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ts []pnio.BlockType
+		for _, x := range blks {
+			if len(ts) == 0 || ts[len(ts)-1] != x.Header.Type {
+				ts = append(ts, x.Header.Type)
+			}
+		}
+		return ts
+	}
+	if gst != wst || fmt.Sprint(types(gb)) != "[IODReadResHeader Block(0x0030) Block(0x0032)]" || fmt.Sprint(types(wb)) != "[IODReadResHeader Block(0x0030) Block(0x0031) Block(0x0032)]" {
+		t.Errorf("Read Implicit I&M0FilterData: %v blocks %v, GE device %v %v", gst, types(gb), wst, types(wb))
+	}
+
+	// Connect of the 2009 Siemens controller, for another device (DAP
+	// 0x00020005, modules in the profile API 0x3A00). Accepted with a
+	// ModuleDiffBlock: the DAP's module wrong, the API 0x3A00 modules
+	// missing. What the recorded device answered is not in the file.
+	cpu.send(move("ics-pcaps/s7-300_unknown_connect-req.pcap#1"))
+	got = cpu.next("Connect response", rpcFrom(rpc.TypeResponse))
+	_, _, gst, _, gb = decodeRPC(t, got)
+	if gst != (pnio.Status{}) {
+		t.Fatalf("Connect refused: %v", gst)
+	}
+	res, err := pnio.DecodeConnectResponse(gb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ModuleDiff == nil {
+		t.Fatal("no ModuleDiffBlock for a configuration of another device")
+	}
+	states := map[uint32][]uint16{}
+	for _, a := range res.ModuleDiff.APIs {
+		for _, m := range a.Modules {
+			states[a.API] = append(states[a.API], m.State)
+		}
+	}
+	if len(states[0x3A00]) != 2 || states[0x3A00][0] != pnio.ModuleStateNoModule || len(states[0]) != 1 || states[0][0] != pnio.ModuleStateWrong {
+		t.Errorf("ModuleDiff module states %v", states)
+	}
+	if len(res.IOCRs) != 2 || res.IOCRs[1].FrameID == pnio.FrameIDAssign {
+		t.Errorf("IOCRBlockRes %+v: the output FrameID the controller left to the device", res.IOCRs)
+	}
 }

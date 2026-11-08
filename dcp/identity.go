@@ -65,7 +65,7 @@ func (id *Identity) String() string {
 
 // trimNUL returns a name block's text without trailing NUL octets. A
 // recorded SIMATIC S7-300 (DeviceID 0x0101, testdata/captures
-// ics-pcaps/identify_res_s7300ec.hex) answers its NameOfStation in a
+// ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap frame 2) answers its NameOfStation in a
 // fixed field of 108 octets padded with NULs; a NUL is no character of a
 // station or type name, so the padding is not part of the name. Wireshark
 // shows the name the same way.

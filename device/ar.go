@@ -811,7 +811,7 @@ func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 	// The device tells the controller of its own abort; an abort by the
 	// controller's ERR PDU it answers with "AR alarm.ind(err)", as a
 	// CPU 1515-2 PN answers a device's ERR PDU in the recorded traffic
-	// (testdata/captures, pnio-rs alarm_err_rta_cpu.hex).
+	// (testdata/captures, pnio-rs s7-1500_p-net_alarm-err-rta-cpu-reply.hex).
 	status := pnio.AbortStatus(reason)
 	if peer {
 		notify, status = true, pnio.AbortStatus(pnio.AbortAlarmInd)

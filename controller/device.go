@@ -1409,7 +1409,7 @@ func (d *Device) teardown(a *arState) {
 		case errors.As(err, new(*rtaError)):
 			// The device's ERR PDU is answered with "AR alarm.ind(err)",
 			// as a CPU 1515-2 PN answers it in the recorded traffic
-			// (testdata/captures, pnio-rs alarm_err_rta_cpu.hex).
+			// (testdata/captures, pnio-rs s7-1500_p-net_alarm-err-rta-cpu-reply.hex).
 			status = pnio.AbortStatus(pnio.AbortAlarmInd)
 		case errors.Is(err, profinet.ErrAborted):
 		case errors.Is(err, profinet.ErrTimeout):

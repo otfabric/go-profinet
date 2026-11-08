@@ -26,11 +26,11 @@ func TestCaptureCyclicFrames(t *testing.T) {
 		status  rt.DataStatus
 		primary bool
 	}{
-		{"pnio-rs/rt/rtc_cpu_8001.hex", 0x8001, 47104, 0x35, true},
-		{"pnio-rs/rt/rtc_dev_8000.hex", 0x8000, 7168, 0x35, true},
-		{"pnio-rs/rt/echo_cpu_8001.hex", 0x8001, 58368, 0x35, true},
+		{"pnio-rs/s7-1500_p-net_rt-output-8001.hex", 0x8001, 47104, 0x35, true},
+		{"pnio-rs/s7-1500_p-net_rt-input-8000.hex", 0x8000, 7168, 0x35, true},
+		{"pnio-rs/s7-1500_p-net_rt-output-8001-echo.hex", 0x8001, 58368, 0x35, true},
 		// p-net reported "Backup" in this frame: State 0, Redundancy 1.
-		{"pnio-rs/rt/echo_dev_8000.hex", 0x8000, 60416, 0x36, false},
+		{"pnio-rs/s7-1500_p-net_rt-input-8000-echo.hex", 0x8000, 60416, 0x36, false},
 	}
 	for _, c := range cases {
 		e, err := ethernet.Decode(capture.MustHex(c.file))
@@ -72,7 +72,7 @@ func TestCaptureCyclicFrames(t *testing.T) {
 // controller uses, puts all IOCS after all data. Either is valid: the
 // IO controller chooses the layout and the device follows the IOCR block.
 func TestCaptureCPULayout(t *testing.T) {
-	u, err := capture.DecodeUDP(capture.MustHex("pnio-rs/cm/connect_req.hex"))
+	u, err := capture.DecodeUDP(capture.MustHex("pnio-rs/s7-1500_p-net_connect-req.hex"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestCaptureCPULayout(t *testing.T) {
 			}
 		}
 	}
-	e, err := ethernet.Decode(capture.MustHex("pnio-rs/rt/rtc_cpu_8001.hex"))
+	e, err := ethernet.Decode(capture.MustHex("pnio-rs/s7-1500_p-net_rt-output-8001.hex"))
 	if err != nil {
 		t.Fatal(err)
 	}

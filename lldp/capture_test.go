@@ -33,18 +33,18 @@ func TestCaptureLLDP(t *testing.T) {
 		chassisMAC       string
 		pmd, mau         uint16
 	}{
-		{"ics-pcaps/lldp_s7-1200.hex", 7, "S7-1200                   6ES7 214-1AG40-0XB0  S V-K2C13707         7 V  4  2  1", "port-001.plcxb1d0ed",
+		{"ics-pcaps/unknown_s7-1200_lldp.pcapng#1", 7, "S7-1200                   6ES7 214-1AG40-0XB0  S V-K2C13707         7 V  4  2  1", "port-001.plcxb1d0ed",
 			"Siemens, SIMATIC S7, Ethernet Port, X1 P1", "Siemens, SIMATIC S7, CPU-1200, 6ES7 214-1AG40-0XB0, HW: 7, FW: V.4.2.1, S V-K2C13707", "", "192.168.0.1", 1, "e0:dc:a0:34:21:d4", 0x6c00, 0x0010},
-		{"ics-pcaps/lldp_ktp700.hex", 7, "hmixb110d0", "port-001",
+		{"ics-pcaps/unknown_s7-1200_lldp.pcapng#2", 7, "hmixb110d0", "port-001",
 			"Siemens, SIMATIC S7, Ethernet Port, X1 P1", "Siemens, SIMATIC HMI, KTP700 Basic, 6AV2 123-2GB03-0AX0, HW:0, SW.V 13.0.1", "", "192.168.0.2", 2, "e0:dc:a0:29:c6:e7", 0x6c01, 0x0010},
-		{"ics-pcaps/lldp_scalance-x200.hex", 4, "00:1b:1b:34:34:cb", "port-003",
+		{"ics-pcaps/unknown_scalance-x200_lldp.pcap#3", 4, "00:1b:1b:34:34:cb", "port-003",
 			"", "Siemens AG SIMATIC S7 MULTIPORT SCALANCE X 200 FAM", "", "0.0.0.0", 3, "00:1b:1b:34:34:cb", 0x6c00, 0x000f},
-		{"ics-pcaps/lldp_pc-hmi.hex", 7, "scada-pc-060839", "port-001",
+		{"ics-pcaps/unknown_scalance-x200_lldp.pcap#2", 7, "scada-pc-060839", "port-001",
 			"", "Dell Inc. OptiPlex 990,01,G22XB2S + HMI", "SCADA-PC-060839", "10.10.10.70", 1, "", 0, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.file, func(t *testing.T) {
-			e, err := ethernet.Decode(capture.MustHex(c.file))
+			e, err := ethernet.Decode(capture.MustLoad(c.file))
 			if err != nil {
 				t.Fatal(err)
 			}

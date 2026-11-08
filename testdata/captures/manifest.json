@@ -15,7 +15,7 @@
     {
       "id": "wireshark",
       "url": "https://wiki.wireshark.org/PROFINET/DCP",
-      "revision": "ChangeIPUsingDCP.pcap, downloaded 2026-11-08",
+      "revision": "unknown_scalance-x208_dcp-set-ip.pcap, downloaded 2026-11-08",
       "acquired": "2026-11-08",
       "license": "no licence statement; published by the Wireshark wiki as the example capture of the PN-DCP dissector",
       "redistribution": "committed byte-identical, as go-s7comm commits the Wireshark wiki S7comm samples (owner to revisit)",
@@ -30,160 +30,16 @@
       "revision": "0ffbf023afb4e39373228b54851bb4a1f33a3ab8",
       "acquired": "2026-11-08",
       "license": "none (no licence file, no statement)",
-      "redistribution": "not established: raw files are NOT committed (make captures-extended fetches and checks them); ics-pcaps/*.hex hold single frames as excerpts (owner to revisit)",
+      "redistribution": "committed byte-identical under clean names (owner decision 2026-11-08: the pcap files raise no licensing concern here); the repository states no licence",
       "class": "C",
-      "hardware": "frames self-identify Siemens (OUIs 00:0e:8c, 00:1b:1b, 08:00:06, e0:dc:a0), an S7-300EC (DeviceID 0x0101), an S7-1200 CPU 1214C 6ES7 214-1AG40-0XB0 FW V4.2.1, a KTP700 Basic 6AV2 123-2GB03-0AX0 SW V13.0.1, a SCALANCE X 200, a GE Intelligent Platforms device (00:09:91); origin not documented",
+      "hardware": "the frames self-identify Siemens (OUIs 00:0e:8c, 00:1b:1b, 08:00:06, e0:dc:a0), an S7-300 class controller and an S7-300EC (DeviceID 0x0101), an S7-1200 CPU 1214C 6ES7 214-1AG40-0XB0 FW V4.2.1, a KTP700 Basic 6AV2 123-2GB03-0AX0 SW V13.0.1, SCALANCE X 200 and SCALANCE switches, a GE Intelligent Platforms device (00:09:91); the LLDP samples a Cisco Catalyst 3560 (IOS 12.2(44)SE), an Extreme Summit300-48 (7.4e.1), an Extreme device (00:04:96) and an HP ProCurve 2600-8-PWR (H.08.89); origin not documented",
       "peers": "unknown engineering tools and controllers",
-      "limitations": "no documentation of setup or origin; recordings from 2008-2012 (frame timestamps); pro6.pcap renames a device to \"%n%n%n \" (a security test, not normal operation)"
+      "limitations": "no documentation of setup or origin; recordings from 2008-2012 (frame timestamps); unknown_s7-300ec_dcp-set-name.pcap renames a device to \"%n%n%n \" (a security test, not normal operation); unknown_extreme_lldp-minimal.pcap repeats the TTL TLV; Profinet/pro1.pcap is the Wireshark sample (not committed twice), Profinet/pro2.pcap holds S7comm, not PROFINET (go-s7comm's subject)"
     }
   ],
   "files": [
     {
-      "path": "ics-pcaps/connect_req_siemens.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro.pcap",
-      "frames": "1",
-      "direction": "Siemens controller (00:0e:8c",
-      "sha256": "8825b2e67da14811000ce03f714f1d85b8528d022366a2cac10670a41e2a1b15",
-      "size": 2471,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro.pcap frame 1: Siemens controller (00:0e:8c, CMInitiatorObjectUUID vendor 0x002A device 0x0101) -> Siemens device, Connect request, DREP LE, 2009-10-29, 743 bytes"
-    },
-    {
-      "path": "ics-pcaps/identify_all_req.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro6.pcap",
-      "frames": "1",
-      "direction": "D-Link NIC tool -> Siemens S7-300EC (VendorID 0x002A DeviceID 0x0101)",
-      "sha256": "d00c233461180bcaec5a6ea5723f200904dbf2f1b8e4f83a6d6e505877d5c255",
-      "size": 315,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro6.pcap frame 1: D-Link NIC tool -> Siemens S7-300EC (VendorID 0x002A DeviceID 0x0101), DCP Identify All request, 2008-01-17, 34 bytes"
-    },
-    {
-      "path": "ics-pcaps/identify_req_scalance.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro5.pcap",
-      "frames": "1",
-      "direction": "Siemens switch (00:1b:1b) -> multicast",
-      "sha256": "29bf7e28746a7faa9aff63440e75dfd02fe075cad213860aae89912683afadb7",
-      "size": 382,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro5.pcap frame 1: Siemens switch (00:1b:1b) -> multicast, DCP Identify request for its own NameOfStation \"switch3\", 2012-11-12, 56 bytes"
-    },
-    {
-      "path": "ics-pcaps/identify_res_s7300ec.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro6.pcap",
-      "frames": "2",
-      "direction": "S7-300EC -> tool",
-      "sha256": "3d7118320428e1b7c2e805333e402c956ac9fec73c3c0bcb405d07a4c4f3feca",
-      "size": 813,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro6.pcap frame 2: S7-300EC -> tool, DCP Identify response, NameOfStation \"%n%n%n \", 214 bytes"
-    },
-    {
-      "path": "ics-pcaps/lldp_ktp700.hex",
-      "source": "ics-pcaps",
-      "original": "LLDP/simens.pcap",
-      "frames": "2",
-      "direction": "SIMATIC HMI KTP700 Basic 6AV2 123-2GB03-0AX0 SW V13.0.1 (from its own LLDP) -> LLDP multicast",
-      "sha256": "c3bcbbe0fee007b02c1f3c5d1fdbdc3535a419208b3b78a90a72e9110d81cd7d",
-      "size": 894,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 LLDP/simens.pcap frame 2: SIMATIC HMI KTP700 Basic 6AV2 123-2GB03-0AX0 SW V13.0.1 (from its own LLDP) -> LLDP multicast, 232 bytes"
-    },
-    {
-      "path": "ics-pcaps/lldp_pc-hmi.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro4.pcap",
-      "frames": "2",
-      "direction": "Dell OptiPlex 990 PC + HMI (from its LLDP) -> LLDP multicast",
-      "sha256": "bcf348de795b04f2e034880e998037f76a8aa6ceeca85407b52177e6c6502dd8",
-      "size": 671,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro4.pcap frame 2: Dell OptiPlex 990 PC + HMI (from its LLDP) -> LLDP multicast, 168 bytes"
-    },
-    {
-      "path": "ics-pcaps/lldp_s7-1200.hex",
-      "source": "ics-pcaps",
-      "original": "LLDP/simens.pcap",
-      "frames": "1",
-      "direction": "S7-1200 CPU 1214C 6ES7 214-1AG40-0XB0 HW 7 FW V4.2.1 (from its own LLDP) -> LLDP multicast",
-      "sha256": "d1c5919ffd291405164d22c30421dbc47a986ee45e1ff0f505a88e7bcb775456",
-      "size": 1164,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 LLDP/simens.pcap frame 1: S7-1200 CPU 1214C 6ES7 214-1AG40-0XB0 HW 7 FW V4.2.1 (from its own LLDP) -> LLDP multicast, 323 bytes"
-    },
-    {
-      "path": "ics-pcaps/lldp_scalance-x200.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro4.pcap",
-      "frames": "3",
-      "direction": "Siemens SCALANCE X 200 switch (from its own LLDP) -> LLDP multicast",
-      "sha256": "a676b354b29eb03961ca73a6a6439f0e976ef7d3834b0f1fce4cbd44e4f9914e",
-      "size": 633,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro4.pcap frame 3: Siemens SCALANCE X 200 switch (from its own LLDP) -> LLDP multicast, 153 bytes"
-    },
-    {
-      "path": "ics-pcaps/readimplicit_req.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro3.pcap",
-      "frames": "1",
-      "direction": "Intel NIC tool -> Intelligent Platforms device (00:09:91)",
-      "sha256": "8220d6cd7b7ce20706b7193f3d65202b8605c87582fa8b9745131f00113f89a3",
-      "size": 832,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro3.pcap frame 1: Intel NIC tool -> Intelligent Platforms device (00:09:91), Read Implicit I&M0FilterData request, 2010-10-14, 206 bytes"
-    },
-    {
-      "path": "ics-pcaps/readimplicit_res.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro3.pcap",
-      "frames": "2",
-      "direction": "Intelligent Platforms device -> tool",
-      "sha256": "72026d1b93471a993171265bf3ed04f501841470dc2a05528139a39dd431f288",
-      "size": 1112,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro3.pcap frame 2: Intelligent Platforms device -> tool, Read Implicit I&M0FilterData response, 310 bytes"
-    },
-    {
-      "path": "ics-pcaps/set_name_req.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro6.pcap",
-      "frames": "3",
-      "direction": "tool -> S7-300EC",
-      "sha256": "ffd58d197428f317cf954ae11cd2483eaf52a5971390d12238959e4c98e61389",
-      "size": 331,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro6.pcap frame 3: tool -> S7-300EC, DCP Set NameOfStation \"%n%n%n \" + Control End-Transaction, 50 bytes"
-    },
-    {
-      "path": "ics-pcaps/set_name_res.hex",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro6.pcap",
-      "frames": "4",
-      "direction": "S7-300EC -> tool",
-      "sha256": "b1095f538e4404df3e0da56e2545d1b4956651319decac656bee688b31cb19ba",
-      "size": 361,
-      "committed": true,
-      "class": "C",
-      "what": "excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro6.pcap frame 4: S7-300EC -> tool, DCP Set response, two Control/Response blocks, 64 bytes"
-    },
-    {
-      "path": "pnio-rs/alarm/alarm_ack_high_cpu.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-high-process-ack.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_ack_high_cpu.hex",
       "frames": "50895",
@@ -195,7 +51,7 @@
       "what": "frame 50895 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, Alarm High DATA: AlarmAck Process, slot 1/1, PNIOStatus OK (SendSeq 0xFFFF AckSeq 0xFFFF), 64 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_ack_rta_high_cpu.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-high-ack-rta-cpu.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_ack_rta_high_cpu.hex",
       "frames": "50894",
@@ -207,7 +63,7 @@
       "what": "frame 50894 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, Alarm High ACK-RTA for the process notification (SendSeq 0xFFFE AckSeq 0xFFFF), 64 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_ack_rta_high_dev.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-high-ack-rta-device.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_ack_rta_high_dev.hex",
       "frames": "50896",
@@ -219,7 +75,7 @@
       "what": "frame 50896 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm High ACK-RTA for the CPU's AlarmAck (SendSeq 0xFFFF AckSeq 0xFFFF), 32 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_ack_rta_low_cpu.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-ack-rta-cpu.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_ack_rta_low_cpu.hex",
       "frames": "52814",
@@ -231,7 +87,7 @@
       "what": "frame 52814 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, Alarm Low ACK-RTA for the diagnosis notification, 64 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_ack_rta_low_dev.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-ack-rta-device.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_ack_rta_low_dev.hex",
       "frames": "52816",
@@ -243,7 +99,7 @@
       "what": "frame 52816 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low ACK-RTA for the CPU's AlarmAck, 32 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_diag_ack_cpu.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-ack.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_diag_ack_cpu.hex",
       "frames": "52815",
@@ -255,7 +111,7 @@
       "what": "frame 52815 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, Alarm Low DATA: AlarmAck Diagnosis, slot 1/1, PNIOStatus OK, 64 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_diag_notif.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-appears.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_diag_notif.hex",
       "frames": "52813",
@@ -267,7 +123,7 @@
       "what": "frame 52813 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low 0xFE01 DATA: AlarmNotification Diagnosis, slot 1/1, USI 0x8002 ExtChannelDiagnosis, channel 4, properties 0x2801 (input, appears, fault), error type 0x0001, 72 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_diag_std_remove.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-all-disappear.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_diag_std_remove.hex",
       "frames": "56029",
@@ -279,7 +135,7 @@
       "what": "frame 56029 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low DATA: Diagnosis with properties 0x2001 (input, specifier 0 = all disappear), error type 0x0001 - p-net's encoding of a standard-diagnosis removal, 72 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_diag_update_appears.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-update-appears.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_diag_update_appears.hex",
       "frames": "53455",
@@ -291,7 +147,7 @@
       "what": "frame 53455 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low DATA: Diagnosis (update, first half), properties 0x2801 appears, 72 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_diag_update_others_remain.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-update-others-remain.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_diag_update_others_remain.hex",
       "frames": "53460",
@@ -303,7 +159,7 @@
       "what": "frame 53460 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low DATA: Diagnosis (update, second half), properties 0x3801 disappears-but-others-remain, 72 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_diag_usi_disappears.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-manufacturer-disappears.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_diag_usi_disappears.hex",
       "frames": "55387",
@@ -315,7 +171,7 @@
       "what": "frame 55387 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low DATA: AlarmNotification DiagnosisDisappears (0x000C), USI 0x1234 (manufacturer), SendSeq 0x0004 AckSeq 0x0003, 60 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_err_rta_cpu.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-err-rta-cpu-reply.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_err_rta_cpu.hex",
       "frames": "57311",
@@ -327,7 +183,7 @@
       "what": "frame 57311 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, Alarm Low ERR-RTA reply, PNIOStatus CF 81 FD 0B (AR alarm.ind(err)), 64 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_err_rta_cpu_removed.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-err-rta-cpu-ar-removed.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_err_rta_cpu_removed.hex",
       "frames": "47351",
@@ -339,7 +195,7 @@
       "what": "frame 47351 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, Alarm Low ERR-RTA at TIA download, PNIOStatus CF 81 FD 11 (AR removed), SendSeq 0xFFFE AckSeq 0xFFFE, 64 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_err_rta_dev.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-err-rta-device-abort.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_err_rta_dev.hex",
       "frames": "57310",
@@ -351,7 +207,7 @@
       "what": "frame 57310 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low ERR-RTA, PNIOStatus CF 81 FD 00 (device-initiated abort), SendSeq 0x0006 AckSeq 0x0005, 36 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_err_rta_dev_removed_reply.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-err-rta-device-reply.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_err_rta_dev_removed_reply.hex",
       "frames": "47352",
@@ -363,7 +219,7 @@
       "what": "frame 47352 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm Low ERR-RTA reply, same status, SendSeq 0xFFFF AckSeq 0xFFFE, 36 bytes"
     },
     {
-      "path": "pnio-rs/alarm/alarm_process_notif.hex",
+      "path": "pnio-rs/s7-1500_p-net_alarm-high-process.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/alarm_process_notif.hex",
       "frames": "50893",
@@ -375,7 +231,7 @@
       "what": "frame 50893 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Alarm High 0xFC01 DATA: AlarmNotification Process, slot 1/1, USI 0x0010, 1 byte user data (SendSeq 0xFFFF AckSeq 0xFFFE), 61 bytes"
     },
     {
-      "path": "pnio-rs/alarm/im0_read_req.hex",
+      "path": "pnio-rs/s7-1500_p-net_read-im0-dap-req.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/im0_read_req.hex",
       "frames": "24414",
@@ -387,7 +243,7 @@
       "what": "frame 24414 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, DCE-RPC Read request (opnum 2), IODReadReqHeader slot 0 subslot 1, index 0xAFF0 I&M0, RecordDataLength 0x8000, 206 bytes"
     },
     {
-      "path": "pnio-rs/alarm/im0_read_req_if.hex",
+      "path": "pnio-rs/s7-1500_p-net_read-im0-interface-req.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/im0_read_req_if.hex",
       "frames": "24410",
@@ -399,7 +255,7 @@
       "what": "frame 24410 of plan5-alarm.pcapng (2026-08-30): CPU -> p-net, Read request I&M0 on the interface submodule slot 0 subslot 0x8000, 206 bytes"
     },
     {
-      "path": "pnio-rs/alarm/im0_read_res.hex",
+      "path": "pnio-rs/s7-1500_p-net_read-im0-dap-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/im0_read_res.hex",
       "frames": "24415",
@@ -411,7 +267,7 @@
       "what": "frame 24415 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, DCE-RPC Read response, IODReadResHeader + I&M0 block (60 bytes), p-net identity VendorID 0x0493 OrderID '12345 Abcdefghijk', 266 bytes"
     },
     {
-      "path": "pnio-rs/alarm/im0_read_res_if.hex",
+      "path": "pnio-rs/s7-1500_p-net_read-im0-interface-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/alarm/im0_read_res_if.hex",
       "frames": "24411",
@@ -423,7 +279,7 @@
       "what": "frame 24411 of plan5-alarm.pcapng (2026-08-30): p-net -> CPU, Read response I&M0 on the interface submodule, 266 bytes"
     },
     {
-      "path": "pnio-rs/cm/appready_req.hex",
+      "path": "pnio-rs/s7-1500_p-net_appready-req.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/appready_req.hex",
       "frames": "59",
@@ -435,7 +291,7 @@
       "what": "frame 59: p-net -> CPU Control ApplicationReady, DREP BE, 174 bytes (src port 49153)"
     },
     {
-      "path": "pnio-rs/cm/appready_res.hex",
+      "path": "pnio-rs/s7-1500_p-net_appready-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/appready_res.hex",
       "frames": "60",
@@ -447,7 +303,7 @@
       "what": "frame 60: CPU -> p-net ApplicationReady Done, DREP LE, flags1 0x0a, 174 bytes"
     },
     {
-      "path": "pnio-rs/cm/connect_req.hex",
+      "path": "pnio-rs/s7-1500_p-net_connect-req.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/connect_req.hex",
       "frames": "50",
@@ -459,7 +315,7 @@
       "what": "frame 50: CPU Connect request, DREP LE, 699 bytes (RPC PDU at offset 42)"
     },
     {
-      "path": "pnio-rs/cm/connect_res.hex",
+      "path": "pnio-rs/s7-1500_p-net_connect-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/connect_res.hex",
       "frames": "53",
@@ -471,7 +327,7 @@
       "what": "frame 53: p-net Connect response, DREP BE, 232 bytes (RPC PDU at offset 42)"
     },
     {
-      "path": "pnio-rs/cm/dcp_set_req.hex",
+      "path": "pnio-rs/s7-1500_p-net_dcp-set-ip-req.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/dcp_set_req.hex",
       "frames": "47",
@@ -483,7 +339,7 @@
       "what": "frame 47: CPU DCP Set IP (VLAN tagged, Xid 0x0300012d), 64 bytes"
     },
     {
-      "path": "pnio-rs/cm/dcp_set_res.hex",
+      "path": "pnio-rs/s7-1500_p-net_dcp-set-ip-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/dcp_set_res.hex",
       "frames": "48",
@@ -495,7 +351,7 @@
       "what": "frame 48: p-net DCP Set Ok, 34 bytes"
     },
     {
-      "path": "pnio-rs/cm/ident_ok_pnet.hex",
+      "path": "pnio-rs/s7-1500_p-net_dcp-identify-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/ident_ok_pnet.hex",
       "frames": "37",
@@ -507,7 +363,7 @@
       "what": "frame 37: p-net DCP Ident Ok (Xid 0x0300012c), 144 bytes"
     },
     {
-      "path": "pnio-rs/cm/prmend_req.hex",
+      "path": "pnio-rs/s7-1500_p-net_prmend-req.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/prmend_req.hex",
       "frames": "57",
@@ -519,7 +375,7 @@
       "what": "frame 57: CPU Control PrmEnd, DREP LE, 174 bytes"
     },
     {
-      "path": "pnio-rs/cm/prmend_res.hex",
+      "path": "pnio-rs/s7-1500_p-net_prmend-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/prmend_res.hex",
       "frames": "58",
@@ -531,7 +387,7 @@
       "what": "frame 58: p-net Control PrmEnd Done, DREP BE, 174 bytes"
     },
     {
-      "path": "pnio-rs/cm/write_req.hex",
+      "path": "pnio-rs/s7-1500_p-net_write-multiple-req.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/write_req.hex",
       "frames": "54",
@@ -543,7 +399,7 @@
       "what": "frame 54: CPU Write MultipleWrite, DREP LE, 486 bytes"
     },
     {
-      "path": "pnio-rs/cm/write_res.hex",
+      "path": "pnio-rs/s7-1500_p-net_write-multiple-res.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/cm/write_res.hex",
       "frames": "56",
@@ -555,7 +411,7 @@
       "what": "frame 56: p-net Write response, DREP BE, 462 bytes"
     },
     {
-      "path": "pnio-rs/dcp/identify_req_cpu.hex",
+      "path": "pnio-rs/s7-1500_plcsim_dcp-identify-req.hex",
       "source": "pnio-rs",
       "original": "docs/dcp-golden-frames.md",
       "frames": "",
@@ -567,7 +423,7 @@
       "what": "docs/dcp-golden-frames.md section 1 (captures/dcp-identify.pcapng, bench 2026-06-26): CPU 1515-2 PN -> multicast, DCP Identify request, NameOfStation filter \"i-device\", Xid 0x03000152, 56 bytes"
     },
     {
-      "path": "pnio-rs/dcp/identify_res_plcsim.hex",
+      "path": "pnio-rs/s7-1500_plcsim_dcp-identify-res.hex",
       "source": "pnio-rs",
       "original": "docs/dcp-golden-frames.md",
       "frames": "",
@@ -579,7 +435,7 @@
       "what": "docs/dcp-golden-frames.md section 2 (captures/dcp-identify.pcapng, bench 2026-06-26): PLCSIM Advanced i-device (software) -> CPU, DCP Identify response, Xid 0x03000152, 114 bytes"
     },
     {
-      "path": "pnio-rs/rt/echo_cpu_8001.hex",
+      "path": "pnio-rs/s7-1500_p-net_rt-output-8001-echo.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/rt/echo_cpu_8001.hex",
       "frames": "2",
@@ -591,7 +447,7 @@
       "what": "echo-2026-08-27-165307.pcapng frame 2: CPU -> device, QB0=01, Echo 12345678 / 1.5f, cc 0xe400 (64 bytes)"
     },
     {
-      "path": "pnio-rs/rt/echo_dev_8000.hex",
+      "path": "pnio-rs/s7-1500_p-net_rt-input-8000-echo.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/rt/echo_dev_8000.hex",
       "frames": "1",
@@ -603,7 +459,7 @@
       "what": "echo-2026-08-27-165307.pcapng frame 1: p-net -> CPU, ds 0x36 (Backup+Redundancy quirk), cc 0xec00 (64 bytes)"
     },
     {
-      "path": "pnio-rs/rt/rtc_cpu_8001.hex",
+      "path": "pnio-rs/s7-1500_p-net_rt-output-8001.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/rt/rtc_cpu_8001.hex",
       "frames": "2",
@@ -615,7 +471,7 @@
       "what": "rt-cyclic-2026-08-27-164031.pcapng frame 2: CPU -> device, FrameID 0x8001, ds 0x35, cc 0xb800 (64 bytes)"
     },
     {
-      "path": "pnio-rs/rt/rtc_dev_8000.hex",
+      "path": "pnio-rs/s7-1500_p-net_rt-input-8000.hex",
       "source": "pnio-rs",
       "original": "crates/pnio/testdata/rt/rtc_dev_8000.hex",
       "frames": "1",
@@ -627,7 +483,7 @@
       "what": "rt-cyclic-2026-08-27-164031.pcapng frame 1: p-net -> CPU, FrameID 0x8000, ds 0x35, cc 0x1c00 (64 bytes)"
     },
     {
-      "path": "wireshark/ChangeIPUsingDCP.pcap",
+      "path": "wireshark/unknown_scalance-x208_dcp-set-ip.pcap",
       "source": "wireshark",
       "original": "ChangeIPUsingDCP.pcap",
       "frames": "1-6",
@@ -637,66 +493,6 @@
       "committed": true,
       "class": "C",
       "what": "DCP Identify All, Identify response of a SCALANCE X208, Set IP, Set response, two ARP"
-    },
-    {
-      "path": "",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro.pcap",
-      "sha256": "f8a04ed840d4d1f57b14b6008eb99d135b3a5e21f41eab3746eb3383b435a1ab",
-      "size": 783,
-      "committed": false,
-      "class": "C",
-      "what": "raw file, fetched by make captures-extended: Connect request of a Siemens controller"
-    },
-    {
-      "path": "",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro3.pcap",
-      "sha256": "bda384b5cf3b7035f13ae3bdc860d5d971627c1ded3c5e588a7b8f559effb931",
-      "size": 572,
-      "committed": false,
-      "class": "C",
-      "what": "raw file, fetched by make captures-extended: Read Implicit I&M0FilterData"
-    },
-    {
-      "path": "",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro4.pcap",
-      "sha256": "2a13ba6e2475fed2b03eccbec31edb239ff88f12c58f8dd5e9ff40a05fb47d45",
-      "size": 8965,
-      "committed": false,
-      "class": "C",
-      "what": "raw file, fetched by make captures-extended: LLDP of a SCALANCE X 200 and a PC, S7 setup"
-    },
-    {
-      "path": "",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro5.pcap",
-      "sha256": "55ceb6e5c1ca1490c24d51d23084a554cecb95bdd9e9ae82e04b97c237798bbb",
-      "size": 1032,
-      "committed": false,
-      "class": "C",
-      "what": "raw file, fetched by make captures-extended: DCP Identify requests of SCALANCE switches"
-    },
-    {
-      "path": "",
-      "source": "ics-pcaps",
-      "original": "Profinet/pro6.pcap",
-      "sha256": "ebb4ac34bda04ce0f3acadb947ff9be14fe07b0bb17a3bbbfff17223288caea5",
-      "size": 450,
-      "committed": false,
-      "class": "C",
-      "what": "raw file, fetched by make captures-extended: DCP Identify and Set name of an S7-300EC"
-    },
-    {
-      "path": "",
-      "source": "ics-pcaps",
-      "original": "LLDP/simens.pcap",
-      "sha256": "94368f800671e76964dee9e2e45b7271289ff5b6c8c1f04a8ecbdbeae342237e",
-      "size": 251828,
-      "committed": false,
-      "class": "C",
-      "what": "raw file, fetched by make captures-extended: LLDP of an S7-1200 and a KTP700 (pcapng)"
     },
     {
       "path": "",
@@ -747,6 +543,126 @@
       "committed": false,
       "class": "B",
       "what": "original recording, not published by pnio-rs; only the frames above exist"
+    },
+    {
+      "path": "ics-pcaps/s7-300_unknown_connect-req.pcap",
+      "source": "ics-pcaps",
+      "original": "Profinet/pro.pcap",
+      "frames": "1",
+      "direction": "S7-300 class controller -> Siemens device",
+      "sha256": "f8a04ed840d4d1f57b14b6008eb99d135b3a5e21f41eab3746eb3383b435a1ab",
+      "size": 783,
+      "committed": true,
+      "class": "C",
+      "what": "Connect request of a Siemens controller (CMInitiatorObjectUUID vendor 0x002A device 0x0101) to a Siemens device, DREP LE, 2009-10-29"
+    },
+    {
+      "path": "ics-pcaps/unknown_ge-ip-device_read-implicit.pcap",
+      "source": "ics-pcaps",
+      "original": "Profinet/pro3.pcap",
+      "frames": "1-2",
+      "direction": "tool <-> GE device",
+      "sha256": "bda384b5cf3b7035f13ae3bdc860d5d971627c1ded3c5e588a7b8f559effb931",
+      "size": 572,
+      "committed": true,
+      "class": "C",
+      "what": "Read Implicit I&M0FilterData request of a tool (Intel NIC) and the answer of a GE Intelligent Platforms device, 2010-10-14"
+    },
+    {
+      "path": "ics-pcaps/unknown_scalance-x200_lldp.pcap",
+      "source": "ics-pcaps",
+      "original": "Profinet/pro4.pcap",
+      "frames": "1-56",
+      "direction": "neighbours -> LLDP multicast",
+      "sha256": "2a13ba6e2475fed2b03eccbec31edb239ff88f12c58f8dd5e9ff40a05fb47d45",
+      "size": 8965,
+      "committed": true,
+      "class": "C",
+      "what": "LLDP of a SCALANCE X 200 switch and an OptiPlex 990 PC with an HMI, ARP, an S7comm COTP connect, SMB browser, mDNS"
+    },
+    {
+      "path": "ics-pcaps/scalance_unknown_dcp-identify.pcap",
+      "source": "ics-pcaps",
+      "original": "Profinet/pro5.pcap",
+      "frames": "1-14",
+      "direction": "SCALANCE switches -> multicast",
+      "sha256": "55ceb6e5c1ca1490c24d51d23084a554cecb95bdd9e9ae82e04b97c237798bbb",
+      "size": 1032,
+      "committed": true,
+      "class": "C",
+      "what": "DCP Identify requests of eleven SCALANCE switches and two devices for their own NameOfStation (name check), 2012-11-12"
+    },
+    {
+      "path": "ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap",
+      "source": "ics-pcaps",
+      "original": "Profinet/pro6.pcap",
+      "frames": "1-4",
+      "direction": "tool <-> S7-300EC",
+      "sha256": "ebb4ac34bda04ce0f3acadb947ff9be14fe07b0bb17a3bbbfff17223288caea5",
+      "size": 450,
+      "committed": true,
+      "class": "C",
+      "what": "DCP Identify All, the S7-300EC's response (NUL-padded name), Set NameOfStation \"%n%n%n \" with End-Transaction and the response, VLAN 0, 2008-01-17"
+    },
+    {
+      "path": "ics-pcaps/unknown_s7-1200_lldp.pcapng",
+      "source": "ics-pcaps",
+      "original": "LLDP/simens.pcap",
+      "frames": "1-882",
+      "direction": "neighbours -> LLDP multicast",
+      "sha256": "94368f800671e76964dee9e2e45b7271289ff5b6c8c1f04a8ecbdbeae342237e",
+      "size": 251828,
+      "committed": true,
+      "class": "C",
+      "what": "LLDP of an S7-1200 CPU 1214C (FW V4.2.1) and a KTP700 Basic HMI every 5 s (687 frames), with ARP, SSDP, NBNS, LLMNR, DHCPv6, ICMP (pcapng)"
+    },
+    {
+      "path": "ics-pcaps/unknown_cisco-c3560_lldp.pcap",
+      "source": "ics-pcaps",
+      "original": "LLDP/LLDP.pcap",
+      "frames": "1-12",
+      "direction": "switches -> LLDP multicast",
+      "sha256": "aaf42bcd72ed9c9ab0237fb8c69c7753ece7d9d0aea7574a68b3108874d8badd",
+      "size": 4108,
+      "committed": true,
+      "class": "C",
+      "what": "LLDP and CDP of two Cisco Catalyst 3560 switches"
+    },
+    {
+      "path": "ics-pcaps/unknown_summit300-48_lldp.pcap",
+      "source": "ics-pcaps",
+      "original": "LLDP/lldp.detailed.pcap",
+      "frames": "1",
+      "direction": "switch -> LLDP multicast",
+      "sha256": "480e6123969cc1084b7d41a54ff0947e0bffe72a4ce025664d5fb872998809dc",
+      "size": 303,
+      "committed": true,
+      "class": "C",
+      "what": "LLDP of an Extreme Summit300-48 with many optional TLVs"
+    },
+    {
+      "path": "ics-pcaps/unknown_extreme_lldp-minimal.pcap",
+      "source": "ics-pcaps",
+      "original": "LLDP/lldp.minimal.pcap",
+      "frames": "1",
+      "direction": "device -> LLDP multicast",
+      "sha256": "480c1b9d917e814727b4c22e1a4fb4b819e0a67ce2e4a51e0ca494ab634cf1af",
+      "size": 104,
+      "committed": true,
+      "class": "C",
+      "what": "a minimal LLDPDU that repeats the TTL TLV"
+    },
+    {
+      "path": "ics-pcaps/unknown_procurve-2600_lldp-med.pcap",
+      "source": "ics-pcaps",
+      "original": "LLDP/lldpmed_civicloc.pcap",
+      "frames": "1",
+      "direction": "switch -> LLDP multicast",
+      "sha256": "d24a236b6e4ff04d29fb90f8b1448f5bff0007c6d3eafd3958c71a77c2d9869e",
+      "size": 308,
+      "committed": true,
+      "class": "C",
+      "what": "LLDP-MED with a civic location of an HP ProCurve 2600-8-PWR"
     }
   ]
 }

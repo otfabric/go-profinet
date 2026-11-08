@@ -2,7 +2,7 @@
 
 // Package capture reads the recorded PROFINET traffic in testdata/captures
 // for tests: hex fixtures (one Ethernet frame per file, "#" starts a
-// comment), classic pcap files, and the manifest that records where each
+// comment), classic pcap and pcapng files, and the manifest that records where each
 // file came from. It splits a frame into what go-profinet's codecs take:
 // the Ethernet header (with or without an 802.1Q tag), and for IPv4/UDP
 // frames the UDP payload with its addresses.
@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/otfabric/go-profinet/ethernet"
@@ -102,6 +103,38 @@ func MustHex(rel string) []byte {
 		panic(err)
 	}
 	return h.Frame
+}
+
+// Load returns a recorded frame by reference: the path of a hex fixture,
+// or "path#n" for frame n (1-based, as Wireshark numbers it) of a pcap or
+// pcapng file, both below testdata/captures.
+func Load(ref string) ([]byte, error) {
+	path, num, ok := strings.Cut(ref, "#")
+	if !ok {
+		h, err := ReadHex(ref)
+		return h.Frame, err
+	}
+	n, err := strconv.Atoi(num)
+	if err != nil {
+		return nil, fmt.Errorf("%w: frame reference %q", ErrFormat, ref)
+	}
+	fr, err := ReadPcap(path)
+	if err != nil {
+		return nil, err
+	}
+	if n < 1 || n > len(fr) {
+		return nil, fmt.Errorf("%w: %s has %d frames, not %d", ErrFormat, path, len(fr), n)
+	}
+	return fr[n-1], nil
+}
+
+// MustLoad is Load for tests: it panics on error.
+func MustLoad(ref string) []byte {
+	b, err := Load(ref)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
 
 // ReadPcap returns the Ethernet frames of a classic pcap or a pcapng file

@@ -218,11 +218,11 @@ type Frame struct {
 	SystemDescription string     `json:"systemDescription,omitempty"`
 	ManagementAddr    netip.Addr `json:"managementAddress"`
 	// ManagementIfIndex is the interface number (ifIndex subtype) of the
-	// IPv4 Management Address TLV; AppendTo sends 1 when it is 0.
+	// IPv4 Management Address TLV; the agent sends 1.
 	// ManagementOID is the TLV's object identifier, BER encoded without
 	// tag and length (empty when none). Siemens devices send ifIndex = the
 	// port's number and the PNO enterprise OID 1.3.6.1.4.1.24686
-	// (testdata/captures, ics-pcaps lldp_*.hex).
+	// (testdata/captures, ics-pcaps/*_lldp.pcap*).
 	ManagementIfIndex uint32        `json:"managementIfIndex,omitempty"`
 	ManagementOID     []byte        `json:"managementOid,omitempty"`
 	PortStatus        *PortStatus   `json:"portStatus,omitempty"`

@@ -59,23 +59,29 @@ claim.
   matching and display.
 - `lldp`: the IPv4 Management Address TLV's interface number and OID were
   dropped on decode and always sent as 1 and none; they are now
-  `Frame.ManagementIfIndex` and `Frame.ManagementOID`. The device's LLDP is
-  unchanged (ifIndex 1, no OID).
+  `Frame.ManagementIfIndex` and `Frame.ManagementOID` (an interface number
+  0 is sent as 0). A management address that is not IPv4 (an Extreme
+  switch's MAC) is kept in `Other` instead of dropped. A second Chassis ID,
+  Port ID or TTL TLV makes `Decode` fail with `ErrMalformed` (IEEE 802.1AB:
+  exactly one each; a recorded LLDPDU repeats its TTL TLV). The device's
+  LLDP is unchanged (ifIndex 1, no OID).
 
 ### Added
 
 - `lldp.Frame.ManagementIfIndex`, `lldp.Frame.ManagementOID`.
 - testdata/captures: 37 frames from pnio-rs (MIT OR Apache-2.0), the
-  Wireshark wiki's PN-DCP sample, and 12 single-frame excerpts of the
-  unlicensed EmreEkin/ICS-Pcaps (raw files fetched and checked by
-  `make captures-extended`, not committed), with `manifest.json` (source,
-  device, direction, evidence class A–D, SHA256), `SHA256SUMS` and
-  `coverage.json`; `internal/capture` reads them.
+  Wireshark wiki's PN-DCP sample and ten EmreEkin/ICS-Pcaps PROFINET and
+  LLDP recordings (974 frames), byte-identical under clean names, with
+  `manifest.json` (source, original name, device, direction, evidence class
+  A–D, SHA256), `SHA256SUMS` and `coverage.json`; `internal/capture` reads them.
 - Tests: decoding, byte-exact re-encoding and encoders against every
   recorded frame (`dcp`, `lldp`, `pnio`, `rt`, `alarm`); the device against
   the CPU's start-up, cyclic, alarm, ERR-RTA and DCP frames
-  (`device/capture_test.go`); every truncation and forced length field of
-  every frame; 148 fuzz seeds from the recordings.
+  (`device/capture_test.go`), every recorded DCP Identify request and the
+  Connect of a 2009 Siemens controller; the record client against a GE
+  device's and p-net's recorded answers; every LLDP, DCP, PNIO-CM, RT and
+  RTA frame of every file decoded and re-encoded; every truncation and
+  forced length field of every frame; 180 fuzz seeds from the recordings.
 
 ### Changed
 
@@ -83,6 +89,8 @@ claim.
   high priority alarms (see Fixed). An application that matched
   acknowledgements by its own count across priorities must count per
   priority.
+- `lldp.Decode` refuses an LLDPDU with a second Chassis ID, Port ID or TTL
+  TLV; the agent's neighbor table ignores such a frame.
 
 ### Known differences (recorded, classified, not changed)
 
@@ -90,7 +98,8 @@ The device sends a ModuleDiffBlock marking every submodule
 ApplicationReadyPending where p-net sends none; it grants
 MaxAlarmDataLength 256 where p-net answers 200; it reports a channel
 diagnosis as USI 0x8000 where p-net uses 0x8002; it refuses an invalid
-NameOfStation an S7-300 accepted. The encoder puts the AlarmCRBlockReq
+NameOfStation an S7-300 accepted; it answers I&M0FilterData without the
+optional module block a GE device sends. The encoder puts the AlarmCRBlockReq
 before the expected submodules, where both Siemens controllers put it last,
 and `rt.ComputeLayout` puts the IOCS after all data, where the CPU puts
 them after each submodule. None of these is known to matter to a CPU: the

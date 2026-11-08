@@ -5,7 +5,7 @@
       "message": "DCP Identify request by name",
       "devices": "CPU 1515-2 PN",
       "files": [
-        "pnio-rs/dcp/identify_req_cpu.hex"
+        "pnio-rs/s7-1500_plcsim_dcp-identify-req.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -22,8 +22,8 @@
       "message": "DCP Identify response",
       "devices": "PLCSIM Advanced, p-net",
       "files": [
-        "pnio-rs/dcp/identify_res_plcsim.hex",
-        "pnio-rs/cm/ident_ok_pnet.hex"
+        "pnio-rs/s7-1500_plcsim_dcp-identify-res.hex",
+        "pnio-rs/s7-1500_p-net_dcp-identify-res.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -38,8 +38,8 @@
       "message": "DCP Set IP and response",
       "devices": "CPU 1515-2 PN, p-net",
       "files": [
-        "pnio-rs/cm/dcp_set_req.hex",
-        "pnio-rs/cm/dcp_set_res.hex"
+        "pnio-rs/s7-1500_p-net_dcp-set-ip-req.hex",
+        "pnio-rs/s7-1500_p-net_dcp-set-ip-res.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -56,28 +56,26 @@
       "message": "DCP Identify All / Identify / Set name",
       "devices": "S7-300EC, SCALANCE switches, tool",
       "files": [
-        "ics-pcaps/identify_all_req.hex",
-        "ics-pcaps/identify_req_scalance.hex",
-        "ics-pcaps/identify_res_s7300ec.hex",
-        "ics-pcaps/set_name_req.hex",
-        "ics-pcaps/set_name_res.hex"
+        "ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap",
+        "ics-pcaps/scalance_unknown_dcp-identify.pcap"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
       "clientReplay": "ParseIdentity",
-      "serverParity": "device refuses the invalid name",
+      "serverParity": "device refuses the invalid name; every recorded Identify request answered only when its filter names the device",
       "differences": "S7-300 pads NameOfStation with NULs (fixed: trimmed); S7-300 accepted the invalid name, go-profinet refuses it (intentional)",
       "tests": [
         "dcp.TestCaptureDCPFrames",
         "dcp.TestParseIdentityTrimsNULPadding",
-        "device.TestCaptureReplayDCP"
+        "device.TestCaptureReplayDCP",
+        "device.TestCaptureReplayDCPRequests"
       ]
     },
     {
       "message": "DCP Identify, Set IP (Wireshark sample)",
       "devices": "SCALANCE X208, tool",
       "files": [
-        "wireshark/ChangeIPUsingDCP.pcap"
+        "wireshark/unknown_scalance-x208_dcp-set-ip.pcap"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -92,10 +90,8 @@
       "message": "LLDP",
       "devices": "S7-1200, KTP700, SCALANCE X 200, HMI PC",
       "files": [
-        "ics-pcaps/lldp_s7-1200.hex",
-        "ics-pcaps/lldp_ktp700.hex",
-        "ics-pcaps/lldp_scalance-x200.hex",
-        "ics-pcaps/lldp_pc-hmi.hex"
+        "ics-pcaps/unknown_s7-1200_lldp.pcapng",
+        "ics-pcaps/unknown_scalance-x200_lldp.pcap"
       ],
       "requestEncoding": "same TLVs, other order",
       "decoding": "pass",
@@ -104,36 +100,38 @@
       "differences": "management ifIndex/OID were dropped (fixed); go-profinet's device sends ifIndex 1 and no OID where the devices send the PNO OID",
       "tests": [
         "lldp.TestCaptureLLDP",
-        "lldp.TestManagementOIDBounds"
+        "lldp.TestManagementOIDBounds",
+        "capture.TestEveryRecordedFrame"
       ]
     },
     {
       "message": "Connect",
       "devices": "CPU 1515-2 PN, p-net, Siemens controller 2009",
       "files": [
-        "pnio-rs/cm/connect_req.hex",
-        "pnio-rs/cm/connect_res.hex",
-        "ics-pcaps/connect_req_siemens.hex"
+        "pnio-rs/s7-1500_p-net_connect-req.hex",
+        "pnio-rs/s7-1500_p-net_connect-res.hex",
+        "ics-pcaps/s7-300_unknown_connect-req.pcap"
       ],
       "requestEncoding": "byte-exact apart from block order",
       "decoding": "pass",
       "clientReplay": "n/a",
-      "serverParity": "as p-net (AR, IOCR, AlarmCR, ARServer, NDR max_count)",
+      "serverParity": "as p-net (AR, IOCR, AlarmCR, ARServer, NDR max_count); the 2009 Siemens Connect for another device accepted with a ModuleDiffBlock (wrong DAP, API 0x3A00 modules missing)",
       "differences": "AlarmCRBlockReq order; ModuleDiffBlock with ApplicationReadyPending (p-net none); MaxAlarmDataLength 256 (p-net 200)",
       "tests": [
         "pnio.TestCaptureRPCRoundTrip",
         "pnio.TestCaptureRPCHeaders",
         "pnio.TestCaptureConnect",
         "rt.TestCaptureCPULayout",
-        "device.TestCaptureReplayStartup"
+        "device.TestCaptureReplayStartup",
+        "device.TestCaptureReplayOtherControllers"
       ]
     },
     {
       "message": "Write MultipleWrite",
       "devices": "CPU 1515-2 PN, p-net",
       "files": [
-        "pnio-rs/cm/write_req.hex",
-        "pnio-rs/cm/write_res.hex"
+        "pnio-rs/s7-1500_p-net_write-multiple-req.hex",
+        "pnio-rs/s7-1500_p-net_write-multiple-res.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -149,8 +147,8 @@
       "message": "Control PrmEnd",
       "devices": "CPU 1515-2 PN, p-net",
       "files": [
-        "pnio-rs/cm/prmend_req.hex",
-        "pnio-rs/cm/prmend_res.hex"
+        "pnio-rs/s7-1500_p-net_prmend-req.hex",
+        "pnio-rs/s7-1500_p-net_prmend-res.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -166,8 +164,8 @@
       "message": "Control ApplicationReady",
       "devices": "p-net, CPU 1515-2 PN",
       "files": [
-        "pnio-rs/cm/appready_req.hex",
-        "pnio-rs/cm/appready_res.hex"
+        "pnio-rs/s7-1500_p-net_appready-req.hex",
+        "pnio-rs/s7-1500_p-net_appready-res.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -184,10 +182,10 @@
       "message": "Cyclic RT_CLASS_1",
       "devices": "CPU 1515-2 PN, p-net",
       "files": [
-        "pnio-rs/rt/rtc_cpu_8001.hex",
-        "pnio-rs/rt/rtc_dev_8000.hex",
-        "pnio-rs/rt/echo_cpu_8001.hex",
-        "pnio-rs/rt/echo_dev_8000.hex"
+        "pnio-rs/s7-1500_p-net_rt-output-8001.hex",
+        "pnio-rs/s7-1500_p-net_rt-input-8000.hex",
+        "pnio-rs/s7-1500_p-net_rt-output-8001-echo.hex",
+        "pnio-rs/s7-1500_p-net_rt-input-8000-echo.hex"
       ],
       "requestEncoding": "trailer byte-exact",
       "decoding": "pass",
@@ -204,10 +202,10 @@
       "message": "Process alarm",
       "devices": "p-net, CPU 1515-2 PN",
       "files": [
-        "pnio-rs/alarm/alarm_process_notif.hex",
-        "pnio-rs/alarm/alarm_ack_rta_high_cpu.hex",
-        "pnio-rs/alarm/alarm_ack_high_cpu.hex",
-        "pnio-rs/alarm/alarm_ack_rta_high_dev.hex"
+        "pnio-rs/s7-1500_p-net_alarm-high-process.hex",
+        "pnio-rs/s7-1500_p-net_alarm-high-ack-rta-cpu.hex",
+        "pnio-rs/s7-1500_p-net_alarm-high-process-ack.hex",
+        "pnio-rs/s7-1500_p-net_alarm-high-ack-rta-device.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -224,14 +222,14 @@
       "message": "Diagnosis alarms",
       "devices": "p-net, CPU 1515-2 PN",
       "files": [
-        "pnio-rs/alarm/alarm_diag_notif.hex",
-        "pnio-rs/alarm/alarm_ack_rta_low_cpu.hex",
-        "pnio-rs/alarm/alarm_diag_ack_cpu.hex",
-        "pnio-rs/alarm/alarm_ack_rta_low_dev.hex",
-        "pnio-rs/alarm/alarm_diag_update_appears.hex",
-        "pnio-rs/alarm/alarm_diag_update_others_remain.hex",
-        "pnio-rs/alarm/alarm_diag_usi_disappears.hex",
-        "pnio-rs/alarm/alarm_diag_std_remove.hex"
+        "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-appears.hex",
+        "pnio-rs/s7-1500_p-net_alarm-low-ack-rta-cpu.hex",
+        "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-ack.hex",
+        "pnio-rs/s7-1500_p-net_alarm-low-ack-rta-device.hex",
+        "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-update-appears.hex",
+        "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-update-others-remain.hex",
+        "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-manufacturer-disappears.hex",
+        "pnio-rs/s7-1500_p-net_alarm-low-diagnosis-all-disappear.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -248,10 +246,10 @@
       "message": "ERR-RTA",
       "devices": "CPU 1515-2 PN, p-net",
       "files": [
-        "pnio-rs/alarm/alarm_err_rta_cpu_removed.hex",
-        "pnio-rs/alarm/alarm_err_rta_dev_removed_reply.hex",
-        "pnio-rs/alarm/alarm_err_rta_dev.hex",
-        "pnio-rs/alarm/alarm_err_rta_cpu.hex"
+        "pnio-rs/s7-1500_p-net_alarm-err-rta-cpu-ar-removed.hex",
+        "pnio-rs/s7-1500_p-net_alarm-err-rta-device-reply.hex",
+        "pnio-rs/s7-1500_p-net_alarm-err-rta-device-abort.hex",
+        "pnio-rs/s7-1500_p-net_alarm-err-rta-cpu-reply.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
@@ -268,36 +266,73 @@
       "message": "Read I&M0",
       "devices": "CPU 1515-2 PN, p-net",
       "files": [
-        "pnio-rs/alarm/im0_read_req.hex",
-        "pnio-rs/alarm/im0_read_res.hex",
-        "pnio-rs/alarm/im0_read_req_if.hex",
-        "pnio-rs/alarm/im0_read_res_if.hex"
+        "pnio-rs/s7-1500_p-net_read-im0-dap-req.hex",
+        "pnio-rs/s7-1500_p-net_read-im0-dap-res.hex",
+        "pnio-rs/s7-1500_p-net_read-im0-interface-req.hex",
+        "pnio-rs/s7-1500_p-net_read-im0-interface-res.hex"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
-      "clientReplay": "n/a",
+      "clientReplay": "ReadIM0 decodes p-net's answers",
       "serverParity": "not replayed",
       "differences": "",
       "tests": [
         "pnio.TestCaptureRPCRoundTrip",
-        "pnio.TestCaptureRecords"
+        "pnio.TestCaptureRecords",
+        "controller.TestCaptureRecordClient"
       ]
     },
     {
       "message": "Read Implicit I&M0FilterData",
       "devices": "GE Intelligent Platforms device, tool",
       "files": [
-        "ics-pcaps/readimplicit_req.hex",
-        "ics-pcaps/readimplicit_res.hex"
+        "ics-pcaps/unknown_ge-ip-device_read-implicit.pcap"
       ],
       "requestEncoding": "byte-exact",
       "decoding": "pass",
+      "clientReplay": "record client reads the GE answer",
+      "serverParity": "device answers submodule and device blocks; no module block (optional; its only I&M0 carrier is the DAP)",
+      "differences": "",
+      "tests": [
+        "pnio.TestCaptureRPCRoundTrip",
+        "pnio.TestCaptureRPCHeaders",
+        "device.TestCaptureReplayOtherControllers",
+        "controller.TestCaptureRecordClient"
+      ]
+    },
+    {
+      "message": "LLDP of non-PROFINET switches",
+      "devices": "Cisco Catalyst 3560, Extreme Summit300-48, an Extreme device, HP ProCurve 2600-8-PWR",
+      "files": [
+        "ics-pcaps/unknown_cisco-c3560_lldp.pcap",
+        "ics-pcaps/unknown_summit300-48_lldp.pcap",
+        "ics-pcaps/unknown_extreme_lldp-minimal.pcap",
+        "ics-pcaps/unknown_procurve-2600_lldp-med.pcap"
+      ],
+      "requestEncoding": "same TLVs",
+      "decoding": "pass; the LLDPDU with four TTL TLVs refused",
+      "clientReplay": "n/a",
+      "serverParity": "n/a",
+      "differences": "a non-IPv4 management address was dropped and a duplicate TTL TLV accepted (fixed); an interface number 0 was sent as 1 (fixed)",
+      "tests": [
+        "capture.TestEveryRecordedFrame",
+        "lldp.TestDecodeErrors"
+      ]
+    },
+    {
+      "message": "Every frame of every recording",
+      "devices": "all",
+      "files": [
+        "wireshark/unknown_scalance-x208_dcp-set-ip.pcap"
+      ],
+      "requestEncoding": "DCP, RTA, RT trailer, RPC header byte-exact; LLDP same TLVs",
+      "decoding": "every LLDP, DCP, PNIO-CM, RT and RTA frame (tshark's counts per file)",
       "clientReplay": "n/a",
       "serverParity": "n/a",
       "differences": "",
       "tests": [
-        "pnio.TestCaptureRPCRoundTrip",
-        "pnio.TestCaptureRPCHeaders"
+        "capture.TestEveryRecordedFrame",
+        "capture.TestMalformedVariants"
       ]
     }
   ]

@@ -17,14 +17,14 @@ import (
 )
 
 var rpcFixtures = []string{
-	"pnio-rs/cm/connect_req.hex", "pnio-rs/cm/connect_res.hex",
-	"pnio-rs/cm/write_req.hex", "pnio-rs/cm/write_res.hex",
-	"pnio-rs/cm/prmend_req.hex", "pnio-rs/cm/prmend_res.hex",
-	"pnio-rs/cm/appready_req.hex", "pnio-rs/cm/appready_res.hex",
-	"pnio-rs/alarm/im0_read_req.hex", "pnio-rs/alarm/im0_read_res.hex",
-	"pnio-rs/alarm/im0_read_req_if.hex", "pnio-rs/alarm/im0_read_res_if.hex",
-	"ics-pcaps/connect_req_siemens.hex",
-	"ics-pcaps/readimplicit_req.hex", "ics-pcaps/readimplicit_res.hex",
+	"pnio-rs/s7-1500_p-net_connect-req.hex", "pnio-rs/s7-1500_p-net_connect-res.hex",
+	"pnio-rs/s7-1500_p-net_write-multiple-req.hex", "pnio-rs/s7-1500_p-net_write-multiple-res.hex",
+	"pnio-rs/s7-1500_p-net_prmend-req.hex", "pnio-rs/s7-1500_p-net_prmend-res.hex",
+	"pnio-rs/s7-1500_p-net_appready-req.hex", "pnio-rs/s7-1500_p-net_appready-res.hex",
+	"pnio-rs/s7-1500_p-net_read-im0-dap-req.hex", "pnio-rs/s7-1500_p-net_read-im0-dap-res.hex",
+	"pnio-rs/s7-1500_p-net_read-im0-interface-req.hex", "pnio-rs/s7-1500_p-net_read-im0-interface-res.hex",
+	"ics-pcaps/s7-300_unknown_connect-req.pcap#1",
+	"ics-pcaps/unknown_ge-ip-device_read-implicit.pcap#1", "ics-pcaps/unknown_ge-ip-device_read-implicit.pcap#2",
 }
 
 type rpcPDU struct {
@@ -38,7 +38,7 @@ type rpcPDU struct {
 
 func decodePDU(t *testing.T, file string) rpcPDU {
 	t.Helper()
-	u, err := capture.DecodeUDP(capture.MustHex(file))
+	u, err := capture.DecodeUDP(capture.MustLoad(file))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,16 +94,16 @@ func TestCaptureRPCHeaders(t *testing.T) {
 		flags1 uint8
 		seq    uint32
 	}{
-		{"pnio-rs/cm/connect_req.hex", rpc.TypeRequest, pnio.OpConnect, true, 0x20, 0},
-		{"pnio-rs/cm/connect_res.hex", rpc.TypeResponse, pnio.OpConnect, false, 0x28, 0},
-		{"pnio-rs/cm/write_req.hex", rpc.TypeRequest, pnio.OpWrite, true, 0x20, 1},
-		{"pnio-rs/cm/prmend_req.hex", rpc.TypeRequest, pnio.OpControl, true, 0x20, 2},
-		{"pnio-rs/cm/appready_req.hex", rpc.TypeRequest, pnio.OpControl, false, 0x20, 0},
+		{"pnio-rs/s7-1500_p-net_connect-req.hex", rpc.TypeRequest, pnio.OpConnect, true, 0x20, 0},
+		{"pnio-rs/s7-1500_p-net_connect-res.hex", rpc.TypeResponse, pnio.OpConnect, false, 0x28, 0},
+		{"pnio-rs/s7-1500_p-net_write-multiple-req.hex", rpc.TypeRequest, pnio.OpWrite, true, 0x20, 1},
+		{"pnio-rs/s7-1500_p-net_prmend-req.hex", rpc.TypeRequest, pnio.OpControl, true, 0x20, 2},
+		{"pnio-rs/s7-1500_p-net_appready-req.hex", rpc.TypeRequest, pnio.OpControl, false, 0x20, 0},
 		// The CPU answers with LastFrag | NoFack (0x0A), not idempotent.
-		{"pnio-rs/cm/appready_res.hex", rpc.TypeResponse, pnio.OpControl, true, 0x0A, 0},
-		{"pnio-rs/alarm/im0_read_req.hex", rpc.TypeRequest, pnio.OpRead, true, 0x20, 4},
-		{"ics-pcaps/connect_req_siemens.hex", rpc.TypeRequest, pnio.OpConnect, true, 0x20, 0},
-		{"ics-pcaps/readimplicit_req.hex", rpc.TypeRequest, pnio.OpReadImplicit, true, 0x08, 0},
+		{"pnio-rs/s7-1500_p-net_appready-res.hex", rpc.TypeResponse, pnio.OpControl, true, 0x0A, 0},
+		{"pnio-rs/s7-1500_p-net_read-im0-dap-req.hex", rpc.TypeRequest, pnio.OpRead, true, 0x20, 4},
+		{"ics-pcaps/s7-300_unknown_connect-req.pcap#1", rpc.TypeRequest, pnio.OpConnect, true, 0x20, 0},
+		{"ics-pcaps/unknown_ge-ip-device_read-implicit.pcap#1", rpc.TypeRequest, pnio.OpReadImplicit, true, 0x08, 0},
 	}
 	for _, c := range cases {
 		p := decodePDU(t, c.file)
@@ -121,7 +121,7 @@ func TestCaptureRPCHeaders(t *testing.T) {
 // older Siemens controller, and p-net's Connect response, decode and
 // re-encode block for block.
 func TestCaptureConnect(t *testing.T) {
-	for _, f := range []string{"pnio-rs/cm/connect_req.hex", "ics-pcaps/connect_req_siemens.hex"} {
+	for _, f := range []string{"pnio-rs/s7-1500_p-net_connect-req.hex", "ics-pcaps/s7-300_unknown_connect-req.pcap#1"} {
 		p := decodePDU(t, f)
 		req, err := pnio.DecodeConnectRequest(p.blocks)
 		if err != nil {
@@ -139,7 +139,7 @@ func TestCaptureConnect(t *testing.T) {
 			t.Errorf("%s: last block %v; the recording has the AlarmCRBlockReq last", f, last)
 		}
 	}
-	p := decodePDU(t, "pnio-rs/cm/connect_req.hex")
+	p := decodePDU(t, "pnio-rs/s7-1500_p-net_connect-req.hex")
 	req, _ := pnio.DecodeConnectRequest(p.blocks)
 	// tshark: IOCARSingle, session key 2, CMInitiatorObjectUUID of a
 	// Siemens (0x002A) device 0x010E instance 0x1064, StartupMode
@@ -159,7 +159,7 @@ func TestCaptureConnect(t *testing.T) {
 		t.Errorf("%d ExpectedSubmoduleBlockReq, tshark 5", len(req.Expected))
 	}
 
-	r := decodePDU(t, "pnio-rs/cm/connect_res.hex")
+	r := decodePDU(t, "pnio-rs/s7-1500_p-net_connect-res.hex")
 	res, err := pnio.DecodeConnectResponse(r.blocks)
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +173,7 @@ func TestCaptureConnect(t *testing.T) {
 
 	// The older Siemens controller: two APIs (0 and the profile API
 	// 0x3A00) and an output FrameID for the device to assign.
-	s := decodePDU(t, "ics-pcaps/connect_req_siemens.hex")
+	s := decodePDU(t, "ics-pcaps/s7-300_unknown_connect-req.pcap#1")
 	sreq, _ := pnio.DecodeConnectRequest(s.blocks)
 	if sreq.AR.Properties != 0x00000011 || len(sreq.IOCRs[0].APIs) != 2 || sreq.IOCRs[0].APIs[1].API != 0x3A00 || sreq.IOCRs[1].FrameID != pnio.FrameIDAssign || sreq.IOCRs[0].RTClass() != pnio.RTClass2 {
 		t.Errorf("Siemens Connect %+v %+v", sreq.AR, sreq.IOCRs)
@@ -183,7 +183,7 @@ func TestCaptureConnect(t *testing.T) {
 // TestCaptureRecords: the CPU's MultipleWrite, its PrmEnd and p-net's
 // ApplicationReady and the CPU's answer, and the I&M0 reads.
 func TestCaptureRecords(t *testing.T) {
-	w := decodePDU(t, "pnio-rs/cm/write_req.hex")
+	w := decodePDU(t, "pnio-rs/s7-1500_p-net_write-multiple-req.hex")
 	blk, rest, err := pnio.ReadBlock(w.blocks)
 	if err != nil {
 		t.Fatal(err)
@@ -229,10 +229,10 @@ func TestCaptureRecords(t *testing.T) {
 		cmd  uint16
 		typ  pnio.BlockType
 	}{
-		{"pnio-rs/cm/prmend_req.hex", pnio.CmdPrmEnd, pnio.BlockPrmEndReq},
-		{"pnio-rs/cm/prmend_res.hex", pnio.CmdDone, pnio.BlockPrmEndRes},
-		{"pnio-rs/cm/appready_req.hex", pnio.CmdApplicationReady, pnio.BlockAppReadyReq},
-		{"pnio-rs/cm/appready_res.hex", pnio.CmdDone, pnio.BlockAppReadyRes},
+		{"pnio-rs/s7-1500_p-net_prmend-req.hex", pnio.CmdPrmEnd, pnio.BlockPrmEndReq},
+		{"pnio-rs/s7-1500_p-net_prmend-res.hex", pnio.CmdDone, pnio.BlockPrmEndRes},
+		{"pnio-rs/s7-1500_p-net_appready-req.hex", pnio.CmdApplicationReady, pnio.BlockAppReadyReq},
+		{"pnio-rs/s7-1500_p-net_appready-res.hex", pnio.CmdDone, pnio.BlockAppReadyRes},
 	} {
 		p := decodePDU(t, c.file)
 		b, _, err := pnio.ReadBlock(p.blocks)
@@ -251,7 +251,7 @@ func TestCaptureRecords(t *testing.T) {
 		}
 	}
 
-	for _, f := range []string{"pnio-rs/alarm/im0_read_res.hex", "pnio-rs/alarm/im0_read_res_if.hex"} {
+	for _, f := range []string{"pnio-rs/s7-1500_p-net_read-im0-dap-res.hex", "pnio-rs/s7-1500_p-net_read-im0-interface-res.hex"} {
 		p := decodePDU(t, f)
 		hb, rest, err := pnio.ReadBlock(p.blocks)
 		if err != nil {

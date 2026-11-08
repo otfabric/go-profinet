@@ -39,44 +39,44 @@ func ip(s string) netip.Addr { return netip.MustParseAddr(s) }
 
 func dcpFrames(t *testing.T) []dcpFrame {
 	t.Helper()
-	ws, err := capture.ReadPcap("wireshark/ChangeIPUsingDCP.pcap")
+	ws, err := capture.ReadPcap("wireshark/unknown_scalance-x208_dcp-set-ip.pcap")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(ws) != 6 {
-		t.Fatalf("ChangeIPUsingDCP.pcap: %d frames, want 6", len(ws))
+		t.Fatalf("unknown_scalance-x208_dcp-set-ip.pcap: %d frames, want 6", len(ws))
 	}
 	return []dcpFrame{
 		// CPU 1515-2 PN (bench 1): Identify with a NameOfStation filter.
-		{file: "pnio-rs/dcp/identify_req_cpu.hex", service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x03000152, delay: 1, dataLen: 12},
+		{file: "pnio-rs/s7-1500_plcsim_dcp-identify-req.hex", service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x03000152, delay: 1, dataLen: 12},
 		// PLCSIM Advanced (software) answering it.
-		{file: "pnio-rs/dcp/identify_res_plcsim.hex", service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x03000152, dataLen: 88,
+		{file: "pnio-rs/s7-1500_plcsim_dcp-identify-res.hex", service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x03000152, dataLen: 88,
 			id: &dcp.Identity{NameOfStation: "i-device", TypeOfStation: "S7-1500 (PLCSIM)", VendorID: 0x002A, DeviceID: 0x010E, Role: 0, Instance: 0x1064, HasInstance: true,
 				IP: dcp.IPSuite{Addr: ip("192.168.1.61"), Mask: ip("255.255.255.0"), Gateway: ip("192.168.1.61")}, IPInfo: 1}},
 		// p-net (software) answering the CPU (bench 2).
-		{file: "pnio-rs/cm/ident_ok_pnet.hex", service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x0300012C, dataLen: 118,
+		{file: "pnio-rs/s7-1500_p-net_dcp-identify-res.hex", service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x0300012C, dataLen: 118,
 			id: &dcp.Identity{NameOfStation: "rt-labs-dev", TypeOfStation: "P-Net Sample Application", VendorID: 0x0493, DeviceID: 0x0002, Role: dcp.RoleIODevice,
 				IP: dcp.IPSuite{Addr: ip("0.0.0.0"), Mask: ip("0.0.0.0"), Gateway: ip("0.0.0.0")}}},
 		// The CPU assigning p-net its address: VLAN tagged (priority 0, VID 0).
-		{file: "pnio-rs/cm/dcp_set_req.hex", tagged: true, service: dcp.ServiceSet, typ: dcp.TypeRequest, xid: 0x0300012D, dataLen: 18, set: []dcp.BlockID{dcp.IPParameter}},
-		{file: "pnio-rs/cm/dcp_set_res.hex", service: dcp.ServiceSet, typ: dcp.TypeResponseSuccess, xid: 0x0300012D, dataLen: 8, errors: []dcp.BlockError{dcp.BlockErrorNone}},
+		{file: "pnio-rs/s7-1500_p-net_dcp-set-ip-req.hex", tagged: true, service: dcp.ServiceSet, typ: dcp.TypeRequest, xid: 0x0300012D, dataLen: 18, set: []dcp.BlockID{dcp.IPParameter}},
+		{file: "pnio-rs/s7-1500_p-net_dcp-set-ip-res.hex", service: dcp.ServiceSet, typ: dcp.TypeResponseSuccess, xid: 0x0300012D, dataLen: 8, errors: []dcp.BlockError{dcp.BlockErrorNone}},
 		// A SCALANCE switch checking that its name is unique.
-		{file: "ics-pcaps/identify_req_scalance.hex", service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x0300BF9A, delay: 1, dataLen: 12},
+		{file: "ics-pcaps/scalance_unknown_dcp-identify.pcap#1", service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x0300BF9A, delay: 1, dataLen: 12},
 		// An S7-300 (role IO-Controller) with a hostile station name in a
 		// NUL-padded 108-octet field, and a tool renaming it.
-		{file: "ics-pcaps/identify_all_req.hex", tagged: true, service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x01000001, delay: 1, dataLen: 4},
-		{file: "ics-pcaps/identify_res_s7300ec.hex", tagged: true, service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 184,
+		{file: "ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap#1", tagged: true, service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x01000001, delay: 1, dataLen: 4},
+		{file: "ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap#2", tagged: true, service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 184,
 			id: &dcp.Identity{NameOfStation: "%n%n%n ", TypeOfStation: "S7-300EC", VendorID: 0x002A, DeviceID: 0x0101, Role: dcp.RoleIOController,
 				IP: dcp.IPSuite{Addr: ip("192.168.0.11"), Mask: ip("255.255.255.0"), Gateway: ip("192.168.0.11")}, IPInfo: 1}},
-		{file: "ics-pcaps/set_name_req.hex", tagged: true, service: dcp.ServiceSet, typ: dcp.TypeRequest, xid: 0x01000001, dataLen: 20, set: []dcp.BlockID{dcp.DeviceName, dcp.CtrlStop}},
-		{file: "ics-pcaps/set_name_res.hex", tagged: true, service: dcp.ServiceSet, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 16, errors: []dcp.BlockError{dcp.BlockErrorNone, dcp.BlockErrorNone}},
+		{file: "ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap#3", tagged: true, service: dcp.ServiceSet, typ: dcp.TypeRequest, xid: 0x01000001, dataLen: 20, set: []dcp.BlockID{dcp.DeviceName, dcp.CtrlStop}},
+		{file: "ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap#4", tagged: true, service: dcp.ServiceSet, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 16, errors: []dcp.BlockError{dcp.BlockErrorNone, dcp.BlockErrorNone}},
 		// Wireshark wiki sample: a tool and a SCALANCE X208.
-		{file: "ChangeIPUsingDCP.pcap#1", frame: ws[0], service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x01000001, delay: 1, dataLen: 4},
-		{file: "ChangeIPUsingDCP.pcap#2", frame: ws[1], service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 94,
+		{file: "unknown_scalance-x208_dcp-set-ip.pcap#1", frame: ws[0], service: dcp.ServiceIdentify, typ: dcp.TypeRequest, xid: 0x01000001, delay: 1, dataLen: 4},
+		{file: "unknown_scalance-x208_dcp-set-ip.pcap#2", frame: ws[1], service: dcp.ServiceIdentify, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 94,
 			id: &dcp.Identity{NameOfStation: "X208-BORD", TypeOfStation: "INC", VendorID: 0x002A, DeviceID: 0x0A01, Role: dcp.RoleIODevice,
 				IP: dcp.IPSuite{Addr: ip("192.168.0.6"), Mask: ip("255.255.255.0"), Gateway: ip("192.168.0.1")}, IPInfo: 1}},
-		{file: "ChangeIPUsingDCP.pcap#3", frame: ws[2], service: dcp.ServiceSet, typ: dcp.TypeRequest, xid: 0x01000001, dataLen: 18, set: []dcp.BlockID{dcp.IPParameter}},
-		{file: "ChangeIPUsingDCP.pcap#4", frame: ws[3], service: dcp.ServiceSet, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 8, errors: []dcp.BlockError{dcp.BlockErrorNone}},
+		{file: "unknown_scalance-x208_dcp-set-ip.pcap#3", frame: ws[2], service: dcp.ServiceSet, typ: dcp.TypeRequest, xid: 0x01000001, dataLen: 18, set: []dcp.BlockID{dcp.IPParameter}},
+		{file: "unknown_scalance-x208_dcp-set-ip.pcap#4", frame: ws[3], service: dcp.ServiceSet, typ: dcp.TypeResponseSuccess, xid: 0x01000001, dataLen: 8, errors: []dcp.BlockError{dcp.BlockErrorNone}},
 	}
 }
 
@@ -85,7 +85,7 @@ func TestCaptureDCPFrames(t *testing.T) {
 		t.Run(c.file, func(t *testing.T) {
 			raw := c.frame
 			if raw == nil {
-				raw = capture.MustHex(c.file)
+				raw = capture.MustLoad(c.file)
 			}
 			e, err := ethernet.Decode(raw)
 			if err != nil {
@@ -171,15 +171,15 @@ func TestCaptureDCPEncodeLikeRecorded(t *testing.T) {
 		file string
 		f    dcp.Frame
 	}{
-		{"pnio-rs/dcp/identify_req_cpu.hex", dcp.Frame{FrameID: dcp.FrameIDIdentifyRequest, Service: dcp.ServiceIdentify, Type: dcp.TypeRequest, Xid: 0x03000152, ResponseDelay: 1,
+		{"pnio-rs/s7-1500_plcsim_dcp-identify-req.hex", dcp.Frame{FrameID: dcp.FrameIDIdentifyRequest, Service: dcp.ServiceIdentify, Type: dcp.TypeRequest, Xid: 0x03000152, ResponseDelay: 1,
 			Blocks: []dcp.Block(dcp.FilterName("i-device"))}},
-		{"ics-pcaps/identify_all_req.hex", dcp.Frame{FrameID: dcp.FrameIDIdentifyRequest, Service: dcp.ServiceIdentify, Type: dcp.TypeRequest, Xid: 0x01000001, ResponseDelay: 1,
+		{"ics-pcaps/unknown_s7-300ec_dcp-set-name.pcap#1", dcp.Frame{FrameID: dcp.FrameIDIdentifyRequest, Service: dcp.ServiceIdentify, Type: dcp.TypeRequest, Xid: 0x01000001, ResponseDelay: 1,
 			Blocks: []dcp.Block(dcp.FilterAll())}},
-		{"pnio-rs/cm/dcp_set_req.hex", dcp.Frame{FrameID: dcp.FrameIDGetSet, Service: dcp.ServiceSet, Type: dcp.TypeRequest, Xid: 0x0300012D,
+		{"pnio-rs/s7-1500_p-net_dcp-set-ip-req.hex", dcp.Frame{FrameID: dcp.FrameIDGetSet, Service: dcp.ServiceSet, Type: dcp.TypeRequest, Xid: 0x0300012D,
 			Blocks: []dcp.Block{{ID: dcp.IPParameter, HasInfo: true, Info: 0, Data: dcp.AppendIPSuite(nil, dcp.IPSuite{Addr: ip("172.16.2.10"), Mask: ip("255.255.255.0"), Gateway: ip("172.16.2.10")})}}}},
 	}
 	for _, c := range cases {
-		e, err := ethernet.Decode(capture.MustHex(c.file))
+		e, err := ethernet.Decode(capture.MustLoad(c.file))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -28,30 +28,30 @@ type rtaCase struct {
 }
 
 var rtaCases = []rtaCase{
-	{"alarm_process_notif.hex", pnio.FrameIDAlarmHigh, alarm.PDUData, 0xFFFF, 0xFFFE, 29, pnio.BlockAlarmNotificationHigh, 0},
-	{"alarm_ack_rta_high_cpu.hex", pnio.FrameIDAlarmHigh, alarm.PDUAck, 0xFFFE, 0xFFFF, 0, 0, 0},
-	{"alarm_ack_high_cpu.hex", pnio.FrameIDAlarmHigh, alarm.PDUData, 0xFFFF, 0xFFFF, 22, pnio.BlockAlarmAckHigh, 0},
-	{"alarm_ack_rta_high_dev.hex", pnio.FrameIDAlarmHigh, alarm.PDUAck, 0xFFFF, 0xFFFF, 0, 0, 0},
-	{"alarm_diag_notif.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0xFFFF, 0xFFFE, 40, pnio.BlockAlarmNotificationLow, 0},
-	{"alarm_ack_rta_low_cpu.hex", pnio.FrameIDAlarmLow, alarm.PDUAck, 0xFFFE, 0xFFFF, 0, 0, 0},
-	{"alarm_diag_ack_cpu.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0xFFFF, 0xFFFF, 22, pnio.BlockAlarmAckLow, 0},
-	{"alarm_ack_rta_low_dev.hex", pnio.FrameIDAlarmLow, alarm.PDUAck, 0xFFFF, 0xFFFF, 0, 0, 0},
-	{"alarm_diag_update_appears.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0000, 0xFFFF, 40, pnio.BlockAlarmNotificationLow, 0},
-	{"alarm_diag_update_others_remain.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0001, 0x0000, 40, pnio.BlockAlarmNotificationLow, 0},
-	{"alarm_diag_usi_disappears.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0004, 0x0003, 28, pnio.BlockAlarmNotificationLow, 0},
-	{"alarm_diag_std_remove.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0005, 0x0004, 40, pnio.BlockAlarmNotificationLow, 0},
+	{"s7-1500_p-net_alarm-high-process.hex", pnio.FrameIDAlarmHigh, alarm.PDUData, 0xFFFF, 0xFFFE, 29, pnio.BlockAlarmNotificationHigh, 0},
+	{"s7-1500_p-net_alarm-high-ack-rta-cpu.hex", pnio.FrameIDAlarmHigh, alarm.PDUAck, 0xFFFE, 0xFFFF, 0, 0, 0},
+	{"s7-1500_p-net_alarm-high-process-ack.hex", pnio.FrameIDAlarmHigh, alarm.PDUData, 0xFFFF, 0xFFFF, 22, pnio.BlockAlarmAckHigh, 0},
+	{"s7-1500_p-net_alarm-high-ack-rta-device.hex", pnio.FrameIDAlarmHigh, alarm.PDUAck, 0xFFFF, 0xFFFF, 0, 0, 0},
+	{"s7-1500_p-net_alarm-low-diagnosis-appears.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0xFFFF, 0xFFFE, 40, pnio.BlockAlarmNotificationLow, 0},
+	{"s7-1500_p-net_alarm-low-ack-rta-cpu.hex", pnio.FrameIDAlarmLow, alarm.PDUAck, 0xFFFE, 0xFFFF, 0, 0, 0},
+	{"s7-1500_p-net_alarm-low-diagnosis-ack.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0xFFFF, 0xFFFF, 22, pnio.BlockAlarmAckLow, 0},
+	{"s7-1500_p-net_alarm-low-ack-rta-device.hex", pnio.FrameIDAlarmLow, alarm.PDUAck, 0xFFFF, 0xFFFF, 0, 0, 0},
+	{"s7-1500_p-net_alarm-low-diagnosis-update-appears.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0000, 0xFFFF, 40, pnio.BlockAlarmNotificationLow, 0},
+	{"s7-1500_p-net_alarm-low-diagnosis-update-others-remain.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0001, 0x0000, 40, pnio.BlockAlarmNotificationLow, 0},
+	{"s7-1500_p-net_alarm-low-diagnosis-manufacturer-disappears.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0004, 0x0003, 28, pnio.BlockAlarmNotificationLow, 0},
+	{"s7-1500_p-net_alarm-low-diagnosis-all-disappear.hex", pnio.FrameIDAlarmLow, alarm.PDUData, 0x0005, 0x0004, 40, pnio.BlockAlarmNotificationLow, 0},
 	// ERR-RTA always on the low channel. The CPU's frames carry 18 more
 	// octets after the 4 of VarPartLen (vendor data in the padding).
-	{"alarm_err_rta_cpu_removed.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0xFFFE, 0xFFFE, 4, 0, 0xCF81FD11},
-	{"alarm_err_rta_dev_removed_reply.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0xFFFF, 0xFFFE, 4, 0, 0xCF81FD11},
-	{"alarm_err_rta_dev.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0x0006, 0x0005, 4, 0, 0xCF81FD00},
-	{"alarm_err_rta_cpu.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0x0005, 0x0005, 4, 0, 0xCF81FD0B},
+	{"s7-1500_p-net_alarm-err-rta-cpu-ar-removed.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0xFFFE, 0xFFFE, 4, 0, 0xCF81FD11},
+	{"s7-1500_p-net_alarm-err-rta-device-reply.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0xFFFF, 0xFFFE, 4, 0, 0xCF81FD11},
+	{"s7-1500_p-net_alarm-err-rta-device-abort.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0x0006, 0x0005, 4, 0, 0xCF81FD00},
+	{"s7-1500_p-net_alarm-err-rta-cpu-reply.hex", pnio.FrameIDAlarmLow, alarm.PDUErr, 0x0005, 0x0005, 4, 0, 0xCF81FD0B},
 }
 
 func TestCaptureRTA(t *testing.T) {
 	for _, c := range rtaCases {
 		t.Run(c.file, func(t *testing.T) {
-			e, err := ethernet.Decode(capture.MustHex("pnio-rs/alarm/" + c.file))
+			e, err := ethernet.Decode(capture.MustHex("pnio-rs/" + c.file))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -99,7 +99,7 @@ func TestCaptureRTA(t *testing.T) {
 // submodule and AR diagnosis, sequence 0) and PNIOStatus OK.
 func TestCaptureAckFor(t *testing.T) {
 	notif := func(file string) pnio.AlarmNotification {
-		e, _ := ethernet.Decode(capture.MustHex("pnio-rs/alarm/" + file))
+		e, _ := ethernet.Decode(capture.MustHex("pnio-rs/" + file))
 		p, err := alarm.Decode(e.Payload)
 		if err != nil {
 			t.Fatal(err)
@@ -115,23 +115,23 @@ func TestCaptureAckFor(t *testing.T) {
 		return n
 	}
 	cpuAck := func(file string) []byte {
-		e, _ := ethernet.Decode(capture.MustHex("pnio-rs/alarm/" + file))
+		e, _ := ethernet.Decode(capture.MustHex("pnio-rs/" + file))
 		p, err := alarm.Decode(e.Payload)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return p.VarPart
 	}
-	n := notif("alarm_process_notif.hex")
+	n := notif("s7-1500_p-net_alarm-high-process.hex")
 	if n.Type != pnio.AlarmProcess || !n.High || n.Slot != 1 || n.Subslot != 1 || n.ModuleIdentNumber != 0x30 || n.SubmoduleIdentNumber != 0x130 || n.USI != 0x0010 || !bytes.Equal(n.Data, []byte{1}) {
 		t.Errorf("process notification %+v", n)
 	}
 	a := pnio.AckFor(&n, pnio.Status{})
-	if got, want := a.Append(nil), cpuAck("alarm_ack_high_cpu.hex"); !bytes.Equal(got, want) {
+	if got, want := a.Append(nil), cpuAck("s7-1500_p-net_alarm-high-process-ack.hex"); !bytes.Equal(got, want) {
 		t.Errorf("process AlarmAck\n got % x\nwant % x", got, want)
 	}
 
-	d := notif("alarm_diag_notif.hex")
+	d := notif("s7-1500_p-net_alarm-low-diagnosis-appears.hex")
 	if d.Specifier != 0xA800 || d.USI != pnio.USIExtChannelDiagnosis {
 		t.Errorf("diagnosis notification %+v", d)
 	}
@@ -140,7 +140,7 @@ func TestCaptureAckFor(t *testing.T) {
 		t.Errorf("diagnosis items %+v %v", items, err)
 	}
 	ours := pnio.AckFor(&d, pnio.Status{})
-	if got, want := ours.Append(nil), cpuAck("alarm_diag_ack_cpu.hex"); !bytes.Equal(got, want) {
+	if got, want := ours.Append(nil), cpuAck("s7-1500_p-net_alarm-low-diagnosis-ack.hex"); !bytes.Equal(got, want) {
 		t.Errorf("diagnosis AlarmAck\n got % x\nwant % x", got, want)
 	}
 }

@@ -249,7 +249,6 @@ make fuzz         # every fuzz target for FUZZTIME (30 s)
 make bench        # codec and cyclic benchmarks
 make l2-test      # real AF_PACKET tests on a veth pair in a privileged container (Docker)
 make interop-images && make interop   # the interop suite (Docker), see INTEROPERABILITY.md
-make captures-extended   # fetch the referenced raw captures and check the committed excerpts (network)
 ```
 
 The tests also replay traffic recorded from real equipment, among it the

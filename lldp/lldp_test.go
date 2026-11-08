@@ -150,8 +150,8 @@ func TestDecodeErrors(t *testing.T) {
 			t.Errorf("%s: err %v", name, err)
 		}
 	}
-	// Unknown and incomplete organizational TLVs are kept as Other; a
-	// management address that is not IPv4 is ignored.
+	// Unknown and incomplete organizational TLVs and a management address
+	// that is not IPv4 are kept as Other.
 	odd := [][]byte{
 		tlv(TypeOrgSpecific, 0x00, 0x0E),                                // shorter than OUI + subtype
 		tlv(TypeOrgSpecific, 0x00, 0x0E, 0xCF, PNSubtypePortStatus, 1),  // short PortStatus
@@ -167,8 +167,14 @@ func TestDecodeErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Other) != 7 || f.PortStatus != nil || f.ChassisMAC != nil || f.Delay != nil || f.MACPHY != nil || f.ManagementAddr.IsValid() {
+	if len(f.Other) != 9 || f.PortStatus != nil || f.ChassisMAC != nil || f.Delay != nil || f.MACPHY != nil || f.ManagementAddr.IsValid() {
 		t.Fatalf("frame %+v", f)
+	}
+	// A second Chassis ID, Port ID or TTL TLV makes the LLDPDU malformed.
+	for _, dup := range [][]byte{ch, po, ttl} {
+		if _, err := Decode(cat(ch, po, ttl, dup, end)); !errors.Is(err, profinet.ErrMalformed) {
+			t.Errorf("duplicate % x: %v", dup, err)
+		}
 	}
 	// TLVs after the End TLV are ignored.
 	f, err = Decode(cat(ch, po, ttl, end, tlv(TypeSystemName, 'x')))

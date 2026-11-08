@@ -2,10 +2,8 @@
 coverage.out
 coverage.html
 *.pcap
-# Recorded traffic of the capture corpus is committed; its fetched raw
-# files (make captures-extended) are not.
+# The recorded traffic of the capture corpus is committed.
 !/testdata/captures/**/*.pcap
-/testdata/captures/.cache/
 .DS_Store
 interop-results/
 
