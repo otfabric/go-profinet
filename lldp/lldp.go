@@ -186,13 +186,14 @@ func (f *Frame) AppendTo(dst []byte) ([]byte, error) {
 		dst = appendTLV(dst, TypeOrgSpecific, org(OUIIEEE8023, 1, v))
 	}
 	if f.ManagementAddr.Is4() {
-		if len(f.ManagementOID) > 128 {
-			return dst[:start], fmt.Errorf("lldp: %w: management address OID of %d octets", profinet.ErrInvalidConfig, len(f.ManagementOID))
+		oidLen := len(f.ManagementOID)
+		if oidLen < 0 || oidLen > 128 {
+			return dst[:start], fmt.Errorf("lldp: %w: management address OID of %d octets", profinet.ErrInvalidConfig, oidLen)
 		}
 		a := f.ManagementAddr.As4()
 		v := []byte{5, 1, a[0], a[1], a[2], a[3], 2}
 		v = binary.BigEndian.AppendUint32(v, f.ManagementIfIndex)
-		v = append(v, byte(len(f.ManagementOID)))
+		v = append(v, byte(oidLen))
 		v = append(v, f.ManagementOID...)
 		dst = appendTLV(dst, TypeManagementAddress, v)
 	}
