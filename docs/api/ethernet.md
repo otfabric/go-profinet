@@ -235,7 +235,8 @@ UnmarshalText implements encoding.TextUnmarshaler.
 ```go
 type VLANTag struct {
 	// Priority is the priority code point, 0..7. PROFINET RT frames use
-	// priority 6, alarms 5 (high) and 3 (low) by default.
+	// priority 6, alarms 6 (high) and 5 (low), as a CPU 1515-2 PN
+	// negotiates them (testdata/captures).
 	Priority uint8
 	// DropEligible is the DEI bit.
 	DropEligible bool

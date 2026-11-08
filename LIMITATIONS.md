@@ -118,4 +118,12 @@ data (PACKET_AUXDATA).
   SNMP manager (Net-SNMP) and two decoders (scapy, Wireshark). There is no
   second open IO-Controller (CODESYS by hand: not run); no commercial PLC,
   device or engineering tool has been tested.
+- Recorded traffic of real equipment ([testdata/captures](testdata/captures/README.md))
+  is replayed offline. Only the frames a CPU 1515-2 PN sent (recorded by
+  pnio-rs, firmware V2.9.4) are documented hardware traffic (class B); the
+  IO-Device in those recordings was p-net, software. What the CPU would do
+  with go-profinet's answers is not recorded, so the device is not
+  "tested with an S7-1500": it answers the requests an S7-1500 sent. The
+  other recordings (S7-300, S7-1200, KTP700, SCALANCE, a GE device) have no
+  documented origin (class C).
 - No PI certification test has been run. go-profinet claims no conformance.

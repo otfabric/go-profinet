@@ -906,7 +906,7 @@ Identity is what a device reports about itself in an Identify or Get response: t
 func ParseIdentity(mac ethernet.MAC, blocks []Block) (Identity, error)
 ```
 
-ParseIdentity extracts the identity from the blocks of a response. The strings and slices it returns do not alias f.
+ParseIdentity extracts the identity from the blocks of a response. The strings and slices it returns do not alias f. Trailing NUL padding of NameOfStation and TypeOfStation is dropped.
 
 #### func (Identity) Block
 

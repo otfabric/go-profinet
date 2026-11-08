@@ -143,6 +143,17 @@ recipe ([INDEPENDENT-CONTROLLER.md](research/INDEPENDENT-CONTROLLER.md)).
 No engineering tool has imported the GSDML fixtures yet
 ([GSDML-TOOLS.md](research/GSDML-TOOLS.md)).
 
+### Recorded traffic
+
+Besides the independent stacks, frames recorded from real equipment check
+DCP, LLDP, Connect, records, control, cyclic data and alarms
+([testdata/captures](../testdata/captures/README.md)). Of these only the
+frames of a SIMATIC S7-1500 CPU 1515-2 PN (FW V2.9.4, recorded by pnio-rs
+against p-net) are documented hardware traffic; go-profinet's device answers
+them as p-net did, apart from the differences listed there. They add no
+✅ to the matrix above: they show what a CPU sent, not that it accepted
+go-profinet.
+
 ## 6. Evidence and limits by feature
 
 **Normative source** says where the behaviour comes from when the IEC/PI
