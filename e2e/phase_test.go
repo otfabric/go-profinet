@@ -96,26 +96,39 @@ func everyNth(n int64, classes ...string) func([]byte) bool {
 // ApplicationReady, Read) or only DCP: the AR must reach Running with
 // the data flowing, records must read, and nothing may leak.
 func TestChaosStartupFrames(t *testing.T) {
+	// Each run gets its own faults (an everyNth counter starts afresh).
+	// Faults that can miss by chance are made certain: "rpc corrupted"
+	// once corrupted 20 % of the RPC frames at random, and a seed whose
+	// ~20 startup frames all escaped (seed 1005 in the Extended workflow)
+	// failed "no faults injected"; now every fourth RPC frame, the first
+	// included, is corrupted, the corruption itself still seeded.
 	cases := []struct {
 		name   string
-		faults vnet.Faults
+		faults func() vnet.Faults
 	}{
-		{"rpc duplicated and reordered", vnet.Faults{Duplicate: 0.5, Reorder: 0.5, ReorderHold: 3 * time.Millisecond, Match: only("rpc")}},
-		{"rpc every third lost", vnet.Faults{Loss: 1, Match: everyNth(3, "rpc")}},
-		{"rpc delayed with jitter", vnet.Faults{Delay: 5 * time.Millisecond, Jitter: 20 * time.Millisecond, Match: only("rpc")}},
-		{"rpc corrupted", vnet.Faults{Corrupt: 0.2, Match: only("rpc")}},
-		{"dcp duplicated and reordered", vnet.Faults{Duplicate: 1, Reorder: 0.5, ReorderHold: 3 * time.Millisecond, Match: only("dcp")}},
+		{"rpc duplicated and reordered", func() vnet.Faults {
+			return vnet.Faults{Duplicate: 0.5, Reorder: 0.5, ReorderHold: 3 * time.Millisecond, Match: only("rpc")}
+		}},
+		{"rpc every third lost", func() vnet.Faults { return vnet.Faults{Loss: 1, Match: everyNth(3, "rpc")} }},
+		{"rpc delayed with jitter", func() vnet.Faults {
+			return vnet.Faults{Delay: 5 * time.Millisecond, Jitter: 20 * time.Millisecond, Match: only("rpc")}
+		}},
+		{"rpc corrupted", func() vnet.Faults { return vnet.Faults{Corrupt: 1, Match: everyNth(4, "rpc")} }},
+		{"dcp duplicated and reordered", func() vnet.Faults {
+			return vnet.Faults{Duplicate: 1, Reorder: 0.5, ReorderHold: 3 * time.Millisecond, Match: only("dcp")}
+		}},
 	}
 	for _, c := range cases {
 		for _, seed := range seeds(t) {
 			t.Run(fmt.Sprintf("%s/seed=%d", c.name, seed), func(t *testing.T) {
 				base := runtime.NumGoroutine()
+				faults := c.faults()
 				func() {
 					e := newEnv(t, seed)
 					dev, dn := e.device("dut", "192.168.0.10", testModel(), nil)
 					ctrl, cn := e.controller("192.168.0.1")
-					dn.ep.SetFaults(c.faults)
-					cn.ep.SetFaults(c.faults)
+					dn.ep.SetFaults(faults)
+					cn.ep.SetFaults(faults)
 					// The faults hit the startup, not the cyclic data: the hold
 					// rides out runner stalls (stallHold).
 					cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "dut", Model: testModel(), DataHoldFactor: stallHold, WatchdogFactor: stallHold,
@@ -138,7 +151,7 @@ func TestChaosStartupFrames(t *testing.T) {
 					}
 					st, ct := dn.ep.Stats(), cn.ep.Stats()
 					t.Logf("device %+v controller %+v; aborts %d", st, ct, cd.Stats().Aborts)
-					if c.faults.Delay == 0 && st.Dropped+st.Duplicated+st.Reordered+st.Corrupted+ct.Dropped+ct.Duplicated+ct.Reordered+ct.Corrupted == 0 {
+					if faults.Delay == 0 && st.Dropped+st.Duplicated+st.Reordered+st.Corrupted+ct.Dropped+ct.Duplicated+ct.Reordered+ct.Corrupted == 0 {
 						t.Fatal("no faults injected")
 					}
 					_ = e.net.Close()
