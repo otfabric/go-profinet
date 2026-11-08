@@ -1,0 +1,304 @@
+{
+  "format": "go-profinet capture coverage 1",
+  "cases": [
+    {
+      "message": "DCP Identify request by name",
+      "devices": "CPU 1515-2 PN",
+      "files": [
+        "pnio-rs/dcp/identify_req_cpu.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "device answers with PLCSIM's blocks",
+      "differences": "",
+      "tests": [
+        "dcp.TestCaptureDCPFrames",
+        "dcp.TestCaptureDCPEncodeLikeRecorded",
+        "device.TestCaptureReplayDCP"
+      ]
+    },
+    {
+      "message": "DCP Identify response",
+      "devices": "PLCSIM Advanced, p-net",
+      "files": [
+        "pnio-rs/dcp/identify_res_plcsim.hex",
+        "pnio-rs/cm/ident_ok_pnet.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "ParseIdentity",
+      "serverParity": "n/a",
+      "differences": "",
+      "tests": [
+        "dcp.TestCaptureDCPFrames"
+      ]
+    },
+    {
+      "message": "DCP Set IP and response",
+      "devices": "CPU 1515-2 PN, p-net",
+      "files": [
+        "pnio-rs/cm/dcp_set_req.hex",
+        "pnio-rs/cm/dcp_set_res.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "byte-exact as p-net",
+      "differences": "",
+      "tests": [
+        "dcp.TestCaptureDCPFrames",
+        "dcp.TestCaptureDCPEncodeLikeRecorded",
+        "device.TestCaptureReplayDCP"
+      ]
+    },
+    {
+      "message": "DCP Identify All / Identify / Set name",
+      "devices": "S7-300EC, SCALANCE switches, tool",
+      "files": [
+        "ics-pcaps/identify_all_req.hex",
+        "ics-pcaps/identify_req_scalance.hex",
+        "ics-pcaps/identify_res_s7300ec.hex",
+        "ics-pcaps/set_name_req.hex",
+        "ics-pcaps/set_name_res.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "ParseIdentity",
+      "serverParity": "device refuses the invalid name",
+      "differences": "S7-300 pads NameOfStation with NULs (fixed: trimmed); S7-300 accepted the invalid name, go-profinet refuses it (intentional)",
+      "tests": [
+        "dcp.TestCaptureDCPFrames",
+        "dcp.TestParseIdentityTrimsNULPadding",
+        "device.TestCaptureReplayDCP"
+      ]
+    },
+    {
+      "message": "DCP Identify, Set IP (Wireshark sample)",
+      "devices": "SCALANCE X208, tool",
+      "files": [
+        "wireshark/ChangeIPUsingDCP.pcap"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "ParseIdentity",
+      "serverParity": "n/a",
+      "differences": "",
+      "tests": [
+        "dcp.TestCaptureDCPFrames"
+      ]
+    },
+    {
+      "message": "LLDP",
+      "devices": "S7-1200, KTP700, SCALANCE X 200, HMI PC",
+      "files": [
+        "ics-pcaps/lldp_s7-1200.hex",
+        "ics-pcaps/lldp_ktp700.hex",
+        "ics-pcaps/lldp_scalance-x200.hex",
+        "ics-pcaps/lldp_pc-hmi.hex"
+      ],
+      "requestEncoding": "same TLVs, other order",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "n/a",
+      "differences": "management ifIndex/OID were dropped (fixed); go-profinet's device sends ifIndex 1 and no OID where the devices send the PNO OID",
+      "tests": [
+        "lldp.TestCaptureLLDP",
+        "lldp.TestManagementOIDBounds"
+      ]
+    },
+    {
+      "message": "Connect",
+      "devices": "CPU 1515-2 PN, p-net, Siemens controller 2009",
+      "files": [
+        "pnio-rs/cm/connect_req.hex",
+        "pnio-rs/cm/connect_res.hex",
+        "ics-pcaps/connect_req_siemens.hex"
+      ],
+      "requestEncoding": "byte-exact apart from block order",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "as p-net (AR, IOCR, AlarmCR, ARServer, NDR max_count)",
+      "differences": "AlarmCRBlockReq order; ModuleDiffBlock with ApplicationReadyPending (p-net none); MaxAlarmDataLength 256 (p-net 200)",
+      "tests": [
+        "pnio.TestCaptureRPCRoundTrip",
+        "pnio.TestCaptureRPCHeaders",
+        "pnio.TestCaptureConnect",
+        "rt.TestCaptureCPULayout",
+        "device.TestCaptureReplayStartup"
+      ]
+    },
+    {
+      "message": "Write MultipleWrite",
+      "devices": "CPU 1515-2 PN, p-net",
+      "files": [
+        "pnio-rs/cm/write_req.hex",
+        "pnio-rs/cm/write_res.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "as p-net",
+      "differences": "",
+      "tests": [
+        "pnio.TestCaptureRecords",
+        "device.TestCaptureReplayStartup"
+      ]
+    },
+    {
+      "message": "Control PrmEnd",
+      "devices": "CPU 1515-2 PN, p-net",
+      "files": [
+        "pnio-rs/cm/prmend_req.hex",
+        "pnio-rs/cm/prmend_res.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "byte-exact as p-net",
+      "differences": "",
+      "tests": [
+        "pnio.TestCaptureRecords",
+        "device.TestCaptureReplayStartup"
+      ]
+    },
+    {
+      "message": "Control ApplicationReady",
+      "devices": "p-net, CPU 1515-2 PN",
+      "files": [
+        "pnio-rs/cm/appready_req.hex",
+        "pnio-rs/cm/appready_res.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "device takes the CPU's answer",
+      "serverParity": "request byte-exact as p-net's",
+      "differences": "",
+      "tests": [
+        "pnio.TestCaptureRecords",
+        "pnio.TestCaptureRPCHeaders",
+        "device.TestCaptureReplayStartup"
+      ]
+    },
+    {
+      "message": "Cyclic RT_CLASS_1",
+      "devices": "CPU 1515-2 PN, p-net",
+      "files": [
+        "pnio-rs/rt/rtc_cpu_8001.hex",
+        "pnio-rs/rt/rtc_dev_8000.hex",
+        "pnio-rs/rt/echo_cpu_8001.hex",
+        "pnio-rs/rt/echo_dev_8000.hex"
+      ],
+      "requestEncoding": "trailer byte-exact",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "device consumes the CPU's frames; input frame layout as p-net's",
+      "differences": "IOCS placement of the controller's layout differs (valid)",
+      "tests": [
+        "rt.TestCaptureCyclicFrames",
+        "rt.TestCaptureCPULayout",
+        "device.TestCaptureReplayStartup"
+      ]
+    },
+    {
+      "message": "Process alarm",
+      "devices": "p-net, CPU 1515-2 PN",
+      "files": [
+        "pnio-rs/alarm/alarm_process_notif.hex",
+        "pnio-rs/alarm/alarm_ack_rta_high_cpu.hex",
+        "pnio-rs/alarm/alarm_ack_high_cpu.hex",
+        "pnio-rs/alarm/alarm_ack_rta_high_dev.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "AckFor byte-exact",
+      "serverParity": "notification byte-exact as p-net's",
+      "differences": "",
+      "tests": [
+        "alarm.TestCaptureRTA",
+        "alarm.TestCaptureAckFor",
+        "device.TestCaptureReplayAlarms"
+      ]
+    },
+    {
+      "message": "Diagnosis alarms",
+      "devices": "p-net, CPU 1515-2 PN",
+      "files": [
+        "pnio-rs/alarm/alarm_diag_notif.hex",
+        "pnio-rs/alarm/alarm_ack_rta_low_cpu.hex",
+        "pnio-rs/alarm/alarm_diag_ack_cpu.hex",
+        "pnio-rs/alarm/alarm_ack_rta_low_dev.hex",
+        "pnio-rs/alarm/alarm_diag_update_appears.hex",
+        "pnio-rs/alarm/alarm_diag_update_others_remain.hex",
+        "pnio-rs/alarm/alarm_diag_usi_disappears.hex",
+        "pnio-rs/alarm/alarm_diag_std_remove.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "AckFor byte-exact",
+      "serverParity": "notification as p-net's",
+      "differences": "AlarmSpecifier sequence per AR (fixed: per priority); USI 0x8000 vs p-net's 0x8002",
+      "tests": [
+        "alarm.TestCaptureRTA",
+        "alarm.TestCaptureAckFor",
+        "device.TestCaptureReplayAlarms"
+      ]
+    },
+    {
+      "message": "ERR-RTA",
+      "devices": "CPU 1515-2 PN, p-net",
+      "files": [
+        "pnio-rs/alarm/alarm_err_rta_cpu_removed.hex",
+        "pnio-rs/alarm/alarm_err_rta_dev_removed_reply.hex",
+        "pnio-rs/alarm/alarm_err_rta_dev.hex",
+        "pnio-rs/alarm/alarm_err_rta_cpu.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "controller answers CF 81 FD 0B",
+      "serverParity": "device ends the AR and answers CF 81 FD 0B",
+      "differences": "neither side answered an ERR-RTA (fixed); p-net echoes the peer's status",
+      "tests": [
+        "alarm.TestCaptureRTA",
+        "device.TestCaptureReplayAlarms",
+        "controller.TestAbortByDevice"
+      ]
+    },
+    {
+      "message": "Read I&M0",
+      "devices": "CPU 1515-2 PN, p-net",
+      "files": [
+        "pnio-rs/alarm/im0_read_req.hex",
+        "pnio-rs/alarm/im0_read_res.hex",
+        "pnio-rs/alarm/im0_read_req_if.hex",
+        "pnio-rs/alarm/im0_read_res_if.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "not replayed",
+      "differences": "",
+      "tests": [
+        "pnio.TestCaptureRPCRoundTrip",
+        "pnio.TestCaptureRecords"
+      ]
+    },
+    {
+      "message": "Read Implicit I&M0FilterData",
+      "devices": "GE Intelligent Platforms device, tool",
+      "files": [
+        "ics-pcaps/readimplicit_req.hex",
+        "ics-pcaps/readimplicit_res.hex"
+      ],
+      "requestEncoding": "byte-exact",
+      "decoding": "pass",
+      "clientReplay": "n/a",
+      "serverParity": "n/a",
+      "differences": "",
+      "tests": [
+        "pnio.TestCaptureRPCRoundTrip",
+        "pnio.TestCaptureRPCHeaders"
+      ]
+    }
+  ]
+}

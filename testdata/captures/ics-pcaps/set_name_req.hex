@@ -1,0 +1,5 @@
+# excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro6.pcap frame 3: tool -> S7-300EC, DCP Set NameOfStation "%n%n%n " + Control End-Transaction, 50 bytes
+00 02 e3 17 c7 50 00 80 c8 38 a4 8b 81 00 00 00
+88 92 fe fd 04 00 01 00 00 01 00 00 00 14 02 02
+00 09 00 01 25 6e 25 6e 25 6e 20 00 05 02 00 02
+00 00

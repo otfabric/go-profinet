@@ -1,0 +1,12 @@
+# excerpt; raw file not redistributed. EmreEkin/ICS-Pcaps 0ffbf023 Profinet/pro4.pcap frame 2: Dell OptiPlex 990 PC + HMI (from its LLDP) -> LLDP multicast, 168 bytes
+01 80 c2 00 00 0e 00 10 18 cb 8c 03 88 cc 02 10
+07 73 63 61 64 61 2d 70 63 2d 30 36 30 38 33 39
+04 09 07 70 6f 72 74 2d 30 30 31 06 02 00 14 0a
+0f 53 43 41 44 41 2d 50 43 2d 30 36 30 38 33 39
+0c 27 44 65 6c 6c 20 49 6e 63 2e 20 4f 70 74 69
+50 6c 65 78 20 39 39 30 2c 30 31 2c 47 32 32 58
+42 32 53 20 2b 20 48 4d 49 0e 04 00 80 00 80 10
+14 05 01 0a 0a 0a 46 02 00 00 00 01 08 2b 06 01
+04 01 81 c0 6e fe 08 00 0e cf 02 00 00 00 00 fe
+0a 00 0e cf 05 00 10 18 cb 8c 03 fe 09 00 12 0f
+01 03 ec 03 00 10 00 00
