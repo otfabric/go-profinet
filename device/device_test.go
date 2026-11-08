@@ -493,7 +493,10 @@ func TestAlarms(t *testing.T) {
 	if err := d.SendAlarm(ctx, al); !errors.As(err, &se) || se.Status.Code1 != pnio.Code1AlarmAck {
 		t.Fatalf("err %v", err)
 	}
-	if an := <-got; an.High || an.Sequence() != 1 {
+	// Each priority counts its own sequence numbers: the first low
+	// priority alarm has 0 after a high priority one (as recorded from
+	// p-net and a CPU 1515-2 PN, capture_test.go).
+	if an := <-got; an.High || an.Sequence() != 0 {
 		t.Fatalf("low notification %+v", an)
 	}
 	// Too long for MaxAlarmDataLength.
@@ -549,14 +552,14 @@ func TestAlarmData(t *testing.T) {
 	n := newNet(t)
 	h := newRecHandler()
 	d, _ := n.device(h)
-	a := &ar{d: d, ackWait: map[uint16]chan pnio.AlarmAck{}}
+	a := &ar{d: d, ackWait: map[ackKey]chan pnio.AlarmAck{}}
 	d.alarmData(a, []byte{1})
 	other := pnio.ControlBlock{Type: pnio.BlockPrmEndReq}
 	d.alarmData(a, other.Append(nil))
 	ack := (&pnio.AlarmAck{Type: pnio.AlarmProcess}).Append(nil)
 	d.alarmData(a, shortBlock(ack))
 	ch := make(chan pnio.AlarmAck, 1)
-	a.ackWait[5] = ch
+	a.ackWait[ackKey{seq: 5}] = ch
 	d.alarmData(a, (&pnio.AlarmAck{Type: pnio.AlarmProcess, Specifier: 5}).Append(nil))
 	select {
 	case got := <-ch:

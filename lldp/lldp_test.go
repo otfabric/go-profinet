@@ -34,6 +34,8 @@ func fullFrame() Frame {
 		SystemName:        "plc-1",
 		SystemDescription: "go-profinet test device",
 		ManagementAddr:    netip.MustParseAddr("192.168.0.10"),
+		ManagementIfIndex: 1,
+		ManagementOID:     []byte{0x2b, 0x06, 0x01, 0x04, 0x01, 0x81, 0xc0, 0x6e},
 		PortStatus:        &PortStatus{RTClass2: 1, RTClass3: 2},
 		ChassisMAC:        &cm,
 		Delay:             &Delay{RxLocal: 1, RxRemote: 2, TxLocal: 3, TxRemote: 4, Cable: 5},

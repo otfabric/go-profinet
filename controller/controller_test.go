@@ -17,6 +17,7 @@ import (
 	"github.com/otfabric/go-profinet/alarm"
 	"github.com/otfabric/go-profinet/dcp"
 	"github.com/otfabric/go-profinet/device"
+	"github.com/otfabric/go-profinet/l2"
 	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/pnio"
 	"github.com/otfabric/go-profinet/rpc"
@@ -499,6 +500,11 @@ func TestAbortByDevice(t *testing.T) {
 	defer func() { _ = cd.Close() }()
 	waitState(t, cd, StateWaitAppReady, 5*time.Second)
 	req := <-f.requests
+	sub, err := f.mux.Subscribe(l2.MatchFrameIDs(pnio.FrameIDAlarmLow, pnio.FrameIDAlarmLow), 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
 	p := alarm.PDU{FrameID: pnio.FrameIDAlarmLow, Dst: req.AlarmCR.LocalAlarmReference, Src: 0x77, Type: alarm.PDUErr, Version: alarm.Version,
 		AddFlags: alarm.WindowSize, SendSeq: alarm.InitialSendSeq, AckSeq: alarm.InitialAckSeq, VarPart: pnio.AbortStatus(pnio.AbortUser).Append(nil)}
 	if err := f.mux.Send(context.Background(), p.AppendEthernet(nil, cn.mux.HardwareAddr(), f.mux.HardwareAddr())); err != nil {
@@ -506,6 +512,24 @@ func TestAbortByDevice(t *testing.T) {
 	}
 	if err := waitErr(t, cd); !errors.Is(err, profinet.ErrAborted) {
 		t.Fatalf("err %v", err)
+	}
+	// The controller answers the device's ERR PDU with "AR alarm.ind(err)"
+	// (CF 81 FD 0B), as a CPU 1515-2 PN does (testdata/captures).
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	for {
+		fr, err := sub.Recv(ctx)
+		if err != nil {
+			t.Fatalf("no ERR PDU from the controller: %v", err)
+		}
+		q, err := alarm.Decode(fr.Payload)
+		if err != nil || q.Type != alarm.PDUErr {
+			continue
+		}
+		if q.Dst != 0x77 || !bytes.Equal(q.VarPart, pnio.AbortStatus(pnio.AbortAlarmInd).Append(nil)) {
+			t.Fatalf("ERR PDU %+v", q)
+		}
+		return
 	}
 }
 

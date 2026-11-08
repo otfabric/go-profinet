@@ -29,6 +29,13 @@ type Alarm struct {
 	Specifier uint16
 }
 
+// ackKey names an alarm waiting for its AlarmAck: its priority and its
+// sequence number (each priority counts its own).
+type ackKey struct {
+	high bool
+	seq  uint16
+}
+
 // alarmData handles a DATA PDU from the controller: an AlarmAck.
 func (d *Device) alarmData(a *ar, b []byte) {
 	a.touch()
@@ -44,9 +51,10 @@ func (d *Device) alarmData(a *ar, b []byte) {
 			d.log.Debugf("device: AR %s: alarm ack: %v", a.uuid, err)
 			return
 		}
+		k := ackKey{high: ack.High, seq: ack.Specifier & pnio.AlarmSpecSeqMask}
 		a.mu.Lock()
-		ch := a.ackWait[ack.Specifier&pnio.AlarmSpecSeqMask]
-		delete(a.ackWait, ack.Specifier&pnio.AlarmSpecSeqMask)
+		ch := a.ackWait[k]
+		delete(a.ackWait, k)
 		a.mu.Unlock()
 		if ch != nil {
 			ch <- ack
@@ -108,11 +116,16 @@ func (d *Device) sendAlarm(ctx context.Context, a *ar, al Alarm, modIdent, subId
 // sendAlarmSeq sends an alarm and waits for its acknowledgement; it
 // returns the alarm's sequence number.
 func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, subIdent uint32) (uint16, error) {
+	prio := 0
+	if al.High {
+		prio = 1
+	}
 	a.mu.Lock()
-	seq := a.alarmSeq
-	a.alarmSeq = (a.alarmSeq + 1) & pnio.AlarmSpecSeqMask
+	seq := a.alarmSeq[prio]
+	a.alarmSeq[prio] = (seq + 1) & pnio.AlarmSpecSeqMask
+	k := ackKey{high: al.High, seq: seq}
 	ch := make(chan pnio.AlarmAck, 1)
-	a.ackWait[seq] = ch
+	a.ackWait[k] = ch
 	a.mu.Unlock()
 	n := pnio.AlarmNotification{
 		High: al.High, Type: al.Type, API: model.API, Slot: al.Slot, Subslot: al.Subslot,
@@ -124,7 +137,7 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	d.met.OnAlarm(a.ctrlName, al.Type.String(), al.High)
 	if err != nil || len(body) > int(a.maxAlarmData) {
 		a.mu.Lock()
-		delete(a.ackWait, seq)
+		delete(a.ackWait, k)
 		a.mu.Unlock()
 		if err != nil {
 			return seq, fmt.Errorf("device: alarm: %w", err)
@@ -137,7 +150,7 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	}
 	if err := ep.Send(ctx, body); err != nil {
 		a.mu.Lock()
-		delete(a.ackWait, seq)
+		delete(a.ackWait, k)
 		a.mu.Unlock()
 		if errors.Is(err, profinet.ErrTimeout) {
 			d.goAbort(a, pnio.AbortAlarmSend, true)
@@ -166,12 +179,12 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 		return seq, nil
 	case <-t.C:
 		a.mu.Lock()
-		delete(a.ackWait, seq)
+		delete(a.ackWait, k)
 		a.mu.Unlock()
 		return seq, fmt.Errorf("device: alarm to AR %s: %w: no AlarmAck", a.uuid, profinet.ErrTimeout)
 	case <-ctx.Done():
 		a.mu.Lock()
-		delete(a.ackWait, seq)
+		delete(a.ackWait, k)
 		a.mu.Unlock()
 		return seq, ctx.Err()
 	}

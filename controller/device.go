@@ -268,6 +268,11 @@ func (a *arState) fail(err error) {
 	})
 }
 
+// rtaError is the status of a device's ERR PDU, the cause of the AR's end.
+type rtaError struct{ status pnio.Status }
+
+func (e *rtaError) Error() string { return e.status.String() }
+
 // startupClass is the RT class of the IOCRs in a startup mode: the legacy
 // encoding RTClass1 in legacy startup, RTClass2 in advanced startup.
 func startupClass(advanced bool) pnio.RTClass {
@@ -1023,7 +1028,7 @@ func (d *Device) startAlarms(a *arState, localRef, remoteRef uint16, mac etherne
 		LocalRef: localRef, RemoteRef: remoteRef, RemoteMAC: mac,
 		Timeout: time.Duration(d.cfg.RTATimeoutFactor) * 100 * time.Millisecond, Retries: int(d.cfg.RTARetries),
 		OnErr: func(st pnio.Status) {
-			a.fail(fmt.Errorf("controller: %s: %w by the device: %s", d.cfg.StationName, profinet.ErrAborted, st))
+			a.fail(fmt.Errorf("controller: %s: %w by the device: %w", d.cfg.StationName, profinet.ErrAborted, &rtaError{st}))
 		},
 	}
 	var err error
@@ -1399,13 +1404,22 @@ func (d *Device) teardown(a *arState) {
 	if err := a.failErr; err != nil {
 		d.aborts.Add(1)
 		d.c.met.OnAbort(d.cfg.StationName, err)
-		if a.alarmLow != nil && !errors.Is(err, profinet.ErrAborted) {
-			reason := pnio.AbortConsumerDHT
-			if !errors.Is(err, profinet.ErrTimeout) {
-				reason = pnio.AbortUser
-			}
+		var status pnio.Status
+		switch {
+		case errors.As(err, new(*rtaError)):
+			// The device's ERR PDU is answered with "AR alarm.ind(err)",
+			// as a CPU 1515-2 PN answers it in the recorded traffic
+			// (testdata/captures, pnio-rs alarm_err_rta_cpu.hex).
+			status = pnio.AbortStatus(pnio.AbortAlarmInd)
+		case errors.Is(err, profinet.ErrAborted):
+		case errors.Is(err, profinet.ErrTimeout):
+			status = pnio.AbortStatus(pnio.AbortConsumerDHT)
+		default:
+			status = pnio.AbortStatus(pnio.AbortUser)
+		}
+		if a.alarmLow != nil && status != (pnio.Status{}) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-			_ = a.alarmLow.SendErr(ctx, pnio.AbortStatus(reason))
+			_ = a.alarmLow.SendErr(ctx, status)
 			cancel()
 		}
 	}
