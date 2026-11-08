@@ -519,3 +519,89 @@ func TestMalformedVariants(t *testing.T) {
 		t.Fatalf("only %d variants", n)
 	}
 }
+
+func TestLoadErrors(t *testing.T) {
+	if b, err := capture.Load("wireshark/unknown_scalance-x208_dcp-set-ip.pcap#2"); err != nil || len(b) == 0 {
+		t.Fatalf("%d %v", len(b), err)
+	}
+	if b, err := capture.Load("pnio-rs/s7-1500_p-net_prmend-req.hex"); err != nil || len(b) != 174 {
+		t.Fatalf("%d %v", len(b), err)
+	}
+	for _, ref := range []string{"wireshark/unknown_scalance-x208_dcp-set-ip.pcap#x", "wireshark/unknown_scalance-x208_dcp-set-ip.pcap#0",
+		"wireshark/unknown_scalance-x208_dcp-set-ip.pcap#7"} {
+		if _, err := capture.Load(ref); !errors.Is(err, capture.ErrFormat) {
+			t.Errorf("%s: %v", ref, err)
+		}
+	}
+	if _, err := capture.Load("no/such.pcap#1"); err == nil {
+		t.Error("missing file loaded")
+	}
+	if _, err := capture.ReadPcap("no/such.pcap"); err == nil {
+		t.Error("missing pcap read")
+	}
+	for name, f := range map[string]func(){
+		"MustLoad": func() { capture.MustLoad("no/such.hex") },
+		"MustHex":  func() { capture.MustHex("no/such.hex") },
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s did not panic", name)
+				}
+			}()
+			f()
+		}()
+	}
+	if _, err := capture.DecodeUDP([]byte{1, 2, 3}); err == nil {
+		t.Error("short frame decoded")
+	}
+}
+
+func TestParseManifest(t *testing.T) {
+	if _, err := capture.ParseManifest([]byte(`{"sources":[],"files":[],"extra":1}`)); !errors.Is(err, capture.ErrFormat) {
+		t.Errorf("unknown field: %v", err)
+	}
+	if _, err := capture.ParseManifest([]byte(`{`)); !errors.Is(err, capture.ErrFormat) {
+		t.Errorf("cut: %v", err)
+	}
+	m, err := capture.ParseManifest([]byte(`{"sources":[{"id":"x"}],"files":[]}`))
+	if err != nil || len(m.Sources) != 1 {
+		t.Fatalf("%+v %v", m, err)
+	}
+}
+
+// A big-endian pcapng section and a classic pcap cut inside a packet.
+func TestReadPcapVariants(t *testing.T) {
+	be := binary.BigEndian
+	block := func(typ uint32, body []byte) []byte {
+		n := 12 + len(body)
+		b := be.AppendUint32(nil, typ)
+		b = be.AppendUint32(b, uint32(n))
+		b = append(b, body...)
+		return be.AppendUint32(b, uint32(n))
+	}
+	shb := block(0x0A0D0D0A, append(be.AppendUint32(nil, 0x1A2B3C4D), 0, 1, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF))
+	idb := block(1, []byte{0, 1, 0, 0, 0, 0, 0, 0})
+	pkt := append(make([]byte, 12), be.AppendUint32(be.AppendUint32(nil, 2), 2)...)
+	epb := block(6, append(pkt, 9, 8, 0, 0))
+	dir := t.TempDir()
+	p := filepath.Join(dir, "be.pcapng")
+	if err := os.WriteFile(p, append(append(shb, idb...), epb...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fr, err := capture.ReadPcap(p)
+	if err != nil || len(fr) != 1 || string(fr[0]) != "\x09\x08" {
+		t.Fatalf("%x %v", fr, err)
+	}
+	raw, err := os.ReadFile(capture.Path("wireshark/unknown_scalance-x208_dcp-set-ip.pcap"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cut := filepath.Join(dir, "cut.pcap")
+	if err := os.WriteFile(cut, raw[:len(raw)-5], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := capture.ReadPcap(cut); err == nil {
+		t.Error("cut pcap read")
+	}
+}

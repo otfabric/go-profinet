@@ -291,11 +291,16 @@ type File struct {
 
 // ReadManifest reads testdata/captures/manifest.json.
 func ReadManifest() (Manifest, error) {
-	var m Manifest
 	b, err := readRepoFile(Path("manifest.json"))
 	if err != nil {
-		return m, err
+		return Manifest{}, err
 	}
+	return ParseManifest(b)
+}
+
+// ParseManifest parses the text of a manifest; unknown fields are errors.
+func ParseManifest(b []byte) (Manifest, error) {
+	var m Manifest
 	d := json.NewDecoder(strings.NewReader(string(b)))
 	d.DisallowUnknownFields()
 	if err := d.Decode(&m); err != nil {

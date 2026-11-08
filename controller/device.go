@@ -1405,17 +1405,18 @@ func (d *Device) teardown(a *arState) {
 		d.aborts.Add(1)
 		d.c.met.OnAbort(d.cfg.StationName, err)
 		var status pnio.Status
-		switch {
-		case errors.As(err, new(*rtaError)):
+		if errors.As(err, new(*rtaError)) {
 			// The device's ERR PDU is answered with "AR alarm.ind(err)",
 			// as a CPU 1515-2 PN answers it in the recorded traffic
 			// (testdata/captures, pnio-rs s7-1500_p-net_alarm-err-rta-cpu-reply.hex).
 			status = pnio.AbortStatus(pnio.AbortAlarmInd)
-		case errors.Is(err, profinet.ErrAborted):
-		case errors.Is(err, profinet.ErrTimeout):
-			status = pnio.AbortStatus(pnio.AbortConsumerDHT)
-		default:
+		} else if !errors.Is(err, profinet.ErrAborted) {
+			// The controller's own abort; one the device made by other
+			// means is not answered.
 			status = pnio.AbortStatus(pnio.AbortUser)
+			if errors.Is(err, profinet.ErrTimeout) {
+				status = pnio.AbortStatus(pnio.AbortConsumerDHT)
+			}
 		}
 		if a.alarmLow != nil && status != (pnio.Status{}) {
 			ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
