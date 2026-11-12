@@ -123,6 +123,11 @@ stack. Every exchange is captured and decoded by scapy and tshark; a frame
 either cannot decode, or that tshark warns about, fails the test unless it
 is an attributed deviation of the peer.
 
+The Interop workflow builds the images of profinet-interop v0.7.1
+(`INTEROP_REF`). The counts below are the recorded matrix of the
+profinet-interop v0.6.0 run (2026-10-29); no matrix has been recorded for
+v0.7.1.
+
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
 |------|---------|----------------|-----:|-----:|----:|---------------:|
 | rt-labs p-net | `ea5e554` | IO-Controller, DCP requester, LLDP agent | 56 | 0 | 1 | 0 |

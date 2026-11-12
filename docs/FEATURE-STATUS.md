@@ -103,9 +103,10 @@ libraries (go-modbus, go-ethernetip, go-canbus, …):
 ## 5. Interop matrix
 
 Each peer runs in a container of
-[profinet-interop](https://github.com/otfabric/profinet-interop) v0.6.0
-against go-profinet; every exchange is captured and decoded by tshark and
-scapy. Full evidence, check by check:
+[profinet-interop](https://github.com/otfabric/profinet-interop) against
+go-profinet (the Interop workflow builds v0.7.1; the counts below are the
+recorded matrix of the v0.6.0 run); every exchange is captured and decoded
+by tshark and scapy. Full evidence, check by check:
 [MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.6.0/docs/MATRIX.md).
 
 | Peer | go-profinet as | DCP | LLDP | AR, startup | Records, I&M | Alarms | Cyclic | Shared device | Port checks | Re-param. | MRP | MRA | SNMP | pass | fail | n/a | dev. |
