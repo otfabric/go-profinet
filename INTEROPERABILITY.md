@@ -125,8 +125,8 @@ is an attributed deviation of the peer.
 
 The Interop workflow builds the images of profinet-interop v0.7.1
 (`INTEROP_REF`). The counts below are the recorded matrix of the
-profinet-interop v0.6.0 run (2026-10-29); no matrix has been recorded for
-v0.7.1.
+profinet-interop v0.6.0 run (2026-10-29); no newer matrix is committed
+(later workflow runs keep their results as artifacts).
 
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
 |------|---------|----------------|-----:|-----:|----:|---------------:|
