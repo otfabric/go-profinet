@@ -26,6 +26,24 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.8.1
+
+**Date:** 2026-11-12
+**Previous release:** v0.8.0
+
+The interop suite moves to profinet-interop v0.8.0 (contract 1.3, a
+compatible addition). No code change.
+
+- `INTEROP_REF` is v0.8.0 in the Makefile and the Interop and Kernel MRP
+  workflows.
+- The matrix in INTEROPERABILITY.md and docs/FEATURE-STATUS.md is that of
+  the v0.8.0 run (2026-11-12, Interop and Kernel MRP workflows): 39 test
+  runs, 248 pass, 0 fail, 6 n/a, 14 attributed peer deviations, the same
+  per-peer counts as the v0.6.0 run it replaces. profinet-interop's
+  MATRIX.md is regenerated from it.
+
+---
+
 ## v0.8.0
 
 **Date:** 2026-11-08

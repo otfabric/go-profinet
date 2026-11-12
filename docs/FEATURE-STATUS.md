@@ -1,9 +1,9 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.8.0 (2026-11-08) with profinet-interop v0.7.1
-and profinetctl v0.10.0; the interop matrix below is that of the v0.6.0
-release, rerun green by every Interop workflow since. How go-profinet compares with other PROFINET stacks is
+what. Status: go-profinet v0.8.1 (2026-11-12) with profinet-interop v0.8.0
+and profinetctl v0.10.1; the interop matrix below is that of the
+profinet-interop v0.8.0 run of 2026-11-12. How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
 what is out of scope in [LIMITATIONS.md](../LIMITATIONS.md).
 
@@ -15,7 +15,8 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.8.0** | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.10.0 | **yes** |
+| **v0.8.1** | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.10.1 | **yes** |
+| v0.8.0 | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.10.0 | no: v0.8.1 moves the interop pin to profinet-interop v0.8.0 (no code change) |
 | v0.7.0 | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.8.0, v0.9.0 | no: v0.8.0 fixes the alarm sequence numbers and ERR-RTA answers the recorded traffic showed |
 | v0.6.0 | 1.23 or later (CI: 1.23–1.26) | v0.6.0 (1.2) | v0.6.0 | no: v0.7.0 raises the Go floor and refuses out-of-range values |
 | v0.5.1 | 1.23 or later | v0.4.1 (1.2) | v0.3.2 | no: v0.6.0 only adds API (apidiff: compatible) |
@@ -104,10 +105,10 @@ libraries (go-modbus, go-ethernetip, go-canbus, …):
 
 Each peer runs in a container of
 [profinet-interop](https://github.com/otfabric/profinet-interop) against
-go-profinet (the Interop workflow builds v0.7.1; the counts below are the
-recorded matrix of the v0.6.0 run); every exchange is captured and decoded
+go-profinet (the Interop workflow builds v0.8.0; the counts below are the
+matrix of its run of 2026-11-12); every exchange is captured and decoded
 by tshark and scapy. Full evidence, check by check:
-[MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.6.0/docs/MATRIX.md).
+[MATRIX.md](https://github.com/otfabric/profinet-interop/blob/main/docs/MATRIX.md).
 
 | Peer | go-profinet as | DCP | LLDP | AR, startup | Records, I&M | Alarms | Cyclic | Shared device | Port checks | Re-param. | MRP | MRA | SNMP | pass | fail | n/a | dev. |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|---:|

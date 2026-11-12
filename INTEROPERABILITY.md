@@ -123,10 +123,10 @@ stack. Every exchange is captured and decoded by scapy and tshark; a frame
 either cannot decode, or that tshark warns about, fails the test unless it
 is an attributed deviation of the peer.
 
-The Interop workflow builds the images of profinet-interop v0.7.1
-(`INTEROP_REF`). The counts below are the recorded matrix of the
-profinet-interop v0.6.0 run (2026-10-29); no newer matrix is committed
-(later workflow runs keep their results as artifacts).
+The Interop workflow builds the images of profinet-interop v0.8.0
+(`INTEROP_REF`). The counts below are the matrix of that release's run
+(2026-11-12: the Interop and Kernel MRP workflows of the commit that moved
+the pin, released as go-profinet v0.8.1).
 
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
 |------|---------|----------------|-----:|-----:|----:|---------------:|
@@ -142,11 +142,11 @@ profinet-interop v0.6.0 run (2026-10-29); no newer matrix is committed
 | tshark and scapy | | (decoders of our Hello, SNMP, UDP-RT and DHCP frames) | 8 | 0 | 0 | 2 |
 
 The full matrix, feature by feature, with the evidence of each check, is
-[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.6.0/docs/MATRIX.md)
-(248 pass, 0 fail, 6 n/a, 14 deviations; the Interop workflow on amd64,
+[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/main/docs/MATRIX.md)
+(39 test runs: 248 pass, 0 fail, 6 n/a, 14 deviations; the Interop workflow on amd64,
 the mrp rows from the Kernel MRP workflow's micro-VMs); the notes on each
 peer are in its
-[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.6.0/docs/INTEROPERABILITY.md).
+[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.8.0/docs/INTEROPERABILITY.md).
 The "n/a" are peer limits: pnio-rs has no diagnosis records and no DCP Set,
 p-net and pnio-rs refuse PrmBegin in Data, profinet-py ignores the GSDML's
 UsedInSlots, and the kernel flushes its FDB where the mrp adapter cannot
