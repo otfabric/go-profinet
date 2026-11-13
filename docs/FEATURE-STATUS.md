@@ -97,7 +97,7 @@ libraries (go-modbus, go-ethernetip, go-canbus, …):
 | Retries and backoff | DCP retransmission, RPC retransmission with at-most-once execution, RTA retransmission, the controller's reconnection with `profinet.Backoff` (exponential, jitter); record calls are not retried behind the application's back | [ERRORS.md](../ERRORS.md#retries-and-backoff) |
 | Context and concurrency | every blocking call takes a `context.Context`; components are safe for concurrent use; `Close` waits for their goroutines | [API.md](../API.md#conventions) |
 | Types | typed identifiers and enums (`pnio.Index`, `pnio.RTClass`, `controller.State`, `device.ARState`, `mrp.Role`, …) with `String` methods; codecs with `Append`/`Decode` pairs | [API.md](../API.md) |
-| Tests | 97.1 % statement coverage; race detector on every package; 26 fuzz targets; seeded chaos and chaos-monkey suites; a 25-run soak before every release; benchmarks | [TESTING.md](TESTING.md), [COVERAGE.md](COVERAGE.md) |
+| Tests | 97.2 % statement coverage (v0.8.1); race detector on every package; 34 fuzz targets; seeded chaos and chaos-monkey suites; a 25-run soak before every release; benchmarks | [TESTING.md](TESTING.md), [COVERAGE.md](COVERAGE.md) |
 | Interop | independent stacks in containers, pinned by version and digest; every capture decoded by tshark and scapy | section 5, [INTEROPERABILITY.md](../INTEROPERABILITY.md) |
 | Examples | 12 self-contained examples that CI runs, with their real output, and a device and a controller for a real interface | [examples/](../examples/README.md) |
 

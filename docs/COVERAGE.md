@@ -8,36 +8,38 @@ privileges and are measured by the real Layer 2 jobs; the examples, the
 generator command, the e2e package and the interop tool are not library
 code.
 
-Measured on 2026-10-29 at v0.6.0 (`make coverage`, race detector;
-`scripts/coverage-by-package.sh coverage.out` prints the table):
+Measured on 2026-11-13 at v0.8.1 (`make coverage`, race detector, Go
+1.27.4 on macOS arm64; `scripts/coverage-by-package.sh coverage.out` prints
+the table). At v0.6.0 (2026-10-29) the total was 97.1 %.
 
 | Package | Coverage |
 |---------|----------|
 | profinet (root) | 100.0% |
 | alarm | 100.0% |
-| controller | 96.5% |
-| dcp | 99.3% |
-| device | 96.4% |
+| controller | 97.2% |
+| dcp | 99.1% |
+| device | 96.8% |
 | ethernet | 100.0% |
-| gsdml | 93.0% |
-| gsdml/gsdx | 98.1% |
-| internal/xsd | 90.7% |
+| gsdml | 93.1% |
+| gsdml/gsdx | 98.2% |
+| internal/capture | 98.5% |
+| internal/xsd | 91.1% |
 | l2 | 100.0% |
 | l2/bridge | 93.2% |
 | l2/osport | 93.8% |
 | lldp | 98.9% |
 | model | 100.0% |
-| mrp | 91.9% |
+| mrp | 92.1% |
 | netstack | 99.7% |
 | pcap | 100.0% |
-| pnio | 98.5% |
+| pnio | 98.6% |
 | ptcp | 100.0% |
 | rpc | 99.3% |
 | rt | 98.9% |
 | snmp | 99.9% |
-| store | 97.3% |
+| store | 97.4% |
 | vnet | 100.0% |
-| **total** | **97.1%** |
+| **total** | **97.2%** |
 
 Targets: 90 % overall, 95 % for the codec packages (`ethernet`, `dcp`,
 `lldp`, `rpc`, `pnio`, `rt`, `alarm`); every codec package is above 98 %.
