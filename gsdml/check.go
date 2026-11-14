@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -270,6 +271,39 @@ func slotSet(s string) (map[uint32]bool, bool) {
 	return m, true
 }
 
+// maxSlotWarnings is the number of slots one list of one module reference
+// is warned about one by one; the rest share one warning.
+const maxSlotWarnings = 8
+
+// slotWarnings warns about the slots, the first maxSlotWarnings one by one.
+func slotWarnings(v *validator, path string, slots []uint32, one func(uint32) string, rest string) {
+	for i, s := range slots {
+		if i == maxSlotWarnings {
+			v.warn(path, RuleSlots, rest, len(slots)-i)
+			return
+		}
+		v.warn(path, RuleSlots, "%s", one(s))
+	}
+}
+
+func sortedSlots(m map[uint32]bool) []uint32 {
+	out := make([]uint32, 0, len(m))
+	for s := range m {
+		out = append(out, s)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// clip shortens a value quoted in an issue to 64 octets.
+func clip(s string) string {
+	const n = 64
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
 // semantic applies the semantic rules.
 func semantic(doc *Document, v *validator) {
 	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil {
@@ -313,20 +347,35 @@ func semantic(doc *Document, v *validator) {
 					if !ok {
 						continue
 					}
-					for s := range set {
+					// One warning per slot up to maxSlotWarnings, then one
+					// for the rest: a list of 65536 slots in a few octets
+					// must not make as many issues.
+					var notPhysical, notAllowed, fixedTwice []uint32
+					fixedPrev := map[uint32]string{}
+					for _, s := range sortedSlots(set) {
 						if havePhysical && !physical[s] {
-							v.warn(rp, RuleSlots, "%s: slot %d is not among the PhysicalSlots %q", name, s, dap.PhysicalSlots)
+							notPhysical = append(notPhysical, s)
 						}
 						if name != "AllowedInSlots" && haveAllowed && !allowed[s] {
-							v.warn(rp, RuleSlots, "%s: slot %d is not in AllowedInSlots %q", name, s, ref.AllowedInSlots)
+							notAllowed = append(notAllowed, s)
 						}
 						if name == "FixedInSlots" {
 							if prev, dup := fixedBy[s]; dup && prev != ref.ModuleItemTarget {
-								v.warn(rp, RuleSlots, "slot %d is also fixed by module %s", s, prev)
+								fixedTwice = append(fixedTwice, s)
+								fixedPrev[s] = prev
 							}
 							fixedBy[s] = ref.ModuleItemTarget
 						}
 					}
+					slotWarnings(v, rp, notPhysical, func(s uint32) string {
+						return fmt.Sprintf("%s: slot %d is not among the PhysicalSlots %q", name, s, clip(dap.PhysicalSlots))
+					}, name+": %d more slots are not among the PhysicalSlots")
+					slotWarnings(v, rp, notAllowed, func(s uint32) string {
+						return fmt.Sprintf("%s: slot %d is not in AllowedInSlots %q", name, s, clip(ref.AllowedInSlots))
+					}, name+": %d more slots are not in AllowedInSlots")
+					slotWarnings(v, rp, fixedTwice, func(s uint32) string {
+						return fmt.Sprintf("slot %d is also fixed by module %s", s, clip(fixedPrev[s]))
+					}, "%d more slots are also fixed by another module")
 				}
 			}
 		}

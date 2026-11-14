@@ -189,6 +189,7 @@ func (p *Package) readSignatures() {
 	if origin.ContentType != ContentTypeSignatureOrigin {
 		p.issue(origin.Name, "signature origin part with content type %q", origin.ContentType)
 	}
+	seen := map[string]bool{}
 	for _, r := range origin.Relationships {
 		if r.Type != RelTypeSignature || r.ResolvedTarget == "" {
 			continue
@@ -197,6 +198,13 @@ func (p *Package) readSignatures() {
 		if !ok {
 			continue
 		}
+		// A signature part several relationships name is read once.
+		k := asciiLower(part.Name)
+		if seen[k] {
+			p.issue(origin.Name, "signature part %s named by more than one relationship", part.Name)
+			continue
+		}
+		seen[k] = true
 		if part.ContentType != ContentTypeSignature {
 			p.issue(part.Name, "signature part with content type %q", part.ContentType)
 		}
@@ -316,9 +324,18 @@ func (p *Package) partReference(sigPart string, ref Reference) Reference {
 		ref.DigestNote = "DigestValue is not base64"
 		return ref
 	}
-	data, _ := p.data(u)
-	h.Write(data)
-	if bytes.Equal(h.Sum(nil), want) {
+	key := asciiLower(u) + "|" + ref.DigestMethod
+	sum, ok := p.digests[key]
+	if !ok {
+		data, _ := p.data(u)
+		h.Write(data)
+		sum = h.Sum(nil)
+		if p.digests == nil {
+			p.digests = map[string][]byte{}
+		}
+		p.digests[key] = sum
+	}
+	if bytes.Equal(sum, want) {
 		ref.Digest = DigestMatch
 	} else {
 		ref.Digest = DigestMismatch

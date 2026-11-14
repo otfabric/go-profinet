@@ -26,6 +26,46 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.9.0
+
+**Date:** 2026-11-14
+**Previous release:** v0.8.1
+
+Tighter limits and lifecycle handling for peers and files. One addition to
+the API: `rpc.Client.Foreign`, `gsdml.MaxModelRecordOctets`.
+
+- rpc: the server refuses a newer call on an activity whose call still
+  runs (`Busy`), so waiting handlers stay bounded by the activities. The
+  client takes the packets of a call only from the host it called and
+  counts the others (`Foreign`).
+- device: a Connect for an ARUUID whose Connect still runs is refused; a
+  Connect that ends after `Close` began fails instead of adding its AR; the
+  CM activity timer and submodule handovers no longer start work after
+  `Close`. Each AR uses its own RPC activity for ApplicationReady.
+- device: a DCP ResetToFactory refuses Connects while it runs, so no AR
+  outlives it, and reports a refused IP reset instead of success.
+- device: MRP role changes are serialized; one MRP entity runs, and none
+  after `Close`.
+- device: a permanent DCP Set of the IP suite or a DHCP option that the
+  application refuses leaves the stored value as it was.
+- dcp: the responder ignores the Get and Set requests of other requesters
+  for 3 s after a Get or Set (counted in `Ignored`), as documented.
+- mrp: TopologyChanges with an interval share one pending FDB flush,
+  stopped by `Close`.
+- controller: the handover of a submodule after a Released alarm runs once
+  at a time per submodule and ends with the AR.
+- snmp: long-form lengths of four octets are checked unsigned (32-bit
+  platforms).
+- l2/afpacket: a received frame leaves room for the VLAN tag the kernel
+  stripped.
+- gsdml: slot warnings are bounded per module reference and quote at most
+  64 octets; `ToModel` converts a module once and bounds the octets of all
+  parameter records (`MaxModelRecordOctets`, 16 MiB).
+- gsdml/gsdx: a signature part is read once, a part's digest is computed
+  once per method, and core property text is built in linear time.
+
+---
+
 ## v0.8.1
 
 **Date:** 2026-11-12

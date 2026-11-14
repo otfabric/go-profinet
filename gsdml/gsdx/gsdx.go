@@ -164,6 +164,10 @@ type Package struct {
 
 	entries []*entry
 	byName  map[string]*entry // ASCII-lowercased part name
+	// digests are the digests of parts computed for signature references,
+	// by lowercased part name and digest method: each part is hashed once
+	// per method.
+	digests map[string][]byte
 }
 
 func errMalformed(format string, a ...any) error {

@@ -65,11 +65,11 @@ func TestToRecordErrors(t *testing.T) {
 		{Index: "1", Length: "2", Consts: []*Const{{Data: "nope"}}},
 		{Index: "1", Length: "2", Refs: []*Ref{{ByteOffset: "5", DataType: "Unsigned8", DefaultValue: "1"}}},
 	} {
-		if _, err := toRecord(doc, &r); err == nil {
+		if _, err := toRecord(doc, &r, recordBudget()); err == nil {
 			t.Errorf("accepted %+v", r)
 		}
 	}
-	r, err := toRecord(doc, &ParameterRecordDataItem{Index: "0x10", Length: "2", Consts: []*Const{{ByteOffset: "1", Data: "0x07"}}})
+	r, err := toRecord(doc, &ParameterRecordDataItem{Index: "0x10", Length: "2", Consts: []*Const{{ByteOffset: "1", Data: "0x07"}}}, recordBudget())
 	if err != nil || r.Index != 0x10 || !bytes.Equal(r.Default, []byte{0, 7}) {
 		t.Fatalf("%+v %v", r, err)
 	}
@@ -291,4 +291,9 @@ func TestToModelSubslotRange(t *testing.T) {
 	if got := m.Capabilities.ReductionRatios; len(got) != 1 || got[0] != 2 {
 		t.Fatalf("ratios %v", got)
 	}
+}
+
+func recordBudget() *int {
+	n := MaxModelRecordOctets
+	return &n
 }

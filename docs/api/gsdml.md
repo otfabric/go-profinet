@@ -60,6 +60,12 @@ const MaxDocumentSize = 64 << 20
 MaxDocumentSize bounds the size of a document Parse reads. Vendor files reach 15 MB; the bound leaves room.
 
 ```go
+const MaxModelRecordOctets = 16 << 20
+```
+
+MaxModelRecordOctets bounds the octets of all parameter records of the model ToModel builds.
+
+```go
 const MaxRecordLength = 65535
 ```
 

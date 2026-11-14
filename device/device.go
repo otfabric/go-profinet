@@ -175,6 +175,8 @@ type Device struct {
 	sched  *rt.Scheduler
 	ports  []*port
 	mrpSt  *mrpState
+	// mrpMu serializes MRP entity replacement and its stop.
+	mrpMu  sync.Mutex
 	rpcSrv *rpc.Server
 	rpcCli *rpc.Client
 	snmpA  *snmp.Agent
@@ -200,6 +202,12 @@ type Device struct {
 	reservedIO int
 	// replacing are the ARs Connects in progress replace (reruns).
 	replacing map[*ar]bool
+	// connecting are the ARUUIDs of the Connects in progress: a second
+	// Connect for one of them is refused until the first ends.
+	connecting map[rpc.UUID]bool
+	// resetting is set while a DCP ResetToFactory runs: Connects are
+	// refused.
+	resetting bool
 	arSeq     uint64
 	frameIDs  map[uint16]bool
 	records   map[recKey][]byte
@@ -311,34 +319,35 @@ func New(cfg Config) (*Device, error) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Device{
-		cfg:       cfg,
-		rpcPort:   rpcPort,
-		log:       log,
-		met:       met,
-		model:     cfg.Model,
-		handler:   h,
-		object:    pnio.ObjectUUID(max(cfg.Model.Identity.Instance, 1), cfg.Model.Identity.DeviceID, cfg.Model.Identity.VendorID),
-		mux:       cfg.Mux,
-		name:      cfg.StationName,
-		ip:        cfg.IP,
-		dhcp:      cloneDHCP(cfg.DHCP),
-		ipDHCP:    cfg.IPFromDHCP,
-		ars:       map[rpc.UUID]*ar{},
-		frameIDs:  map[uint16]bool{},
-		records:   map[recKey][]byte{},
-		im:        cfg.IM,
-		storeKey:  cfg.StoreKey,
-		diags:     map[key][]pnio.DiagnosisItem{},
-		pd:        pdevState{checks: map[uint16]*pnio.PDPortDataCheck{}, adjusts: map[uint16]*pnio.PDPortDataAdjust{}, active: map[uint16][]uint16{}},
-		pdPoke:    make(chan struct{}, 1),
-		inputs:    map[key]*ioData{},
-		owner:     map[key]*ar{},
-		claimers:  map[*ar]bool{},
-		srSets:    map[[14]byte]*srSet{},
-		replacing: map[*ar]bool{},
-		outputs:   map[key]*ioData{},
-		ctx:       ctx,
-		cancel:    cancel,
+		cfg:        cfg,
+		rpcPort:    rpcPort,
+		log:        log,
+		met:        met,
+		model:      cfg.Model,
+		handler:    h,
+		object:     pnio.ObjectUUID(max(cfg.Model.Identity.Instance, 1), cfg.Model.Identity.DeviceID, cfg.Model.Identity.VendorID),
+		mux:        cfg.Mux,
+		name:       cfg.StationName,
+		ip:         cfg.IP,
+		dhcp:       cloneDHCP(cfg.DHCP),
+		ipDHCP:     cfg.IPFromDHCP,
+		ars:        map[rpc.UUID]*ar{},
+		frameIDs:   map[uint16]bool{},
+		records:    map[recKey][]byte{},
+		im:         cfg.IM,
+		storeKey:   cfg.StoreKey,
+		diags:      map[key][]pnio.DiagnosisItem{},
+		pd:         pdevState{checks: map[uint16]*pnio.PDPortDataCheck{}, adjusts: map[uint16]*pnio.PDPortDataAdjust{}, active: map[uint16][]uint16{}},
+		pdPoke:     make(chan struct{}, 1),
+		inputs:     map[key]*ioData{},
+		owner:      map[key]*ar{},
+		claimers:   map[*ar]bool{},
+		srSets:     map[[14]byte]*srSet{},
+		replacing:  map[*ar]bool{},
+		connecting: map[rpc.UUID]bool{},
+		outputs:    map[key]*ioData{},
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 	d.model.Each(func(p model.PluggedSubmodule) {
 		k := key{p.Slot, p.Submodule.Subslot}
@@ -644,12 +653,17 @@ func (s station) SetIP(ip dcp.IPSuite, permanent bool) dcp.BlockError {
 	if !permanent {
 		stored = dcp.IPSuite{}
 	}
-	if err := d.persist(func(p *persisted) { p.IP = toStoredIP(stored) }); err != nil {
+	var prev *storedIP
+	if err := d.persist(func(p *persisted) { prev = p.IP; p.IP = toStoredIP(stored) }); err != nil {
 		return dcp.BlockErrorResource
 	}
 	if d.cfg.ApplyIP != nil {
 		if err := d.cfg.ApplyIP(ip, permanent); err != nil {
 			d.log.Warnf("device: apply IP %s: %v", ip, err)
+			// A refused Set leaves the stored IP suite as it was.
+			if err := d.persist(func(p *persisted) { p.IP = prev }); err != nil {
+				d.log.Warnf("device: restore stored IP suite: %v", err)
+			}
 			return dcp.BlockErrorSetNotPossible
 		}
 	}
@@ -672,12 +686,20 @@ func (s station) ResetToFactory(mode uint16) dcp.BlockError {
 	if code != dcp.BlockErrorNone {
 		return code
 	}
+	// Connects are refused until the reset is done; one still running
+	// fails before it adds its AR, so no AR outlives the reset.
 	d.mu.Lock()
+	d.resetting = true
 	var abort []*ar
 	for _, a := range d.ars {
 		abort = append(abort, a)
 	}
 	d.mu.Unlock()
+	defer func() {
+		d.mu.Lock()
+		d.resetting = false
+		d.mu.Unlock()
+	}()
 	for _, a := range abort {
 		d.abort(a, pnio.AbortDCPReset, true)
 	}
@@ -713,7 +735,9 @@ func (s station) ResetToFactory(mode uint16) dcp.BlockError {
 	}
 	d.mu.Unlock()
 	if resetComm {
-		s.SetIP(dcp.IPSuite{}, true)
+		if code := s.SetIP(dcp.IPSuite{}, true); code != dcp.BlockErrorNone {
+			return code
+		}
 		d.handler.NameChanged("", true)
 	}
 	return dcp.BlockErrorNone

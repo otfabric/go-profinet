@@ -154,6 +154,9 @@ type Entity struct {
 	// linkTimer is the client's wait for a TopologyChange after a port
 	// came up; it unblocks the port when it runs out.
 
+	// flushTimer is the one pending delayed FDB flush of the
+	// TopologyChanges received (flushAt its deadline); Close stops it.
+
 	// linkGen numbers a client's link changes: a burst of link change
 	// frames stops when a newer change starts, so that a LinkDown is
 	// never repeated after the link came back.

@@ -415,6 +415,8 @@ func FuzzDecode(f *testing.F) {
 	f.Add(unhex(f, goldenBulk))
 	f.Add(unhex(f, "30 08 02 01 03 30 03 02 01 01"))
 	f.Add(unhex(f, "30 09 02 01 00 04 00 a4 02 05 00"))
+	f.Add(unhex(f, "30 84 ff ff ff ff 02 01 01"))
+	f.Add(unhex(f, "30 84 80 00 00 00 02 01 01"))
 	f.Fuzz(func(t *testing.T, b []byte) {
 		m, err := Decode(b)
 		if err != nil {
@@ -522,6 +524,16 @@ func TestInt32Bounds(t *testing.T) {
 		big := int64(math.MaxInt32) + 1
 		if saturateInt32(int(big)) != math.MaxInt32 || saturateInt32(int(-big-1)) != math.MinInt32 {
 			t.Error("saturateInt32 does not saturate")
+		}
+	}
+}
+
+// Four length octets of 2^31 or more are refused on every platform (on
+// 32-bit ones they overflow int).
+func TestDecodeLargeLongFormLength(t *testing.T) {
+	for _, h := range []string{"30 84 ff ff ff ff 02 01 01", "30 84 80 00 00 00 02 01 01", "30 84 7f ff ff ff 02 01 01"} {
+		if _, err := Decode(unhex(t, h)); !errors.Is(err, profinet.ErrMalformed) {
+			t.Errorf("%s: err %v, want ErrMalformed", h, err)
 		}
 	}
 }

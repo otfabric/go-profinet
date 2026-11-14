@@ -75,6 +75,8 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	bad := func(format string, a ...any) error {
 		return fmt.Errorf("gsdml: %w: "+format, append([]any{profinet.ErrMalformed}, a...)...)
 	}
+	budget := new(int)
+	*budget = MaxModelRecordOctets
 	if doc.ProfileBody == nil || doc.ProfileBody.DeviceIdentity == nil || doc.ProfileBody.ApplicationProcess == nil {
 		return nil, bad("no ProfileBody, DeviceIdentity or ApplicationProcess")
 	}
@@ -145,7 +147,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	m.DAP = model.Module{Name: textOf(doc, dap.ModuleInfo), IdentNumber: dapIdent}
 	if dap.VirtualSubmoduleList != nil {
 		for _, vs := range dap.VirtualSubmoduleList.VirtualSubmoduleItems {
-			s, err := toSubmodule(doc, vs, 1)
+			s, err := toSubmodule(doc, vs, 1, budget)
 			if err != nil {
 				return nil, err
 			}
@@ -195,14 +197,20 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	}
 	if dap.UseableModules != nil {
 		used := map[uint16]bool{}
+		converted := map[string]model.Module{}
 		for _, r := range dap.UseableModules.ModuleItemRefs {
 			mi := modules[r.ModuleItemTarget]
 			if mi == nil {
 				return nil, bad("ModuleItemRef %q: no such module", r.ModuleItemTarget)
 			}
-			mod, err := toModule(doc, mi)
-			if err != nil {
-				return nil, err
+			// A module several references name is converted once.
+			mod, ok := converted[r.ModuleItemTarget]
+			if !ok {
+				var err error
+				if mod, err = toModule(doc, mi, budget); err != nil {
+					return nil, err
+				}
+				converted[r.ModuleItemTarget] = mod
 			}
 			// The configuration: the slots the module is fixed in, else
 			// the slots it is used in, else its only allowed slot.
@@ -274,7 +282,7 @@ func systemSubmodule(doc *Document, textID, subslot, ident string) (model.Submod
 	return model.Submodule{Name: doc.Text(textID), IdentNumber: id, Subslot: ss}, nil
 }
 
-func toModule(doc *Document, mi *ModuleItem) (model.Module, error) {
+func toModule(doc *Document, mi *ModuleItem, budget *int) (model.Module, error) {
 	id, err := ParseUint32(mi.ModuleIdentNumber)
 	if err != nil {
 		return model.Module{}, fmt.Errorf("gsdml: %w: module %s ModuleIdentNumber %q", profinet.ErrMalformed, mi.ID, mi.ModuleIdentNumber)
@@ -283,7 +291,7 @@ func toModule(doc *Document, mi *ModuleItem) (model.Module, error) {
 	if mi.VirtualSubmoduleList != nil {
 		next := uint16(1)
 		for _, vs := range mi.VirtualSubmoduleList.VirtualSubmoduleItems {
-			s, err := toSubmodule(doc, vs, next)
+			s, err := toSubmodule(doc, vs, next, budget)
 			if err != nil {
 				return m, err
 			}
@@ -294,7 +302,7 @@ func toModule(doc *Document, mi *ModuleItem) (model.Module, error) {
 	return m, nil
 }
 
-func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16) (model.Submodule, error) {
+func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16, budget *int) (model.Submodule, error) {
 	id, err := ParseUint32(vs.SubmoduleIdentNumber)
 	if err != nil {
 		return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s SubmoduleIdentNumber %q", profinet.ErrMalformed, vs.ID, vs.SubmoduleIdentNumber)
@@ -323,7 +331,7 @@ func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16) (mo
 	}
 	if rl := vs.RecordDataList; rl != nil {
 		for _, r := range rl.ParameterRecordDataItems {
-			rec, err := toRecord(doc, r)
+			rec, err := toRecord(doc, r, budget)
 			if err != nil {
 				return s, fmt.Errorf("submodule %s: %w", vs.ID, err)
 			}
@@ -336,7 +344,11 @@ func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16) (mo
 // MaxRecordLength bounds the length of a parameter record ToModel builds.
 const MaxRecordLength = 65535
 
-func toRecord(doc *Document, r *ParameterRecordDataItem) (model.Record, error) {
+// MaxModelRecordOctets bounds the octets of all parameter records of the
+// model ToModel builds.
+const MaxModelRecordOctets = 16 << 20
+
+func toRecord(doc *Document, r *ParameterRecordDataItem, budget *int) (model.Record, error) {
 	idx, err := ParseUint16(r.Index)
 	if err != nil || idx > 0x7FFF {
 		return model.Record{}, fmt.Errorf("gsdml: %w: record Index %q", profinet.ErrMalformed, r.Index)
@@ -344,6 +356,9 @@ func toRecord(doc *Document, r *ParameterRecordDataItem) (model.Record, error) {
 	n, err := ParseUint32(r.Length)
 	if err != nil || n > MaxRecordLength {
 		return model.Record{}, fmt.Errorf("gsdml: %w: record %d Length %q", profinet.ErrMalformed, idx, r.Length)
+	}
+	if *budget -= int(n); *budget < 0 {
+		return model.Record{}, fmt.Errorf("gsdml: %w: parameter records of more than %d octets", profinet.ErrResourceExhausted, MaxModelRecordOctets)
 	}
 	rec := model.Record{Index: pnio.Index(idx), Length: uint16(n), Default: make([]byte, n)}
 	if r.Name != nil {

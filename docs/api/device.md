@@ -227,6 +227,8 @@ Config configures a [Device](#type-device).
 ```go
 type Device struct {
 
+	// mrpMu serializes MRP entity replacement and its stop.
+
 	// snmpStart is when the SNMP agent started (sysUpTime 0).
 
 	// The persistent state (persist.go): storeMu serializes the saves,
@@ -239,6 +241,12 @@ type Device struct {
 	// IOCARs; arSeq numbers the Connects.
 
 	// replacing are the ARs Connects in progress replace (reruns).
+
+	// connecting are the ARUUIDs of the Connects in progress: a second
+	// Connect for one of them is refused until the first ends.
+
+	// resetting is set while a DCP ResetToFactory runs: Connects are
+	// refused.
 
 	// pdPoke wakes the PDev check evaluator.
 
