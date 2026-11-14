@@ -97,11 +97,19 @@ func TestConcurrentMRPRoleWrites(t *testing.T) {
 		wg.Go(func() { _ = y.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, adj(r2)) })
 		wg.Wait()
 	}
-	if got := mrpEntities() - base; got != 1 {
-		t.Fatalf("%d MRP entities running, want 1", got)
+	// Other tests of the package may run MRP entities too: the count is
+	// bounded, not exact.
+	if got := mrpEntities() - base; got > 1 {
+		t.Fatalf("%d MRP entities running, want at most 1", got)
+	}
+	d.mu.Lock()
+	running := d.mrpSt.ent != nil
+	d.mu.Unlock()
+	if !running {
+		t.Fatal("no MRP entity after the role changes")
 	}
 	_ = d.Close()
-	eventually(t, 3*time.Second, "no MRP entity after Close", func() bool { return mrpEntities() == base })
+	eventually(t, 3*time.Second, "no MRP entity after Close", func() bool { return mrpEntities() <= base })
 }
 
 // A permanent DCP Set the application refuses is not stored either.
