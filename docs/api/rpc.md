@@ -195,6 +195,14 @@ func (c *Client) DoActivity(ctx context.Context, a *Activity, addr net.Addr, cal
 
 DoActivity performs a call on the activity a, waiting for a call in progress on it to complete.
 
+#### func (Client) Foreign
+
+```go
+func (c *Client) Foreign() uint64
+```
+
+Foreign returns the number of packets for a call in progress that came from another host than the one the call went to; they are dropped.
+
 #### func (Client) LocalAddr
 
 ```go

@@ -48,7 +48,10 @@ do not grant it on shared hosts. The virtual network (`vnet`) needs none.
 - Resources are bounded: RPC messages (64 KiB, 256 fragments), RPC
   activities and handler workers, ARs per device, subscription queues, alarm
   windows, GSDML documents (64 MiB; `encoding/xml` processes no DTDs or
-  external entities).
+  external entities) and the parameter records a model gets from one
+  (16 MiB, `gsdml.MaxModelRecordOctets`). A Connect for an ARUUID whose
+  Connect still runs is refused; the RPC client takes an answer only from
+  the host it called.
 - Concurrency is race-tested (`go test -race`) and chaos-tested with seeded
   loss, duplication, corruption, reordering and delay.
 - The DCP responder ignores other requesters for 3 s after a Get or Set, as

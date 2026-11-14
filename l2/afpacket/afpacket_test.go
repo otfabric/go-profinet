@@ -158,6 +158,11 @@ func TestInsertTag(t *testing.T) {
 	if _, _, ok := vlanFromAux([]byte{1, 2}); ok {
 		t.Fatal("garbage aux data")
 	}
+	// A length beyond the room for the tag is clamped, never a panic.
+	full := make([]byte, 20)
+	if got := insertTag(full, 20, 0x8100, 0xC000); len(got) != 20 {
+		t.Fatalf("clamped frame of %d octets", len(got))
+	}
 }
 
 // TestNoAllocations: once warmed up, a write and a read of a frame

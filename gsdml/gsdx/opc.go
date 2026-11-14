@@ -280,6 +280,9 @@ func (p *Package) readCoreProperties() {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	depth := 0
 	var cur *string
+	// The text of a field is built once: concatenating piece by piece
+	// (pieces split by comments) costs the square of their number.
+	text := map[*string]*strings.Builder{}
 	for {
 		tok, err := d.Token()
 		if err == io.EOF {
@@ -301,9 +304,17 @@ func (p *Package) readCoreProperties() {
 			cur = nil
 		case xml.CharData:
 			if cur != nil {
-				*cur += strings.TrimSpace(string(t))
+				b := text[cur]
+				if b == nil {
+					b = new(strings.Builder)
+					text[cur] = b
+				}
+				b.WriteString(strings.TrimSpace(string(t)))
 			}
 		}
+	}
+	for f, b := range text {
+		*f = b.String()
 	}
 	p.CoreProperties = cp
 }

@@ -253,9 +253,14 @@ type arState struct {
 	// whose ApplicationReady (plug) is awaited, by alarm sequence number
 	// (guarded by Device.mu).
 	plugPending map[uint16]subKey
-	failed      chan error
-	failOnce    sync.Once
-	failErr     error // set once by fail, before the send on failed
+	// releasing are the submodules whose handover after a Released alarm
+	// runs (guarded by Device.mu): one at a time per submodule. handover
+	// tracks those goroutines; teardown waits for them.
+	releasing map[subKey]bool
+	handover  sync.WaitGroup
+	failed    chan error
+	failOnce  sync.Once
+	failErr   error // set once by fail, before the send on failed
 }
 
 func (a *arState) fail(err error) {
@@ -1074,7 +1079,28 @@ func (d *Device) alarmData(a *arState, high bool, b []byte) {
 		return
 	}
 	if n.Type == pnio.AlarmReleased {
-		go d.takeReleased(a, n)
+		k := subKey{n.Slot, n.Subslot}
+		d.mu.Lock()
+		busy := a.releasing[k]
+		if !busy {
+			if a.releasing == nil {
+				a.releasing = map[subKey]bool{}
+			}
+			a.releasing[k] = true
+		}
+		d.mu.Unlock()
+		if busy {
+			d.c.log.Debugf("controller: %s: submodule %d/%d released again while its handover runs", d.cfg.StationName, n.Slot, n.Subslot)
+			return
+		}
+		a.handover.Go(func() {
+			defer func() {
+				d.mu.Lock()
+				delete(a.releasing, k)
+				d.mu.Unlock()
+			}()
+			d.takeReleased(a, n)
+		})
 	}
 }
 
@@ -1089,6 +1115,14 @@ func (d *Device) takeReleased(a *arState, n pnio.AlarmNotification) {
 	}
 	ctx, cancel := context.WithTimeout(d.c.ctx, d.cfg.RPCTimeout)
 	defer cancel()
+	// The handover ends with the AR.
+	go func() {
+		select {
+		case <-a.dead:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
 	for _, p := range d.parameters() {
 		if p.Slot != n.Slot || p.Subslot != n.Subslot {
 			continue
@@ -1439,6 +1473,8 @@ func (d *Device) teardown(a *arState) {
 	if a.alarmLow != nil {
 		a.alarmLow.Close()
 	}
+	// No alarm arrives any more; the handovers end with the AR (a.dead).
+	a.handover.Wait()
 	d.c.unregisterAR(a.uuid)
 	// The statistics before d.mu: a frame still being handled holds the
 	// consumer's lock and waits for d.mu (storeInputs).

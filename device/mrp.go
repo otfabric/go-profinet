@@ -47,6 +47,8 @@ type mrpState struct {
 	ent     *mrp.Entity
 	adjust  *pnio.PDInterfaceMrpDataAdjust
 	portAdj map[uint16]*pnio.PDPortMrpData
+	// closed is set by stopMRP: no entity starts after it.
+	closed bool
 }
 
 // startMRP checks the configuration and starts the entity of the
@@ -78,13 +80,20 @@ func (d *Device) startMRP() error {
 		c.DomainName = "mrpdomain-1"
 	}
 	d.mrpSt = &mrpState{cfg: c, portAdj: map[uint16]*pnio.PDPortMrpData{}}
+	d.mrpMu.Lock()
+	defer d.mrpMu.Unlock()
 	return d.setMRPRole(c.Role, c.Domain, c.DomainName)
 }
 
 // setMRPRole stops the running entity and starts one of the new role.
+// The caller holds d.mrpMu, so one entity runs at a time.
 func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 	d.mu.Lock()
 	st := d.mrpSt
+	if st.closed {
+		d.mu.Unlock()
+		return profinet.ErrClosed
+	}
 	old := st.ent
 	st.ent = nil
 	st.cfg.Role, st.cfg.Domain, st.cfg.DomainName = role, domain, name
@@ -114,10 +123,13 @@ func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 }
 
 func (d *Device) stopMRP() {
+	d.mrpMu.Lock()
+	defer d.mrpMu.Unlock()
 	d.mu.Lock()
 	var ent *mrp.Entity
 	if d.mrpSt != nil {
 		ent, d.mrpSt.ent = d.mrpSt.ent, nil
+		d.mrpSt.closed = true
 	}
 	d.mu.Unlock()
 	if ent != nil {
@@ -269,6 +281,8 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 	if a.Role > pnio.MrpRoleManager || len(a.DomainName) == 0 || len(a.DomainName) > 240 {
 		return true, rwErr(pnio.RWInvalidParameter)
 	}
+	d.mrpMu.Lock()
+	defer d.mrpMu.Unlock()
 	d.mu.Lock()
 	same := st.cfg.Role == mrp.Role(a.Role) && st.cfg.Domain == a.Domain && st.cfg.DomainName == a.DomainName
 	st.adjust = &a

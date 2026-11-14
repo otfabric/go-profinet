@@ -34,6 +34,9 @@ type ar struct {
 	ctrlName   string
 	ctrlPort   int
 	cmiTimeout time.Duration
+	// rpcAct is the AR's own activity for its calls to the controller
+	// (ApplicationReady): ARs do not share activities.
+	rpcAct *rpc.Activity
 
 	expected []pnio.ExpectedSubmoduleBlockReq
 	// match are the submodules whose expected and real ident match;
@@ -406,7 +409,11 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	}
 
 	d.mu.Lock()
-	if d.closed {
+	if d.closed || d.resetting {
+		d.mu.Unlock()
+		return fail(pnio.Code1CMRPC, pnio.CMRPCStateConflict)
+	}
+	if d.connecting[arb.ARUUID] {
 		d.mu.Unlock()
 		return fail(pnio.Code1CMRPC, pnio.CMRPCStateConflict)
 	}
@@ -447,6 +454,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	if !iosar {
 		d.reservedIO++
 	}
+	d.connecting[arb.ARUUID] = true
 	if rerun != nil {
 		d.replacing[rerun] = true
 	}
@@ -468,6 +476,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	defer func() {
 		d.mu.Lock()
 		unreserve()
+		delete(d.connecting, arb.ARUUID)
 		if rerun != nil {
 			delete(d.replacing, rerun)
 		}
@@ -555,6 +564,13 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	}
 
 	d.mu.Lock()
+	if d.closed || d.resetting {
+		// Close or a reset ran meanwhile and aborted the ARs it found:
+		// this one ends here, with what it started.
+		d.mu.Unlock()
+		d.abort(a, pnio.AbortDeactivated, false)
+		return fail(pnio.Code1CMRPC, pnio.CMRPCStateConflict)
+	}
 	d.ars[a.uuid] = a
 	unreserve()
 	d.mu.Unlock()
@@ -576,7 +592,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 		a.cmiTimer = time.AfterFunc(a.cmiTimeout, func() {
 			if s := a.currentState(); s == ARStateParameterizing || s == ARStateAppReadyPending {
 				d.log.Warnf("device: AR %s: CM activity timeout in %s", a.uuid, s)
-				d.abort(a, pnio.AbortCMITimeout, true)
+				d.goAbort(a, pnio.AbortCMITimeout, true)
 			}
 		})
 		a.mu.Unlock()
@@ -916,7 +932,13 @@ func (d *Device) callApplicationReady(ctx context.Context, a *ar, blk pnio.Contr
 	body := pnio.AppendNDRRequest(nil, rpcOrder, pnio.DefaultArgsMaximum, blk.Append(nil))
 	cctx, cancel := context.WithTimeout(ctx, d.cfg.ApplicationReadyTimeout)
 	defer cancel()
-	resp, err := d.rpcCli.Do(cctx, dst, rpc.Call{Object: a.ctrlObject, Iface: pnio.ControllerInterface, IfaceVersion: pnio.InterfaceVersion, OpNum: uint16(pnio.OpControl), Idempotent: true, Body: body})
+	a.mu.Lock()
+	if a.rpcAct == nil {
+		a.rpcAct = d.rpcCli.NewActivity()
+	}
+	act := a.rpcAct
+	a.mu.Unlock()
+	resp, err := d.rpcCli.DoActivity(cctx, act, dst, rpc.Call{Object: a.ctrlObject, Iface: pnio.ControllerInterface, IfaceVersion: pnio.InterfaceVersion, OpNum: uint16(pnio.OpControl), Idempotent: true, Body: body})
 	if err != nil {
 		return err
 	}

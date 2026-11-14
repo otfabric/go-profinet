@@ -319,6 +319,15 @@ func (s *Server) request(addr net.Addr, h *Header, body []byte) {
 			case actReceiving:
 			}
 		default:
+			if a.state == actExecuting {
+				// One call per activity at a time: a newer call while the
+				// previous one still runs is refused, so the goroutines
+				// waiting for a worker stay bounded by MaxActivities.
+				s.mu.Unlock()
+				s.busy.Add(1)
+				s.control(addr, h, TypeReject, s.status(h, StatusServerTooBusy))
+				return
+			}
 			// A new call on this activity replaces the previous one.
 			*a = serverActivity{seq: h.SeqNum, asm: newReassembly(s.opts.MaxMessage)}
 		}

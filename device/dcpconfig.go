@@ -44,12 +44,19 @@ func (s station) SetDHCP(p dcp.DHCPParameter, permanent bool) dcp.BlockError {
 	if d.cfg.SetDHCP == nil {
 		return dcp.BlockErrorOptionUnsupported
 	}
+	var prev []dcp.DHCPParameter
 	if permanent {
-		if err := d.persist(func(st *persisted) { st.DHCP = setDHCP(st.DHCP, p) }); err != nil {
+		if err := d.persist(func(st *persisted) { prev = cloneDHCP(st.DHCP); st.DHCP = setDHCP(st.DHCP, p) }); err != nil {
 			return dcp.BlockErrorResource
 		}
 	}
 	if code := d.cfg.SetDHCP(p, permanent); code != dcp.BlockErrorNone {
+		// A refused Set leaves the stored options as they were.
+		if permanent {
+			if err := d.persist(func(st *persisted) { st.DHCP = prev }); err != nil {
+				d.log.Warnf("device: restore stored DHCP options: %v", err)
+			}
+		}
 		return code
 	}
 	d.mu.Lock()

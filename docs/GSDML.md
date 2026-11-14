@@ -31,6 +31,10 @@ m, err := gsdml.ToModel(doc, "DAP 1") // "" for the first device access point
 - per submodule: the IO data lengths (`DataItemSize` of each DataItem) and
   the parameter records with their default values (Const and Ref).
 
+A module several references name is converted once. The records of one
+model hold at most `MaxModelRecordOctets` (16 MiB) of default values; a
+document asking for more fails with `ErrResourceExhausted`.
+
 A controller connects with `controller.DeviceConfig{Model: m}`; plug further
 modules of the catalog into `m.Slots` first (profinetctl's `--plug`).
 

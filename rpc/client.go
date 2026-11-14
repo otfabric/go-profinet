@@ -67,7 +67,10 @@ type activity struct {
 
 type clientCall struct {
 	act *activity
-	in  chan []byte
+	// host is the IP address the call was sent to: packets of other
+	// hosts are not the call's.
+	host string
+	in   chan []byte
 	// done is closed when the call returns: the read loop stops waiting
 	// to hand it a packet.
 	done chan struct{}
@@ -87,6 +90,7 @@ type Client struct {
 	calls map[UUID]*clientCall
 
 	malformed atomic.Uint64
+	foreign   atomic.Uint64
 
 	done chan struct{}
 	once sync.Once
@@ -140,6 +144,29 @@ func (c *Client) LocalAddr() net.Addr { return c.conn.LocalAddr() }
 // Malformed returns the number of packets that could not be decoded.
 func (c *Client) Malformed() uint64 { return c.malformed.Load() }
 
+// Foreign returns the number of packets for a call in progress that came
+// from another host than the one the call went to; they are dropped.
+func (c *Client) Foreign() uint64 { return c.foreign.Load() }
+
+// hostOf returns the IP address of a UDP address (the whole address when
+// it has no port).
+func hostOf(a net.Addr) string {
+	if a == nil {
+		return ""
+	}
+	if u, ok := a.(*net.UDPAddr); ok {
+		if ip4 := u.IP.To4(); ip4 != nil {
+			return ip4.String()
+		}
+		return u.IP.String()
+	}
+	s := a.String()
+	if h, _, err := net.SplitHostPort(s); err == nil {
+		return h
+	}
+	return s
+}
+
 // Close stops the client; calls in progress fail with profinet.ErrClosed.
 func (c *Client) Close() error {
 	var err error
@@ -160,7 +187,7 @@ func (c *Client) readLoop() {
 	defer c.wg.Done()
 	buf := make([]byte, 65536)
 	for {
-		n, _, err := c.conn.ReadFrom(buf)
+		n, from, err := c.conn.ReadFrom(buf)
 		if err != nil {
 			select {
 			case <-c.done:
@@ -187,6 +214,10 @@ func (c *Client) readLoop() {
 		call := c.calls[h.Activity]
 		c.mu.Unlock()
 		if call == nil {
+			continue
+		}
+		if call.host != hostOf(from) {
+			c.foreign.Add(1)
 			continue
 		}
 		// The read loop waits for the call to take the packet rather than
@@ -306,7 +337,7 @@ func (c *Client) do(ctx context.Context, act *activity, addr net.Addr, call Call
 		return nil, err
 	}
 
-	cc := &clientCall{act: act, in: make(chan []byte, 64), done: make(chan struct{})}
+	cc := &clientCall{act: act, host: hostOf(addr), in: make(chan []byte, 64), done: make(chan struct{})}
 	c.mu.Lock()
 	c.calls[act.id] = cc
 	c.mu.Unlock()

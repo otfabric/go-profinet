@@ -240,6 +240,9 @@ type Package struct {
 	Issues []Issue `json:"issues,omitempty"`
 
 	// ASCII-lowercased part name
+	// digests are the digests of parts computed for signature references,
+	// by lowercased part name and digest method: each part is hashed once
+	// per method.
 
 }
 ```

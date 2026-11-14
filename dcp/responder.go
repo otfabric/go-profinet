@@ -87,6 +87,13 @@ type Responder struct {
 	// only the run goroutine uses them.
 	identifyLim, setLim *limiter
 
+	// lockSrc is the requester of the last Get or Set and lockUntil the
+	// end of its lock (lockFor after it): requests of other sources are
+	// ignored until then. Only the run goroutine uses them.
+	lockSrc   ethernet.MAC
+	lockUntil time.Time
+	lockFor   time.Duration
+
 	// helloMu guards the running Hello sequence (see StartHello).
 	helloMu   sync.Mutex
 	helloStop context.CancelFunc
@@ -119,7 +126,7 @@ func NewResponder(mux *l2.Mux, station Station, opts ResponderOptions) (*Respond
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &Responder{mux: mux, sub: sub, station: station, opts: opts, log: log, ctx: ctx, cancel: cancel,
+	r := &Responder{mux: mux, sub: sub, station: station, opts: opts, log: log, ctx: ctx, cancel: cancel, lockFor: requesterLock,
 		identifyLim: newLimiter(pol.IdentifyLimit, pol.Sources), setLim: newLimiter(pol.SetLimit, pol.Sources)}
 	// The spread of Identify responses: a fixed fraction of the window,
 	// derived from the MAC address as IEC 61158-6-10 suggests.
@@ -188,18 +195,26 @@ func (r *Responder) run(ctx context.Context) {
 		if f.Type != TypeRequest {
 			continue
 		}
+		getSet := f.FrameID == FrameIDGetSet && ef.Dst == own && (f.Service == ServiceGet || f.Service == ServiceSet)
+		if getSet && r.locked(ef.Src) {
+			r.ignored.Add(1)
+			r.log.Debugf("dcp: ignore %s from %s: locked by %s", f.Service, ef.Src, r.lockSrc)
+			continue
+		}
 		switch {
 		case f.FrameID == FrameIDIdentifyRequest && f.Service == ServiceIdentify:
 			r.handleIdentify(ctx, ef.Src, &f)
 		case f.FrameID == FrameIDGetSet && ef.Dst == own && f.Service == ServiceGet:
 			r.get.Add(1)
 			r.handleGet(ctx, ef.Src, &f)
+			r.lock(ef.Src)
 		case f.FrameID == FrameIDGetSet && ef.Dst == own && f.Service == ServiceSet:
 			if !r.admit(r.setLim, ef.Src, ServiceSet) {
 				continue
 			}
 			r.set.Add(1)
 			r.handleSet(ctx, ef.Src, &f)
+			r.lock(ef.Src)
 		case f.FrameID == FrameIDGetSet && ef.Dst == own:
 			r.audit(AuditEvent{Source: ef.Src, Service: f.Service, Outcome: AuditUnsupported})
 			r.reply(ctx, ef.Src, &Frame{FrameID: FrameIDGetSet, Service: f.Service, Type: TypeResponseUnsupported, Xid: f.Xid})
@@ -207,6 +222,22 @@ func (r *Responder) run(ctx context.Context) {
 			r.ignored.Add(1)
 		}
 	}
+}
+
+// requesterLock is how long the responder ignores other requesters after
+// a Get or Set.
+const requesterLock = 3 * time.Second
+
+// locked reports whether a Get or Set from src falls in the lock of
+// another requester.
+func (r *Responder) locked(src ethernet.MAC) bool {
+	return src != r.lockSrc && time.Now().Before(r.lockUntil)
+}
+
+// lock starts or extends the lock of requester src.
+func (r *Responder) lock(src ethernet.MAC) {
+	r.lockSrc = src
+	r.lockUntil = time.Now().Add(r.lockFor)
 }
 
 // matches reports whether the identity matches every filter block.

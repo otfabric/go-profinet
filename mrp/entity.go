@@ -183,6 +183,10 @@ type Entity struct {
 	// linkTimer is the client's wait for a TopologyChange after a port
 	// came up; it unblocks the port when it runs out.
 	linkTimer *time.Timer
+	// flushTimer is the one pending delayed FDB flush of the
+	// TopologyChanges received (flushAt its deadline); Close stops it.
+	flushTimer *time.Timer
+	flushAt    time.Time
 	// linkGen numbers a client's link changes: a burst of link change
 	// frames stops when a newer change starts, so that a LinkDown is
 	// never repeated after the link came back.
@@ -281,6 +285,9 @@ func (e *Entity) Close() error {
 	e.mu.Lock()
 	if e.linkTimer != nil {
 		e.linkTimer.Stop()
+	}
+	if e.flushTimer != nil {
+		e.flushTimer.Stop()
 	}
 	e.mu.Unlock()
 	return nil
@@ -753,9 +760,41 @@ func (e *Entity) clientRecv(port int, ef ethernet.Frame, f Frame) {
 		if interval == 0 {
 			e.cfg.Switch.Flush()
 		} else {
-			time.AfterFunc(interval, e.cfg.Switch.Flush)
+			e.flushAfter(interval)
 		}
 		e.changed()
+	}
+}
+
+// flushAfter flushes the FDB once the interval has passed. TopologyChanges
+// share one timer that keeps the earliest deadline, so a stream of them
+// arms at most one.
+func (e *Entity) flushAfter(interval time.Duration) {
+	at := time.Now().Add(interval)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ctx.Err() != nil {
+		return
+	}
+	if e.flushTimer == nil {
+		e.flushTimer = time.AfterFunc(interval, e.flushPending)
+		e.flushAt = at
+		return
+	}
+	if e.flushAt.After(time.Now()) && !at.Before(e.flushAt) {
+		return
+	}
+	e.flushTimer.Reset(interval)
+	e.flushAt = at
+}
+
+func (e *Entity) flushPending() {
+	e.mu.Lock()
+	e.flushAt = time.Time{}
+	stopped := e.ctx.Err() != nil
+	e.mu.Unlock()
+	if !stopped {
+		e.cfg.Switch.Flush()
 	}
 }
 

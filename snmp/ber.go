@@ -116,11 +116,17 @@ func readTLV(b []byte) (tag byte, content, rest []byte, err error) {
 		if len(b) < 2+n {
 			return 0, nil, nil, malformed("truncated length")
 		}
-		l = 0
+		// The length is accumulated unsigned: four octets overflow int
+		// on 32-bit platforms.
+		var ul uint64
 		for _, c := range b[2 : 2+n] {
-			l = l<<8 | int(c)
+			ul = ul<<8 | uint64(c)
 		}
 		off = 2 + n
+		if ul > uint64(len(b)-off) {
+			return 0, nil, nil, malformed("length %d exceeds the %d remaining octets", ul, len(b)-off)
+		}
+		l = int(ul)
 	}
 	if l > len(b)-off {
 		return 0, nil, nil, malformed("length %d exceeds the %d remaining octets", l, len(b)-off)

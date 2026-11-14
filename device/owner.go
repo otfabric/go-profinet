@@ -119,10 +119,17 @@ func (d *Device) queuePlug(a *ar, k key) {
 	start := !a.plugBusy
 	a.plugBusy = true
 	a.mu.Unlock()
-	if start {
-		d.wg.Add(1)
-		go d.runPlugs(a)
+	if !start {
+		return
 	}
+	d.mu.Lock()
+	if d.closed {
+		d.mu.Unlock()
+		return
+	}
+	d.wg.Add(1)
+	d.mu.Unlock()
+	go d.runPlugs(a)
 }
 
 func (d *Device) runPlugs(a *ar) {

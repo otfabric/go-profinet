@@ -299,7 +299,9 @@ func (p *Port) ReadFrame(ctx context.Context, b []byte) (int, error) {
 	}
 	buf := p.rbuf[:len(b)+4]
 	for {
-		n, oobn, pkttype, err := p.recv(buf)
+		// The kernel fills at most len(b) octets, so the four after them
+		// stay free for a tag it stripped (insertTag).
+		n, oobn, pkttype, err := p.recv(buf[:len(b)])
 		if err != nil {
 			select {
 			case <-p.closed:
@@ -438,8 +440,11 @@ func cmsgAlign(n int) int {
 }
 
 // insertTag puts the tag back after the source address; buf has room for
-// the four octets.
+// the four octets (n <= len(buf)-4).
 func insertTag(buf []byte, n int, tpid, tci uint16) []byte {
+	if n > len(buf)-4 {
+		n = len(buf) - 4
+	}
 	copy(buf[16:n+4], buf[12:n])
 	binary.BigEndian.PutUint16(buf[12:], tpid)
 	binary.BigEndian.PutUint16(buf[14:], tci)

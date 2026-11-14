@@ -1032,6 +1032,10 @@ type Responder struct {
 	// identifyLim and setLim are the policy's rate limits (nil: none);
 	// only the run goroutine uses them.
 
+	// lockSrc is the requester of the last Get or Set and lockUntil the
+	// end of its lock (lockFor after it): requests of other sources are
+	// ignored until then. Only the run goroutine uses them.
+
 	// helloMu guards the running Hello sequence (see StartHello).
 
 }
