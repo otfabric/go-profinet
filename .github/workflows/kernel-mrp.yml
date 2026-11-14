@@ -1,3 +1,5 @@
+# Called by pr.yml on every pull request that is not documentation only;
+# dispatch it to run it on a branch without a pull request.
 name: Kernel MRP
 run-name: "Kernel MRP (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
 
@@ -9,14 +11,14 @@ run-name: "Kernel MRP (${{ github.event_name }}) on ${{ github.ref_name }} by @$
 # only: GitHub's arm64 runners have no /dev/kvm.
 
 on:
-  push:
-    branches: ["main"]
-    paths-ignore: ["**/*.md"]
-  pull_request:
-    branches: ["**"]
-    paths-ignore: ["**/*.md"]
   schedule:
     - cron: "37 3 * * 1"
+  workflow_call:
+    inputs:
+      interop_ref:
+        description: "profinet-interop ref to build the images from"
+        type: string
+        default: ""
   workflow_dispatch:
     inputs:
       interop_ref:
