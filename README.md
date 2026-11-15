@@ -99,7 +99,7 @@ is from PI's public pages.
 | IO-Controller | ✅ | — | — | ✅ minimal (cyclic marked experimental) | not documented publicly |
 | IO-Device | ✅ | ✅ | ✅ | — | ✅ |
 | DCP requester | ✅ Identify (all filters), Get, Set, Signal, Reset | — | — | ✅ | — |
-| DCP responder | ✅ incl. filters, response delay, requester lock, Hello | ✅ incl. Hello | ◐ Identify by name or all; no Get, Set name, Signal or Reset | — | ✅ |
+| DCP responder | ✅ incl. filters, response delay, Set transactions, Hello | ✅ incl. Hello | ◐ Identify by name or all; no Get, Set name, Signal or Reset | — | ✅ |
 | LLDP | ✅ agent and neighbor table | ✅ | — | — (reads PDRealData only) | ✅ |
 | RT_CLASS_1 / RT_CLASS_2 (unsynchronized) | ✅ / ✅ | ✅ / ✅ | ◐ RT_CLASS_2 FrameIDs only | ✅ / — | ✅ |
 | IRT (RT_CLASS_3) | — | — | — | — | ✅ with a hardware driver |

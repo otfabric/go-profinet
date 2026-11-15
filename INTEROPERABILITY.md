@@ -25,7 +25,7 @@ against (see [the matrix](#interop-matrix)).
 | Hello: the device announces itself; the controller connects without Identify | ✅ (connects through the Hello) | ✅ (sends; not the rest of Fast Startup) | p-net (its Hellos, our controller: `TestPnetHello`); tshark and scapy decode our Hellos (`TestOtfHelloDecoders`) |
 | Control/Start and Control/Stop around a Set | ✅ | ✅ | |
 | DHCP options (option 3: client ID 61, control 255, others raw), IP BlockInfo "set by DHCP" | ✅ (Get, `SetDHCP`, parsed in `Identity`) | ✅ (reports `Config.DHCP`; Set only through `Config.SetDHCP`, else "option not supported"; no DHCP client) | tshark decodes them (`TestDCPDHCPDecoders`; it shows options other than 61 and 255 as undecoded data); scapy 2.6.1 has no DCP DHCP block class and leaves them Raw |
-| Requester lock of another requester (3 s) | — | ✅ | p-net (as the locking side) |
+| Set of another requester during an open Start … End Transaction: answered with BlockError "resource error" (the transaction ends with End Transaction or 3 s after the holder's last Set); Get and Set of other requesters are otherwise answered at once | — | ✅ | own unit tests; pnio-dcp, whose Get and Set come from different source addresses in profinet-interop (`dcp.set-name pnio-dcp -> otfabric`) |
 | Read-only DCP, per-source rate limits, audit events (`DCPPolicy`, opt-in) | — | ✅ | own e2e and flood tests only (local policy, no peer behaviour to compare) |
 
 ### LLDP (IEEE 802.1AB with the PROFINET TLVs)

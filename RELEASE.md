@@ -26,6 +26,32 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.10.0
+
+**Date:** 2026-11-15
+**Previous release:** v0.9.1
+
+The DCP responder answers every requester again. No change to the API.
+
+### Changed
+
+- dcp: the responder no longer ignores the Get and Set requests of other
+  requesters for 3 s after a Get or Set (v0.9.0). A tool that sends its
+  Get and Set from different source addresses, or a Set right after
+  another tool's Get, timed out; pnio-dcp, which uses a new source address
+  per request in profinet-interop, failed `dcp.set-name`. Get is now
+  always answered. Sets are serialized only within an explicit Set
+  transaction: after a Set with Control/Start Transaction, the Sets of
+  other requesters are answered with BlockError 4 (resource error) for
+  every block and change nothing, until the holder's End Transaction or
+  3 s after its last Set. `Stats().Ignored` no longer counts such
+  requests; refused blocks count in `Refused` and are reported as
+  `AuditRefused` with `BlockErrorResource`. The per-source rate limits
+  (`Policy.SetLimit`, `Policy.IdentifyLimit`) apply as before, also to
+  refused Sets.
+
+---
+
 ## v0.9.1
 
 **Date:** 2026-11-15

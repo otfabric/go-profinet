@@ -84,8 +84,11 @@ do not grant it on shared hosts. The virtual network (`vnet`) needs none.
     number of variable bindings.
 - Concurrency is race-tested (`go test -race`) and chaos-tested with seeded
   loss, duplication, corruption, reordering and delay.
-- The DCP responder ignores other requesters for 3 s after a Get or Set, as
-  devices do, and validates station names.
+- The DCP responder answers every requester. While one requester holds an
+  open Set transaction (Control/Start Transaction without End Transaction,
+  at most 3 s after its last Set), the Sets of other requesters are
+  answered with BlockError "resource error" and change nothing. It
+  validates station names.
 - Opt-in DCP restrictions (`dcp.Policy`, `device.Config.DCPPolicy`): a
   read-only mode that refuses every Set that changes the device, rate
   limits per source MAC address for Identify responses and Set requests in
