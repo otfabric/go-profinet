@@ -42,7 +42,9 @@ XSDs (0 differences against v2.35). `gsdml.Validate` is not PI's GSDML
 checker, and a file it accepts may still fail PI's. Elements and attributes
 outside the catalog are kept verbatim and reported as unvalidated by
 `gsdml.Check`; its semantic rules are a small set, each with its basis
-(docs/GSDML.md), several of them local heuristics. Schema versions after 2.45
+(docs/GSDML.md), several of them local heuristics. A document may have at
+most 1 048 576 elements and a module at most 1440 submodules; `Check` lists
+at most 16 384 issues per severity (SECURITY.md lists every fixed bound). Schema versions after 2.45
 (2.46, 2.50) are not in the catalog: their schemas are members-only.
 
 ## GSDX containers
@@ -76,8 +78,8 @@ again, so the compressed octets may differ.
 | Backend | State |
 |---------|-------|
 | Linux AF_PACKET | tested on a veth pair in Docker (`make l2-test`) and by the interop suite; a CI job runs the same tests on a veth pair |
-| macOS / BSD BPF | a CI job tests it on a feth pair as root; locally, opening and reading an interface was verified (profinetctl on macOS) |
-| Windows Npcap | cross-compiled; its unit tests run without Npcap; not tested against Npcap (the hosted runners have none) |
+| macOS / BSD BPF | macOS: a CI job tests it on a feth pair as root; locally, opening and reading an interface was verified (profinetctl on macOS). FreeBSD, NetBSD and DragonFly: cross-compiled and vetted only; the walk of a read buffer is unit-tested with the record layout of the 64-bit BSDs, no BSD kernel has run it |
+| Windows Npcap | cross-compiled only: the package has no tests and was not run against Npcap (the hosted runners have none) |
 
 32-bit: the tests run on linux/386 in CI (`make test-32bit`); linux/386
 and linux/arm are cross-built. The e2e suite there runs without the race

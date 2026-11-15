@@ -106,9 +106,12 @@ type Signature struct {
 	PartReferences []Reference `json:"partReferences,omitempty"`
 	// SignatureTime and SignatureTimeFormat are the OPC SignatureTime
 	// signature property, as written; empty when absent.
-	SignatureTime       string        `json:"signatureTime,omitempty"`
-	SignatureTimeFormat string        `json:"signatureTimeFormat,omitempty"`
-	Certificates        []Certificate `json:"certificates,omitempty"`
+	SignatureTime       string `json:"signatureTime,omitempty"`
+	SignatureTimeFormat string `json:"signatureTimeFormat,omitempty"`
+	// Certificates are the certificates of KeyInfo and of the
+	// certificate parts the relationships of the signature part name,
+	// each part once.
+	Certificates []Certificate `json:"certificates,omitempty"`
 	// Verified is always false; Reason says why.
 	Verified bool   `json:"verified"`
 	Reason   string `json:"reason"`
@@ -215,6 +218,10 @@ func (p *Package) readSignatures() {
 func (p *Package) readSignature(part *Part) *Signature {
 	s := &Signature{Part: part.Name, Reason: NotVerifiedReason}
 	data, _ := p.data(part.Name)
+	if !p.spend(data) {
+		p.issue(part.Name, "signature: not read: more elements than the %d left for the package model", p.elements)
+		return s
+	}
 	var x xmlSignature
 	if err := xml.Unmarshal(data, &x); err != nil {
 		p.issue(part.Name, "signature: %v", err)
@@ -257,14 +264,31 @@ func (p *Package) readSignature(part *Part) *Signature {
 		}
 	}
 	// A certificate may be stored in its own part instead (Ecma-376
-	// Part 2, "Digital signature certificate part"), in DER.
+	// Part 2, "Digital signature certificate part"), in DER. A part
+	// several relationships of the signature name is listed once, and a
+	// part several signatures name is parsed once.
+	listed := map[string]bool{}
 	for _, r := range part.Relationships {
 		if r.Type != RelTypeCertificate || r.ResolvedTarget == "" {
 			continue
 		}
+		k := asciiLower(r.ResolvedTarget)
+		if listed[k] {
+			continue
+		}
+		listed[k] = true
 		if der, ok := p.data(r.ResolvedTarget); ok {
-			cpart, _ := p.Part(r.ResolvedTarget)
-			s.Certificates = append(s.Certificates, certificate(cpart.Name, der))
+			c, read := p.certs[k]
+			if !read {
+				cpart, _ := p.Part(r.ResolvedTarget)
+				c = certificate(cpart.Name, der)
+				p.certParses++
+				if p.certs == nil {
+					p.certs = map[string]Certificate{}
+				}
+				p.certs[k] = c
+			}
+			s.Certificates = append(s.Certificates, c)
 		}
 	}
 	return s

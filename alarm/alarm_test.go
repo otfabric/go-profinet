@@ -653,11 +653,16 @@ func BenchmarkDecode(b *testing.B) {
 	buf := p.AppendPayload(nil)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if _, err := Decode(buf); err != nil {
+		var err error
+		if benchPDU, err = Decode(buf); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
+
+// benchPDU keeps the result of BenchmarkDecode, so that the decoding it
+// measures is not optimised away.
+var benchPDU PDU
 
 // TestSlowApplication: while OnData blocks, DATA PDUs beyond the delivery
 // queue are left unacknowledged (Busy) and retransmitted by the sender, so

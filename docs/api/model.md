@@ -89,7 +89,7 @@ Device is the description of an IO-Device.
 func (d *Device) Each(fn func(p PluggedSubmodule))
 ```
 
-Each calls fn for every plugged submodule in slot and subslot order, the DAP first.
+Each calls fn for every plugged submodule in slot and subslot order, the DAP first. Submodule points into the model.
 
 #### func (Device) Expected
 
@@ -137,7 +137,7 @@ Submodule returns a plugged submodule.
 func (d *Device) Validate() error
 ```
 
-Validate checks the description: unique slots and subslots, a DAP with its identity submodule, IO lengths the C\_SDU can carry, records in the user range.
+Validate checks the description: unique slots and subslots, a DAP with its identity submodule, IO lengths the C\_SDU can carry, records in the user range. Two bounds come before the work on the submodules: at most 1440 plugged submodules, which is what a C\_SDU carries, and at most 16 MiB of parameter records in the plugged submodules together.
 
 #### func (Device) WithSlots
 

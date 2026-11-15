@@ -37,9 +37,11 @@ func malformed(format string, a ...any) error {
 }
 
 // appendLength appends a definite length in its minimal form. The octets
-// are masked: n is the size of content this package built, and Encode
-// rejects any message beyond MaxMessageSize, so a length above four octets
-// never reaches the wire.
+// are masked: n is the size of content this package built. The encoder
+// sets no bound of its own on a message: the agent keeps its responses
+// within its MaxMessageSize, and Decode refuses a message beyond
+// MaxMessageSize whoever encoded it. The four length octets hold every
+// size below 4 GiB.
 func appendLength(b []byte, n int) []byte {
 	switch {
 	case n < 0x80:

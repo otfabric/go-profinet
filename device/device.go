@@ -245,7 +245,23 @@ type Device struct {
 	// goroutine started after Close began (d.closed) would race with
 	// Wait, so goAbort checks closed under mu.
 	wg sync.WaitGroup
+
+	// connectHook, when a test set it before the first Connect, runs on
+	// the goroutine of a Connect at the stages below.
+	connectHook func(a *ar, stage connectStage)
 }
+
+// connectStage names a point of a Connect for Device.connectHook.
+type connectStage int
+
+const (
+	// connectBuilt: the alarm endpoints and the cyclic machinery of the
+	// AR exist; an abort is still kept for the Connect.
+	connectBuilt connectStage = iota
+	// connectAbortable: an abort acts on the AR itself; the AR is not in
+	// the device's table yet.
+	connectAbortable
+)
 
 type recKey struct {
 	slot, subslot uint16
@@ -465,7 +481,11 @@ func (d *Device) startHello() {
 	}
 }
 
-// Close aborts every AR and stops the device.
+// Close aborts every AR and stops the device. It is safe to call more
+// than once and from multiple goroutines; a call made while another is in
+// progress returns at once, before that one has finished. It must not be
+// called from a Handler method: it waits for the goroutines that call
+// the handler.
 func (d *Device) Close() error {
 	d.mu.Lock()
 	if d.closed {

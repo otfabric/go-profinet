@@ -270,7 +270,9 @@ func (a *Agent) Serve(ctx context.Context) error {
 }
 
 // Close stops Serve and waits for it to return; with an owned
-// connection it closes the connection. It is safe to call twice.
+// connection it closes the connection. It is safe to call more than once
+// and from multiple goroutines; a call made while another is in progress
+// returns at once, before that one has finished.
 func (a *Agent) Close() error {
 	a.mu.Lock()
 	if a.closed {

@@ -326,7 +326,8 @@ func (d *Dispatcher) Remove(c *Consumer) {
 // Unknown returns the number of frames with a FrameID no consumer takes.
 func (d *Dispatcher) Unknown() uint64 { return d.unknown.Load() }
 
-// Close stops the dispatcher.
+// Close stops the dispatcher. It is safe to call more than once and from
+// multiple goroutines.
 func (d *Dispatcher) Close() {
 	d.once.Do(func() {
 		d.cancel()

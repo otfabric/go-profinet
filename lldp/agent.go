@@ -113,8 +113,13 @@ type AgentOptions struct {
 	MaxNeighbors int
 	// OnChange is called after the neighbor table changed: a frame
 	// arrived (new or refreshed information), a neighbor expired or left
-	// (TTL 0), or Clear was called. It runs on the agent's goroutines,
-	// never with the agent's lock held, and must not block.
+	// (TTL 0), or Clear was called. It runs on the agent's receiving
+	// goroutine and, when Neighbors, Latest or Clear found the change,
+	// on the goroutine that called them; calls may overlap. It is never
+	// called with the agent's lock held and must not block. It may call
+	// the agent's other methods; it must not call Close, which waits
+	// for the goroutine the callback runs on. A run-time failure in it is
+	// not recovered.
 	OnChange func()
 	Logger   profinet.Logger
 }
@@ -246,7 +251,9 @@ func (a *Agent) Latest() (Neighbor, bool) {
 	return best, found
 }
 
-// Close stops the agent.
+// Close stops the agent's periodic transmission and its reception. It is
+// safe to call more than once and from multiple goroutines. It must not
+// be called from OnChange: it waits for the agent's goroutines.
 func (a *Agent) Close() {
 	a.once.Do(func() {
 		a.cancel()

@@ -97,10 +97,22 @@ type DeviceConfig struct {
 	// together do not reconnect together; zero waits exactly.
 	ReconnectMin, ReconnectMax time.Duration
 	ReconnectJitter            float64
-	// OnAlarm receives every alarm, on the alarm goroutine of the AR; it
-	// must not block.
+	// OnAlarm receives every alarm, on the alarm goroutine of the AR
+	// and its priority, before the alarm is acknowledged; it must not
+	// block. It may call the methods of the Device and the Controller
+	// that do not wait for the AR (State, Stats, AR, Input, SetOutput);
+	// it must not call Device.Close or Controller.Close, which wait for
+	// the goroutine the callback runs on. A run-time failure in it is
+	// not recovered.
 	OnAlarm func(AlarmEvent)
-	// OnState receives every state change, before WaitState returns for it.
+	// OnState receives every state change, before WaitState returns for
+	// it. It runs on the lifecycle goroutine of the device, one call at
+	// a time and in the order of the changes; the lifecycle goes on
+	// when it returns, so it must not block. It may call the methods of
+	// the Device and the Controller that do not wait for a state
+	// (State, Stats, AR, Input, SetOutput); it must not call
+	// Device.Close or Controller.Close, which wait for the lifecycle
+	// goroutine. A run-time failure in it is not recovered.
 	OnState func(from, to State, err error)
 }
 
@@ -643,7 +655,10 @@ func (d *Device) lost(a *arState, err error) error {
 }
 
 // Close releases the AR (when established) and stops the lifecycle. The
-// device is removed from the controller.
+// device is removed from the controller. It is safe to call more than
+// once and from multiple goroutines; every call returns when the
+// lifecycle has stopped. It must not be called from OnState or OnAlarm,
+// which run on goroutines Close waits for.
 func (d *Device) Close() error {
 	d.once.Do(func() { close(d.stop) })
 	<-d.stopped
@@ -979,14 +994,27 @@ func (d *Device) connect(ctx context.Context, id dcp.Identity) (*arState, error)
 	a.remoteRef = resp.AlarmCR.LocalAlarmReference
 	a.proper = d.properSubmodules(resp.ModuleDiff)
 	d.mu.Lock()
-	d.ar = a
 	d.diff = resp.ModuleDiff
 	d.mu.Unlock()
+	if h := d.c.afterConnect; h != nil {
+		h()
+	}
 	if err := d.startAlarms(a, localRef, resp.AlarmCR.LocalAlarmReference, id.MAC); err != nil {
 		d.teardown(a)
 		return nil, err
 	}
 	d.startCyclic(a, id.MAC)
+	// The AR becomes the device's current one only now that its alarm
+	// endpoints, provider, consumer and tasks exist: Stats, AR and
+	// SetPrimary find either no AR or a complete one. A SetPrimary that
+	// found none meanwhile is applied here.
+	d.mu.Lock()
+	d.ar = a
+	primary := d.srPrimary
+	d.mu.Unlock()
+	if cfg.SystemRedundancy != nil {
+		a.provider.SetDataStatus(srDataStatus(primary))
+	}
 	return a, nil
 }
 

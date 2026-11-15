@@ -189,7 +189,8 @@ func (s *Server) Stats() ServerStats {
 }
 
 // Close stops the server and waits for running handlers, whose context is
-// cancelled.
+// cancelled. It is safe to call more than once and from multiple
+// goroutines, but not from a handler.
 func (s *Server) Close() error {
 	var err error
 	s.once.Do(func() {

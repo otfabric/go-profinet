@@ -12,7 +12,9 @@
 package model
 
 import (
+	"cmp"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/otfabric/go-profinet"
@@ -35,6 +37,23 @@ const (
 // (pf_fspm_validate_configuration) and Hilscher's firmware tag
 // (usMinDeviceInterval) apply.
 const maxMinDeviceInterval = 4096
+
+// maxCSDU is the largest C_SDU of an RT frame: each direction of an
+// application relationship carries at most this many octets.
+const maxCSDU = 1440
+
+// maxPlugged is the largest number of plugged submodules Validate
+// accepts: each takes at least one octet of the input C_SDU and one of
+// the output C_SDU (its data and provider status, or its consumer
+// status), so more cannot be carried.
+const maxPlugged = maxCSDU
+
+// maxRecordOctets bounds the octets of the parameter records of all
+// plugged submodules together, a module in several slots counting once
+// per slot: what a device keeps and a controller writes for the model.
+// It is the bound package gsdml applies to the models it converts
+// (gsdml.MaxModelRecordOctets).
+const maxRecordOctets = 16 << 20
 
 // Record is a parameter record of a submodule.
 type Record struct {
@@ -203,14 +222,30 @@ type PluggedSubmodule struct {
 }
 
 // Each calls fn for every plugged submodule in slot and subslot order,
-// the DAP first.
+// the DAP first. Submodule points into the model.
 func (d *Device) Each(fn func(p PluggedSubmodule)) {
+	var idx []int
 	for _, m := range d.modules() {
-		subs := append([]Submodule(nil), m.mod.Submodules...)
-		sort.Slice(subs, func(i, j int) bool { return subs[i].Subslot < subs[j].Subslot })
+		subs := m.mod.Submodules
+		// The order is a sorted list of positions: the submodules are
+		// neither copied nor searched.
+		if cap(idx) < len(subs) {
+			idx = make([]int, 0, len(subs))
+		}
+		idx = idx[:0]
 		for i := range subs {
-			s, _ := m.mod.Submodule(subs[i].Subslot)
-			fn(PluggedSubmodule{Slot: m.slot, ModuleIdent: m.mod.IdentNumber, Submodule: s})
+			idx = append(idx, i)
+		}
+		slices.SortStableFunc(idx, func(a, b int) int { return cmp.Compare(subs[a].Subslot, subs[b].Subslot) })
+		for k, i := range idx {
+			// Of submodules that share a subslot (Validate refuses
+			// them), the first one stands for all, as Module.Submodule
+			// finds it.
+			if k > 0 && subs[idx[k-1]].Subslot == subs[i].Subslot {
+				i = idx[k-1]
+				idx[k] = i
+			}
+			fn(PluggedSubmodule{Slot: m.slot, ModuleIdent: m.mod.IdentNumber, Submodule: &subs[i]})
 		}
 	}
 }
@@ -255,7 +290,9 @@ func (d *Device) ModuleTypes() []Module {
 
 // Validate checks the description: unique slots and subslots, a DAP with
 // its identity submodule, IO lengths the C_SDU can carry, records in the
-// user range.
+// user range. Two bounds come before the work on the submodules: at most
+// 1440 plugged submodules, which is what a C_SDU carries, and at most
+// 16 MiB of parameter records in the plugged submodules together.
 func (d *Device) Validate() error {
 	bad := func(format string, a ...any) error {
 		return fmt.Errorf("model: %w: "+format, append([]any{profinet.ErrInvalidConfig}, a...)...)
@@ -282,8 +319,29 @@ func (d *Device) Validate() error {
 		}
 		slots[s.Number] = true
 	}
+	// The size of the configuration, before anything is done per
+	// submodule: the slots share their modules, so a small model can
+	// plug a large number of submodules and records.
+	plugged := len(d.DAP.Submodules)
+	for i := 0; i < len(d.Slots) && plugged <= maxPlugged; i++ {
+		plugged += len(d.Slots[i].Module.Submodules)
+	}
+	if plugged > maxPlugged {
+		return bad("more than %d plugged submodules: a C_SDU cannot carry them", maxPlugged)
+	}
+	mods := d.modules()
+	octets := 0
+	for _, m := range mods {
+		for i := range m.mod.Submodules {
+			for _, r := range m.mod.Submodules[i].Records {
+				if octets += int(r.Length); octets > maxRecordOctets {
+					return bad("parameter records of more than %d octets in the plugged submodules", maxRecordOctets)
+				}
+			}
+		}
+	}
 	var err error
-	for _, m := range d.modules() {
+	for _, m := range mods {
 		subslots := map[uint16]bool{}
 		for _, s := range m.mod.Submodules {
 			if s.Subslot == 0 {
@@ -332,10 +390,10 @@ func (d *Device) Validate() error {
 			out++
 		}
 	})
-	if in > 1440 {
+	if in > maxCSDU {
 		return bad("input CR of %d octets exceeds the C_SDU maximum 1440", in)
 	}
-	if out > 1440 {
+	if out > maxCSDU {
 		return bad("output CR of %d octets exceeds the C_SDU maximum 1440", out)
 	}
 	if d.Capabilities.MaxARs < 0 {

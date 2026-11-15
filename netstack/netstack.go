@@ -10,6 +10,14 @@
 // An address can be changed at run time with [Stack.SetAddr], which is how
 // a virtual IO-Device applies a DCP Set of its IP suite.
 //
+// The ARP table holds at most 1024 addresses. While it has room, the
+// sender of every ARP packet and of every IPv4 packet from the stack's
+// subnet is learned. When it is full, an address that is not in it is
+// learned only from an ARP packet for the stack's own address, from the
+// answer to a resolution in progress and from an IPv4 packet addressed to
+// the stack; it then takes the place of the entry that was learned,
+// confirmed or used longest ago.
+//
 // The stack is meant for virtual networks and tests. On a real interface
 // use the operating system's stack (net.ListenPacket).
 package netstack
@@ -39,6 +47,11 @@ const (
 	protoUDP     = 17
 	ephemeralLo  = 49152
 )
+
+// maxARPEntries bounds the ARP table of a stack: the stations it
+// exchanges datagrams with, which for an IO controller is one per device.
+// It is several times what one PROFINET subnet holds.
+const maxARPEntries = 1024
 
 // Config configures a [Stack].
 type Config struct {
@@ -71,11 +84,18 @@ type Stack struct {
 	cfg Config
 	mac ethernet.MAC
 
-	mu      sync.RWMutex
-	addr    netip.Addr
-	mask    netip.Addr
-	gw      netip.Addr
-	arp     map[netip.Addr]ethernet.MAC
+	mu   sync.RWMutex
+	addr netip.Addr
+	mask netip.Addr
+	gw   netip.Addr
+	arp  map[netip.Addr]ethernet.MAC
+	// arpSeen orders the entries of arp by when each was last learned,
+	// confirmed or used: a larger value is later. arpClock is the last
+	// value given.
+	arpSeen  map[netip.Addr]uint64
+	arpClock uint64
+	// waiters are the resolutions in progress, one channel per call of
+	// resolve; each call removes its own when it returns.
 	waiters map[netip.Addr][]chan struct{}
 	socks   map[uint16]*PacketConn
 	nextEph uint16
@@ -88,8 +108,11 @@ type Stack struct {
 
 	sub    *l2.Subscription
 	cancel context.CancelFunc
-	done   chan struct{}
-	once   sync.Once
+	// done is closed when the stack stopped receiving, swept when its
+	// sockets are closed as well.
+	done  chan struct{}
+	swept chan struct{}
+	once  sync.Once
 }
 
 // New starts a stack on mux. The stack subscribes to IPv4 and ARP frames.
@@ -118,12 +141,14 @@ func New(mux *l2.Mux, cfg Config) (*Stack, error) {
 		mask:    cfg.Mask,
 		gw:      cfg.Gateway,
 		arp:     make(map[netip.Addr]ethernet.MAC),
+		arpSeen: make(map[netip.Addr]uint64),
 		waiters: make(map[netip.Addr][]chan struct{}),
 		socks:   make(map[uint16]*PacketConn),
 		nextEph: ephemeralLo,
 		sub:     sub,
 		cancel:  cancel,
 		done:    make(chan struct{}),
+		swept:   make(chan struct{}),
 	}
 	go s.run(ctx)
 	return s, nil
@@ -151,8 +176,39 @@ func (s *Stack) SetAddr(addr, mask, gw netip.Addr) error {
 	s.mu.Lock()
 	s.addr, s.mask, s.gw = addr, mask, gw
 	s.arp = make(map[netip.Addr]ethernet.MAC)
+	s.arpSeen = make(map[netip.Addr]uint64)
 	s.mu.Unlock()
 	return nil
+}
+
+// learnLocked records mac as the hardware address of addr; s.mu is held.
+// An address that is in the table is confirmed. A new one is entered
+// while the table has room; when it is full, only a wanted one is (an
+// address this stack was asked by, is asking for, or got a datagram
+// from), in place of the entry learned, confirmed or used longest ago.
+func (s *Stack) learnLocked(addr netip.Addr, mac ethernet.MAC, wanted bool) {
+	if _, known := s.arp[addr]; !known && len(s.arp) >= maxARPEntries {
+		if !wanted {
+			return
+		}
+		var oldest netip.Addr
+		least := uint64(math.MaxUint64)
+		for a, seen := range s.arpSeen {
+			if seen < least {
+				oldest, least = a, seen
+			}
+		}
+		delete(s.arp, oldest)
+		delete(s.arpSeen, oldest)
+	}
+	s.arp[addr] = mac
+	s.touchLocked(addr)
+}
+
+// touchLocked marks the entry of addr as the one used last; s.mu is held.
+func (s *Stack) touchLocked(addr netip.Addr) {
+	s.arpClock++
+	s.arpSeen[addr] = s.arpClock
 }
 
 // Addr returns the current address, mask and gateway.
@@ -176,25 +232,39 @@ func (s *Stack) Stats() Stats {
 	}
 }
 
-// Close closes every socket and stops the stack.
+// Close closes every socket and stops the stack. It is safe to call more
+// than once and from multiple goroutines; every call returns when the
+// stack has stopped and its sockets are closed.
 func (s *Stack) Close() error {
 	s.once.Do(func() {
 		s.cancel()
 		s.sub.Close()
-		<-s.done
-		s.mu.Lock()
-		socks := s.socks
-		s.socks = map[uint16]*PacketConn{}
-		s.mu.Unlock()
-		for _, c := range socks {
-			c.closeLocal()
-		}
+		<-s.swept
 	})
 	return nil
 }
 
+// closeSockets closes the sockets of a stopped stack: a blocked ReadFrom
+// returns net.ErrClosed.
+func (s *Stack) closeSockets() {
+	s.mu.Lock()
+	socks := s.socks
+	s.socks = map[uint16]*PacketConn{}
+	s.mu.Unlock()
+	for _, c := range socks {
+		c.closeLocal()
+	}
+}
+
+// run receives until the stack is closed or its Mux stops. Either way the
+// sockets are closed afterwards: done first, so that ListenUDP opens no
+// socket that would be missed.
 func (s *Stack) run(ctx context.Context) {
-	defer close(s.done)
+	defer func() {
+		close(s.done)
+		s.closeSockets()
+		close(s.swept)
+	}()
 	for {
 		f, err := s.sub.Recv(ctx)
 		if err != nil {
@@ -292,8 +362,9 @@ func (s *Stack) handleARP(ctx context.Context, f *ethernet.Frame) {
 	s.mu.Lock()
 	own := s.addr
 	if spa.IsValid() && !spa.IsUnspecified() {
-		s.arp[spa] = sha
-		for _, w := range s.waiters[spa] {
+		ws := s.waiters[spa]
+		s.learnLocked(spa, sha, len(ws) > 0 || (own.IsValid() && tpa == own))
+		for _, w := range ws {
 			close(w)
 		}
 		delete(s.waiters, spa)
@@ -358,7 +429,7 @@ func (s *Stack) handleIP(f *ethernet.Frame) {
 	s.mu.Lock()
 	own, mask := s.addr, s.mask
 	if src.IsValid() && !src.IsUnspecified() && own.IsValid() && sameSubnet(src, own, mask) {
-		s.arp[src] = f.Src
+		s.learnLocked(src, f.Src, dst == own)
 	}
 	s.mu.Unlock()
 
@@ -451,12 +522,16 @@ func (s *Stack) resolve(ctx context.Context, dst netip.Addr) (ethernet.MAC, erro
 		next = gw
 	}
 	if mac, ok := s.arp[next]; ok {
+		s.touchLocked(next)
 		s.mu.Unlock()
 		return mac, nil
 	}
 	w := make(chan struct{})
 	s.waiters[next] = append(s.waiters[next], w)
 	s.mu.Unlock()
+	// However the resolution ends, its waiter leaves the table (an ARP
+	// packet from next removed it already).
+	defer s.forget(next, w)
 
 	deadline := time.Now().Add(s.cfg.ARPTimeout)
 	for attempt := range 3 {
@@ -484,6 +559,24 @@ func (s *Stack) resolve(ctx context.Context, dst netip.Addr) (ethernet.MAC, erro
 		}
 	}
 	return ethernet.MAC{}, fmt.Errorf("netstack: %w: ARP for %s", profinet.ErrTimeout, next)
+}
+
+// forget removes the waiter w of a resolution of next.
+func (s *Stack) forget(next netip.Addr, w chan struct{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ws := s.waiters[next]
+	for i, x := range ws {
+		if x == w {
+			ws = append(ws[:i:i], ws[i+1:]...)
+			break
+		}
+	}
+	if len(ws) == 0 {
+		delete(s.waiters, next)
+	} else {
+		s.waiters[next] = ws
+	}
 }
 
 func (s *Stack) sendUDP(ctx context.Context, sport uint16, dst netip.AddrPort, data []byte) error {
@@ -590,7 +683,9 @@ type PacketConn struct {
 }
 
 // ReadFrom implements net.PacketConn. A read deadline set while ReadFrom
-// is blocked takes effect immediately.
+// is blocked takes effect immediately. It returns net.ErrClosed once the
+// socket is closed: by its Close, by Stack.Close, or because the stack
+// stopped with its Mux.
 func (c *PacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	for {
 		c.dmu.Lock()
@@ -627,12 +722,18 @@ func (c *PacketConn) ReadFrom(p []byte) (int, net.Addr, error) {
 	}
 }
 
+// errSocketClosed is what WriteTo returns on a closed socket. A socket is
+// closed by its Close, by Stack.Close and when the stack stops because
+// its Mux did, so the error matches net.ErrClosed and profinet.ErrClosed.
+var errSocketClosed = fmt.Errorf("netstack: %w: %w", profinet.ErrClosed, net.ErrClosed)
+
 // WriteTo implements net.PacketConn. addr must be a *net.UDPAddr with an
-// IPv4 address.
+// IPv4 address. On a closed socket it returns an error matching
+// net.ErrClosed and profinet.ErrClosed.
 func (c *PacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 	select {
 	case <-c.done:
-		return 0, net.ErrClosed
+		return 0, errSocketClosed
 	default:
 	}
 	ua, ok := addr.(*net.UDPAddr)
@@ -663,7 +764,8 @@ func (c *PacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 	return len(p), nil
 }
 
-// Close implements net.PacketConn.
+// Close implements net.PacketConn. It is safe to call more than once and
+// from multiple goroutines.
 func (c *PacketConn) Close() error {
 	c.stack.mu.Lock()
 	if c.stack.socks[c.port] == c {

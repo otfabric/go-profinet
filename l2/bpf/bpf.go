@@ -14,6 +14,7 @@ package bpf
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -193,30 +194,57 @@ func (p *Port) ReadFrame(ctx context.Context, b []byte) (int, error) {
 	}
 }
 
-// hdrLen is the size of struct bpf_hdr up to its padding.
-var hdrLen = int(unsafe.Sizeof(syscall.BpfHdr{}))
-
-// wordAlign rounds up to the alignment of BPF records.
-func wordAlign(n int) int {
-	const a = int(unsafe.Sizeof(int32(0)))
-	return (n + a - 1) &^ (a - 1)
+// layout is what the walk of a read buffer takes from the OS: the size of
+// struct bpf_hdr, where it holds bh_caplen, bh_datalen (32 bits each) and
+// bh_hdrlen (16 bits), and the alignment of the records (BPF_ALIGNMENT).
+// They differ between the systems of the build tag: macOS and the 32-bit
+// BSDs have a 32-bit time stamp before the fields and align to 4 octets,
+// the 64-bit BSDs a 64-bit one and align to 8.
+type layout struct {
+	size                    int
+	caplen, datalen, hdrlen int
+	align                   int
 }
+
+// native is the layout of the OS and architecture the package is built
+// for, from the syscall package's struct and constant.
+var native = layout{
+	size:    int(unsafe.Sizeof(syscall.BpfHdr{})),
+	caplen:  int(unsafe.Offsetof(syscall.BpfHdr{}.Caplen)),
+	datalen: int(unsafe.Offsetof(syscall.BpfHdr{}.Datalen)),
+	hdrlen:  int(unsafe.Offsetof(syscall.BpfHdr{}.Hdrlen)),
+	align:   syscall.BPF_ALIGNMENT,
+}
+
+// floor is the header up to and including bh_hdrlen, without the padding
+// of the struct: no record has a shorter header, and the kernel rounds
+// bh_hdrlen up from it so that what follows the frame's Ethernet header
+// is aligned.
+func (l layout) floor() int { return l.hdrlen + 2 }
+
+// wordAlign rounds up to the alignment of the records.
+func (l layout) wordAlign(n int) int { return (n + l.align - 1) &^ (l.align - 1) }
 
 // nextRecord returns the frame of the first record of b and the rest. A
 // truncated record ends the buffer (ok false); a frame the snapshot cut
 // short is skipped (rec nil, ok true).
-func nextRecord(b []byte) (rec, rest []byte, ok bool) {
-	if len(b) < hdrLen {
+func nextRecord(b []byte) (rec, rest []byte, ok bool) { return native.next(b) }
+
+// next is nextRecord for a layout. The lengths are compared as they are
+// read, unsigned, before any becomes an index.
+func (l layout) next(b []byte) (rec, rest []byte, ok bool) {
+	if len(b) < l.size {
 		return nil, nil, false
 	}
-	h := (*syscall.BpfHdr)(unsafe.Pointer(&b[0]))
-	start := int(h.Hdrlen)
-	end := start + int(h.Caplen)
-	if start < hdrLen-2 || end > len(b) {
+	caplen := binary.NativeEndian.Uint32(b[l.caplen:])
+	datalen := binary.NativeEndian.Uint32(b[l.datalen:])
+	start := int(binary.NativeEndian.Uint16(b[l.hdrlen:]))
+	if start < l.floor() || start > len(b) || uint64(caplen) > uint64(len(b)-start) {
 		return nil, nil, false
 	}
-	next := min(wordAlign(end), len(b))
-	if h.Caplen < h.Datalen {
+	end := start + int(caplen)
+	next := min(l.wordAlign(end), len(b))
+	if caplen < datalen {
 		return nil, b[next:], true
 	}
 	return b[start:end], b[next:], true
@@ -248,7 +276,8 @@ func (p *Port) WriteFrame(ctx context.Context, b []byte) error {
 }
 
 // Close implements l2.Port. A read in progress returns within the read
-// timeout.
+// timeout. It is safe to call more than once and from multiple
+// goroutines.
 func (p *Port) Close() error {
 	var err error
 	p.once.Do(func() {

@@ -26,6 +26,84 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.9.1
+
+**Date:** 2026-11-15
+**Previous release:** v0.9.0
+
+Fixed bounds on the work and memory a file or the network can ask for,
+lifecycle fixes in the controller, device, MRP, netstack and store, and
+contract tests for every long-lived type. No change to the API. The first
+three items change what a caller can observe.
+
+- dcp: an Identify without `IdentifyOptions.Max` collects at most 4096
+  stations; when one more answers it returns the 4096 at once with an
+  error matching `profinet.ErrResourceExhausted`. A `Max` replaces the
+  bound.
+- netstack: the ARP table holds at most 1024 addresses; when it is full, a
+  new address is learned only from traffic for the stack itself, in place
+  of the entry used longest ago. A stack that stops with its Mux closes its
+  sockets: `ReadFrom` returns `net.ErrClosed`, and `WriteTo` on a closed
+  socket returns an error matching `net.ErrClosed` and
+  `profinet.ErrClosed`. A resolution removes its waiter however it ends.
+- gsdml: `Parse` refuses a document of more than 1 048 576 elements
+  (`ErrResourceExhausted`). `Check` lists at most 16 384 issues per
+  severity and one that counts the rest (rule `limit`); slot lists are
+  compared as sets of slot numbers, with one warning per list for values
+  above 65535 and the warnings in the order allowed, used, fixed; a
+  ReductionRatio list gets at most eight warnings and a count. `ToModel`
+  counts `MaxModelRecordOctets` also per plugged slot, refuses a module or
+  device access point with more than 1440 submodules and a Const
+  ByteOffset or Ref BitOffset that is no number, compares offsets in 64
+  bits and looks its texts up in a table.
+- model: `Validate` refuses more than 1440 plugged submodules and more
+  than 16 MiB of parameter records in them before its work per submodule
+  (`ErrInvalidConfig`), which bounds `device.New` and
+  `Controller.AddDevice` for any model; `Each` sorts positions instead of
+  copies.
+- gsdml/gsdx: `Open` decodes at most 65 536 XML elements into the package
+  model and lists at most 16 384 issues plus a count; a certificate part
+  is parsed once and listed once per signature.
+- pnio: `DecodePDRealData` and `DecodePDRealDataRecord` take
+  MultipleBlockHeaders nested up to four deep and refuse deeper ones with
+  `ErrMalformed`; `DecodePDRealData` allocates in proportion to the record.
+- snmp: a request reads the LLDP neighbors once, whatever its kind and
+  number of variable bindings; all bindings of a response come from that
+  reading.
+- controller: an AR becomes the device's current one when its alarm
+  endpoints, provider, consumer and tasks exist; until then `Stats`, `AR`
+  and `ARUUID` report no AR.
+- device: an abort that reaches an AR while its Connect runs ends the AR
+  with the Connect, which is refused (CMRPC state conflict); the AR keeps
+  no entry, FrameID, endpoint or submodule.
+- store: `OpenDir` removes only the temporary files of its own directory
+  (a valid key, `.tmp`, digits), whatever the keys and the path contain;
+  `Delete` removes the previous version first; `OnRecover` runs with no
+  lock held and may use the `Dir`.
+- mrp: the manager counts a missed test per test interval; the rounds it
+  sends at once for MRP_LinkUp frames do not count. After `Close` no timer
+  changes a port state, flushes or calls `OnChange`, and `Close` waits for
+  a timer callback in progress. The fields a manager swaps with its ports
+  are read under the lock. A negative `TestInterval` is refused
+  (`ErrInvalidConfig`).
+- l2/bpf: the walk of a read buffer uses the header layout and
+  `BPF_ALIGNMENT` of the OS it is built for and compares the lengths
+  unsigned (FreeBSD, NetBSD, DragonFly: compiled, not run); macOS
+  unchanged.
+- Documentation: every callback states its goroutine, what it may call,
+  that it must not call `Close` and that a run-time failure in it is not
+  recovered; every `Close` states that it is safe to call more than once
+  and from multiple goroutines; corrected statements on `lldp.TLV.Value`,
+  the SNMP length encoder, the BSD and Npcap backends; SECURITY.md lists
+  the fixed bounds.
+- Tests: the lifecycle contract matrix (L1 to L16) per type in
+  docs/TESTING.md with tests for concurrent `Close`, callbacks that use
+  their type and construction failures; five more fuzz targets (39); the
+  packages that start goroutines fail when their tests leave one behind
+  (`internal/leakcheck`).
+
+---
+
 ## v0.9.0
 
 **Date:** 2026-11-14

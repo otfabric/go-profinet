@@ -10,6 +10,8 @@ Package netstack is a minimal IPv4 stack (ARP, IPv4 without fragments, UDP) on a
 
 An address can be changed at run time with [Stack.SetAddr](#func-stack-setaddr), which is how a virtual IO-Device applies a DCP Set of its IP suite.
 
+The ARP table holds at most 1024 addresses. While it has room, the sender of every ARP packet and of every IPv4 packet from the stack's subnet is learned. When it is full, an address that is not in it is learned only from an ARP packet for the stack's own address, from the answer to a resolution in progress and from an IPv4 packet addressed to the stack; it then takes the place of the entry that was learned, confirmed or used longest ago.
+
 The stack is meant for virtual networks and tests. On a real interface use the operating system's stack (net.ListenPacket).
 
 ## Types
@@ -52,7 +54,7 @@ PacketConn is a UDP socket of a [Stack](#type-stack). It implements net.PacketCo
 func (c *PacketConn) Close() error
 ```
 
-Close implements net.PacketConn.
+Close implements net.PacketConn. It is safe to call more than once and from multiple goroutines.
 
 #### func (PacketConn) LocalAddr
 
@@ -68,7 +70,7 @@ LocalAddr implements net.PacketConn.
 func (c *PacketConn) ReadFrom(p []byte) (int, net.Addr, error)
 ```
 
-ReadFrom implements net.PacketConn. A read deadline set while ReadFrom is blocked takes effect immediately.
+ReadFrom implements net.PacketConn. A read deadline set while ReadFrom is blocked takes effect immediately. It returns net.ErrClosed once the socket is closed: by its Close, by Stack.Close, or because the stack stopped with its Mux.
 
 #### func (PacketConn) SetDeadline
 
@@ -100,13 +102,23 @@ SetWriteDeadline implements net.PacketConn.
 func (c *PacketConn) WriteTo(p []byte, addr net.Addr) (int, error)
 ```
 
-WriteTo implements net.PacketConn. addr must be a \*net.UDPAddr with an IPv4 address.
+WriteTo implements net.PacketConn. addr must be a \*net.UDPAddr with an IPv4 address. On a closed socket it returns an error matching net.ErrClosed and profinet.ErrClosed.
 
 ### type Stack
 
 ```go
 type Stack struct {
-	// contains filtered or unexported fields
+
+	// arpSeen orders the entries of arp by when each was last learned,
+	// confirmed or used: a larger value is later. arpClock is the last
+	// value given.
+
+	// waiters are the resolutions in progress, one channel per call of
+	// resolve; each call removes its own when it returns.
+
+	// done is closed when the stack stopped receiving, swept when its
+	// sockets are closed as well.
+
 }
 ```
 
@@ -134,7 +146,7 @@ Addr returns the current address, mask and gateway.
 func (s *Stack) Close() error
 ```
 
-Close closes every socket and stops the stack.
+Close closes every socket and stops the stack. It is safe to call more than once and from multiple goroutines; every call returns when the stack has stopped and its sockets are closed.
 
 #### func (Stack) ListenPacket
 

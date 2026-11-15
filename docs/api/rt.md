@@ -370,7 +370,7 @@ Add routes frames with the consumer's FrameID to it. A consumer already register
 func (d *Dispatcher) Close()
 ```
 
-Close stops the dispatcher.
+Close stops the dispatcher. It is safe to call more than once and from multiple goroutines.
 
 #### func (Dispatcher) Remove
 
@@ -634,7 +634,7 @@ Add schedules fn every period, first after one period.
 func (s *Scheduler) Close()
 ```
 
-Close stops the scheduler.
+Close stops the scheduler and waits for a task that is running. It is safe to call more than once and from multiple goroutines, but not from a task.
 
 #### func (Scheduler) Remove
 

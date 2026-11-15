@@ -160,35 +160,57 @@ func AppendPDRealData(b []byte, api uint32, ports []PDPortDataReal) []byte {
 	return b
 }
 
+// maxPDRealDataNesting bounds how deep the MultipleBlockHeaders of a
+// PDRealData record nest. A record holds one per submodule, each around
+// the blocks of that submodule (one level); the bound leaves room for a
+// device that groups them once or twice more.
+const maxPDRealDataNesting = 4
+
+// errPDRealDataNesting reports a MultipleBlockHeader inside
+// maxPDRealDataNesting others.
+func errPDRealDataNesting() error {
+	return fmt.Errorf("pnio: %w: MultipleBlockHeaders nested more than %d deep", profinet.ErrMalformed, maxPDRealDataNesting)
+}
+
 // DecodePDRealData decodes the PDRealData record (index 0xF841) and
 // returns the PDPortDataReal blocks it holds, at the top level or in
 // MultipleBlockHeaders; the other blocks (PDInterfaceDataReal, ...) are
-// skipped.
+// skipped. MultipleBlockHeaders nested more than four deep are refused
+// with an error matching profinet.ErrMalformed. With an error it returns
+// the ports decoded before it.
 func DecodePDRealData(b []byte) ([]PDPortDataReal, error) {
+	var out []PDPortDataReal
+	err := decodePDPorts(b, 0, &out)
+	return out, err
+}
+
+// decodePDPorts appends the PDPortDataReal blocks of b, which lies in
+// depth MultipleBlockHeaders, to out.
+func decodePDPorts(b []byte, depth int, out *[]PDPortDataReal) error {
 	blocks, err := SplitBlocks(b)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var out []PDPortDataReal
 	for _, blk := range blocks {
 		switch blk.Header.Type {
 		case BlockPDPortDataReal:
 			p, err := DecodePDPortDataReal(blk)
 			if err != nil {
-				return out, err
+				return err
 			}
-			out = append(out, p)
+			*out = append(*out, p)
 		case BlockMultipleBlockHeader:
 			if len(blk.Body) < 10 {
-				return out, fmt.Errorf("pnio: %w: MultipleBlockHeader of %d octets", profinet.ErrMalformed, len(blk.Body))
+				return fmt.Errorf("pnio: %w: MultipleBlockHeader of %d octets", profinet.ErrMalformed, len(blk.Body))
 			}
-			inner, err := DecodePDRealData(blk.Body[10:])
-			out = append(out, inner...)
-			if err != nil {
-				return out, err
+			if depth == maxPDRealDataNesting {
+				return errPDRealDataNesting()
+			}
+			if err := decodePDPorts(blk.Body[10:], depth+1, out); err != nil {
+				return err
 			}
 		default:
 		}
 	}
-	return out, nil
+	return nil
 }

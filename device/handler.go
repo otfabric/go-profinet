@@ -33,6 +33,16 @@ type RecordRequest struct {
 // Handler receives what the device leaves to the application. Every method
 // is called on a device goroutine and should return promptly. Embed
 // [NopHandler] to implement only some of them.
+//
+// The goroutines: ReadRecord and WriteRecord run on the workers of the
+// RPC server, several at a time for different controllers; PrmEnd on a
+// goroutine of its own; StateChanged on the goroutine that reports the
+// transitions of the AR; AlarmAck on the alarm goroutine of the AR;
+// Signal, ResetToFactory, NameChanged and IPChanged on the goroutine of
+// the DCP responder. A method may call the methods of the Device that
+// read or set its data (SetInput, Output, ARs, ...). It must not call
+// Device.Close, which waits for these goroutines. A run-time failure in a
+// method is not recovered.
 type Handler interface {
 	// ReadRecord reads a record the device does not serve itself: user
 	// indices (0..0x7FFF) without a model.Record, and indices the device

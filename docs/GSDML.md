@@ -32,8 +32,15 @@ m, err := gsdml.ToModel(doc, "DAP 1") // "" for the first device access point
   the parameter records with their default values (Const and Ref).
 
 A module several references name is converted once. The records of one
-model hold at most `MaxModelRecordOctets` (16 MiB) of default values; a
-document asking for more fails with `ErrResourceExhausted`.
+model hold at most `MaxModelRecordOctets` (16 MiB) of default values, counted
+for the module types and again for the modules as plugged, once per slot; a
+document asking for more fails with `ErrResourceExhausted`. A module or
+device access point with more than 1440 submodules (more than a C_SDU
+carries) and a Const ByteOffset or Ref BitOffset that is no number fail
+with `ErrMalformed`.
+
+`Parse` refuses a document of more than 64 MiB or more than 1 048 576
+elements (`ErrResourceExhausted`).
 
 A controller connects with `controller.DeviceConfig{Model: m}`; plug further
 modules of the catalog into `m.Slots` first (profinetctl's `--plug`).
@@ -82,6 +89,14 @@ err := r.Err() // or gsdml.Validate(doc)
 | `reduction-ratio` | warning | reduction ratios are powers of two from 1 to 512 | local heuristic: the RT_CLASS_1 ratios |
 | `unknown` | unvalidated | an element or attribute outside the catalog (a newer schema version, a vendor extension): kept, not checked | |
 | `schema-version` | unvalidated | the file declares (in `xsi:schemaLocation`) a schema newer than the catalog's 2.45: what that version added is not checked | |
+
+`Check` lists at most 16 384 issues of each severity; one more issue with
+the rule `limit` then says how many it left out, and `Validate` still
+fails when an error is among them. The slot rules look at slot numbers 0
+to 65535 and warn once per list about values above; a ReductionRatio list
+gets at most eight warnings and a count, and one warning when it has more
+than 64 values. An ID longer than 256 octets is cut in the path of an
+issue.
 
 This is not PI's GSDML checker: it does not read the licensed schemas and
 checks only the semantic rules above, not those of the GSDML

@@ -128,8 +128,13 @@ type Config struct {
 	Prio uint16
 	// Profile is the timer profile; zero means Profile200.
 	Profile Profile
-	// OnChange is called after the ring state or a port state changed,
-	// never with the entity's lock held; it must not block.
+	// OnChange is called after the ring state or a port state changed.
+	// It runs on the entity's goroutines (the link poll, the receiver
+	// of each ring port, a timer); calls may overlap. It is never
+	// called with the entity's lock held and must not block. It may
+	// call Status; it must not call Close, which waits for the
+	// goroutine the callback runs on. A run-time failure in it is not
+	// recovered.
 	OnChange func()
 	Logger   profinet.Logger
 }
@@ -199,6 +204,9 @@ type Entity struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	// timers counts the timer callbacks that are past their check of
+	// ctx (made under mu): Close waits for them.
+	timers sync.WaitGroup
 }
 
 // Entity states (microchip-ung/mrp, utils.h).
@@ -233,6 +241,9 @@ func New(cfg Config) (*Entity, error) {
 	if cfg.Profile.TestInterval == 0 {
 		cfg.Profile = Profile200
 	}
+	if cfg.Profile.TestInterval < 0 {
+		return nil, fmt.Errorf("mrp: profile %q: test interval %v: %w", cfg.Profile.Name, cfg.Profile.TestInterval, profinet.ErrInvalidConfig)
+	}
 	// The TopologyChange and LinkChange frames carry these intervals as
 	// 16-bit millisecond counts.
 	for _, d := range []time.Duration{cfg.Profile.TopChangeInterval, cfg.Profile.LinkInterval} {
@@ -266,19 +277,29 @@ func New(cfg Config) (*Entity, error) {
 	// port and a client the port that is not up yet: no loop at start.
 	e.setBlocked(0, false)
 	e.setBlocked(1, acting == RoleManager)
-	for i := range e.subs {
+	// Each receiver gets its subscription here: the manager may swap
+	// e.subs as soon as it runs.
+	for _, sub := range e.subs {
 		e.wg.Add(1)
-		go e.recv(i)
+		go e.recv(sub)
 	}
 	e.wg.Add(1)
 	go e.run()
 	return e, nil
 }
 
-// Close stops the entity. The ring ports keep their last state.
+// Close stops the entity. The ring ports keep their last state: once
+// Close has returned the entity changes no port state, flushes nothing
+// and calls OnChange no more, also not from a timer that was already
+// due. It is safe to call more than once and from multiple goroutines.
+// It must not be called from OnChange: it waits for the goroutine that
+// runs the callback.
 func (e *Entity) Close() error {
 	e.cancel()
-	for _, s := range e.subs {
+	e.mu.Lock()
+	subs := e.subs
+	e.mu.Unlock()
+	for _, s := range subs {
 		s.Close()
 	}
 	e.wg.Wait()
@@ -290,6 +311,10 @@ func (e *Entity) Close() error {
 		e.flushTimer.Stop()
 	}
 	e.mu.Unlock()
+	// A timer callback that could not be stopped either found ctx done
+	// under mu, or was counted in timers before the lock above was
+	// taken: it ends before Close returns.
+	e.timers.Wait()
 	return nil
 }
 
@@ -315,8 +340,15 @@ func (e *Entity) setBlocked(i int, b bool) {
 	e.cfg.Switch.SetBlocked(e.cfg.Index[i], b)
 }
 
+// port returns the mux of ring port i (the manager swaps its ports).
+func (e *Entity) port(i int) *l2.Mux {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.cfg.Ports[i]
+}
+
 func (e *Entity) linkUp(i int) bool {
-	if ls, ok := e.cfg.Ports[i].Port().(l2.LinkStater); ok {
+	if ls, ok := e.port(i).Port().(l2.LinkStater); ok {
 		return ls.LinkUp()
 	}
 	return true
@@ -343,13 +375,19 @@ func (e *Entity) run() {
 				e.link(i, now)
 			}
 		}
-		if now || !time.Now().Before(nextTest) {
+		// A test interval is counted when it has passed, not for every
+		// round: a round asked for with testNow sends the tests at once
+		// and leaves the count of intervals and their rhythm alone.
+		due := !time.Now().Before(nextTest)
+		if due {
 			nextTest = time.Now().Add(e.cfg.Profile.TestInterval)
+		}
+		if now || due {
 			switch e.actingRole() {
 			case RoleManager:
-				e.testTick()
+				e.testTick(due)
 			default:
-				if e.cfg.Role == RoleAuto {
+				if e.cfg.Role == RoleAuto && due {
 					e.monitorTick()
 				}
 			}
@@ -452,12 +490,16 @@ func (e *Entity) clientLink(i int, up bool, other int) []func() {
 	return []func(){func() { e.sendLinkChange(other, true, i) }}
 }
 
+// unblockAfterWait is the link timer's callback. After Close began it
+// does nothing; one that began before is waited for by Close.
 func (e *Entity) unblockAfterWait(i int) {
 	e.mu.Lock()
-	if e.state != StatePT || !e.up[i] {
+	if e.ctx.Err() != nil || e.state != StatePT || !e.up[i] {
 		e.mu.Unlock()
 		return
 	}
+	e.timers.Add(1)
+	defer e.timers.Done()
 	e.setBlocked(i, false)
 	e.state = StatePTIdle
 	e.mu.Unlock()
@@ -474,11 +516,15 @@ func (e *Entity) swap() {
 	e.blocked[0], e.blocked[1] = e.blocked[1], e.blocked[0]
 }
 
-// testTick sends the manager's test frames and counts the misses.
-func (e *Entity) testTick() {
+// testTick sends the manager's test frames. When interval is set a test
+// interval has passed since the last counted round: it counts as missed
+// until a test comes around (managerRecv), and the ring is open once
+// more than TestMax of them were missed. A round between two intervals
+// (testNow) only sends.
+func (e *Entity) testTick(interval bool) {
 	e.mu.Lock()
 	var notify []func()
-	if e.up[0] && e.up[1] {
+	if interval && e.up[0] && e.up[1] {
 		e.misses++
 		if e.misses > e.cfg.Profile.TestMax && (!e.ringOpen || e.blocked[1]) {
 			// The tests do not come (back): the ring is open, and the
@@ -552,10 +598,9 @@ func portRole(i int) PortRole {
 	return PortPrimary
 }
 
-// recv handles the MRP frames of a ring port.
-func (e *Entity) recv(i int) {
+// recv handles the MRP frames of a ring port's subscription.
+func (e *Entity) recv(sub *l2.Subscription) {
 	defer e.wg.Done()
-	sub := e.subs[i]
 	for {
 		ef, err := sub.Recv(e.ctx)
 		if err != nil {
@@ -708,7 +753,7 @@ func (e *Entity) clientRecv(port int, ef ethernet.Frame, f Frame) {
 		raw := append(append(make([]byte, 0, ethernet.HeaderLen+len(ef.Payload)), ef.Dst[:]...), ef.Src[:]...)
 		raw = binary.BigEndian.AppendUint16(raw, uint16(EtherType))
 		raw = append(raw, ef.Payload...)
-		if err := e.cfg.Ports[other].Send(e.ctx, raw); err == nil {
+		if err := e.port(other).Send(e.ctx, raw); err == nil {
 			e.forwarded.Add(1)
 		}
 	}
@@ -788,14 +833,19 @@ func (e *Entity) flushAfter(interval time.Duration) {
 	e.flushAt = at
 }
 
+// flushPending is the flush timer's callback. After Close began it does
+// nothing; one that began before is waited for by Close.
 func (e *Entity) flushPending() {
 	e.mu.Lock()
 	e.flushAt = time.Time{}
-	stopped := e.ctx.Err() != nil
-	e.mu.Unlock()
-	if !stopped {
-		e.cfg.Switch.Flush()
+	if e.ctx.Err() != nil {
+		e.mu.Unlock()
+		return
 	}
+	e.timers.Add(1)
+	defer e.timers.Done()
+	e.mu.Unlock()
+	e.cfg.Switch.Flush()
 }
 
 // yield makes an automatic manager acting as a manager a client of the

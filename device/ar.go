@@ -20,8 +20,9 @@ import (
 	"github.com/otfabric/go-profinet/rt"
 )
 
-// ar is one application relationship. Fields set at Connect are immutable;
-// state, lastActivity and the alarm bookkeeping are guarded by mu.
+// ar is one application relationship. Fields set at Connect are immutable
+// once the Connect has built the AR (building); state, lastActivity and
+// the alarm bookkeeping are guarded by mu.
 type ar struct {
 	d *Device
 
@@ -59,6 +60,11 @@ type ar struct {
 
 	mu    sync.Mutex
 	state ARState
+	// building is set while the AR's Connect creates its alarm endpoints
+	// and cyclic machinery. An abort that arrives meanwhile is kept in
+	// early; the Connect carries it out when the AR is built and fails.
+	building bool
+	early    *abortRequest
 	// events are the transitions not yet reported to the handler;
 	// notifying is set while a goroutine reports them (see transition).
 	events       []stateEvent
@@ -88,6 +94,12 @@ type ar struct {
 	heir *ar
 	// sr is set for an IOCARSR (system redundancy, sr.go).
 	sr *srFields
+}
+
+// abortRequest is an abort kept for the Connect that builds the AR.
+type abortRequest struct {
+	reason pnio.AbortReason
+	notify bool
 }
 
 func (a *ar) info() ARInfo {
@@ -501,6 +513,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 		lastActivity: time.Now(),
 		seq:          seq,
 		prmEndPlug:   make(chan uint16, 16),
+		building:     true,
 	}
 	if req.ARRPC != nil && req.ARRPC.InitiatorRPCServerPort != 0 {
 		a.ctrlPort = int(req.ARRPC.InitiatorRPCServerPort)
@@ -563,6 +576,23 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 		resp.AlarmCR = &pnio.AlarmCRBlockRes{Type: 1, LocalAlarmReference: a.alarmRef, MaxAlarmDataLength: a.maxAlarmData}
 	}
 
+	if h := d.connectHook; h != nil {
+		h(a, connectBuilt)
+	}
+	// The AR is built: from here an abort acts on it at once. One that
+	// arrived while it was built ends it now, with everything it started.
+	a.mu.Lock()
+	a.building = false
+	early := a.early
+	a.early = nil
+	a.mu.Unlock()
+	if early != nil {
+		d.abort(a, early.reason, early.notify)
+		return fail(pnio.Code1CMRPC, pnio.CMRPCStateConflict)
+	}
+	if h := d.connectHook; h != nil {
+		h(a, connectAbortable)
+	}
 	d.mu.Lock()
 	if d.closed || d.resetting {
 		// Close or a reset ran meanwhile and aborted the ARs it found:
@@ -575,8 +605,21 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	unreserve()
 	d.mu.Unlock()
 	established = true
+	// ended is the answer for an AR that an abort closed before its first
+	// transition: the abort released what the AR held; the entry, which
+	// the abort may not have found yet, goes as well.
+	ended := func() (*pnio.ConnectResponse, error) {
+		d.mu.Lock()
+		if d.ars[a.uuid] == a {
+			delete(d.ars, a.uuid)
+		}
+		d.mu.Unlock()
+		return fail(pnio.Code1CMRPC, pnio.CMRPCStateConflict)
+	}
 	if iosar {
-		_ = a.transition(ARStateData)
+		if err := a.transition(ARStateData); err != nil {
+			return ended()
+		}
 		d.watchIdle(a)
 	} else {
 		// The controller found the device: it stops announcing itself. The
@@ -587,7 +630,9 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 		if r != nil {
 			r.StopHello()
 		}
-		_ = a.transition(ARStateParameterizing)
+		if err := a.transition(ARStateParameterizing); err != nil {
+			return ended()
+		}
 		a.mu.Lock()
 		a.cmiTimer = time.AfterFunc(a.cmiTimeout, func() {
 			if s := a.currentState(); s == ARStateParameterizing || s == ARStateAppReadyPending {
@@ -808,6 +853,15 @@ func (d *Device) goAbort(a *ar, reason pnio.AbortReason, notify bool) {
 func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 	a.mu.Lock()
 	if a.state == ARStateClosed {
+		a.mu.Unlock()
+		return
+	}
+	if a.building {
+		// The Connect still creates what an abort releases: it carries
+		// out the first abort it was left when it is done.
+		if a.early == nil {
+			a.early = &abortRequest{reason: reason, notify: notify}
+		}
 		a.mu.Unlock()
 		return
 	}

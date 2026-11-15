@@ -120,6 +120,11 @@ type Controller struct {
 
 	// rpcPort is cfg.RPCPort, validated by New.
 
+	// afterConnect, when a test set it before AddDevice, runs on a
+	// device's lifecycle goroutine once a Connect response was accepted,
+	// before the alarm endpoints and the cyclic machinery of the AR
+	// start.
+
 }
 ```
 
@@ -155,7 +160,7 @@ CheckTopology finds the stations of the expected topology with DCP, reads the po
 func (c *Controller) Close() error
 ```
 
-Close releases every AR and stops the controller.
+Close releases every AR and stops the controller. It is safe to call more than once and from multiple goroutines; a call made while another is in progress returns at once, before that one has finished. It must not be called from OnState or OnAlarm (see DeviceConfig).
 
 #### func (Controller) DCP
 
@@ -241,7 +246,7 @@ ARUUID returns the UUID of the current AR, nil when there is none.
 func (d *Device) Close() error
 ```
 
-Close releases the AR (when established) and stops the lifecycle. The device is removed from the controller.
+Close releases the AR (when established) and stops the lifecycle. The device is removed from the controller. It is safe to call more than once and from multiple goroutines; every call returns when the lifecycle has stopped. It must not be called from OnState or OnAlarm, which run on goroutines Close waits for.
 
 #### func (Device) ConsumerStatus
 
@@ -448,10 +453,22 @@ type DeviceConfig struct {
 	// together do not reconnect together; zero waits exactly.
 	ReconnectMin, ReconnectMax time.Duration
 	ReconnectJitter            float64
-	// OnAlarm receives every alarm, on the alarm goroutine of the AR; it
-	// must not block.
+	// OnAlarm receives every alarm, on the alarm goroutine of the AR
+	// and its priority, before the alarm is acknowledged; it must not
+	// block. It may call the methods of the Device and the Controller
+	// that do not wait for the AR (State, Stats, AR, Input, SetOutput);
+	// it must not call Device.Close or Controller.Close, which wait for
+	// the goroutine the callback runs on. A run-time failure in it is
+	// not recovered.
 	OnAlarm func(AlarmEvent)
-	// OnState receives every state change, before WaitState returns for it.
+	// OnState receives every state change, before WaitState returns for
+	// it. It runs on the lifecycle goroutine of the device, one call at
+	// a time and in the order of the changes; the lifecycle goes on
+	// when it returns, so it must not block. It may call the methods of
+	// the Device and the Controller that do not wait for a state
+	// (State, Stats, AR, Input, SetOutput); it must not call
+	// Device.Close or Controller.Close, which wait for the lifecycle
+	// goroutine. A run-time failure in it is not recovered.
 	OnState func(from, to State, err error)
 }
 ```

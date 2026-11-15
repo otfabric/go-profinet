@@ -4,9 +4,9 @@ package gsdml
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -131,25 +131,35 @@ func (r *Report) Err() error {
 // Check validates a document against the catalog (as Validate does) and
 // the semantic rules, and lists the content it did not validate. Nothing
 // it reports makes it PI's GSDML checker.
+//
+// The report is bounded: Check lists the first 16 384 issues of each
+// severity, and one more issue of that severity with the rule "limit"
+// then says how many it left out; a module reference gets at most eight
+// warnings per slot list and rule and an interface at most eight per
+// reduction ratio list, each followed by one that counts the rest; an ID
+// in the path of an issue of the semantic rules is quoted up to 256
+// octets. The slot rules look at the slot numbers 0 to 65535: a list is
+// warned about once for the values above them.
 func Check(doc *Document) Report {
 	v := &validator{ids: map[string]string{}, texts: map[string]bool{}}
 	doc.validate(v)
 	for _, r := range v.refs {
 		if _, ok := v.ids[r.id]; !ok {
-			v.issues = append(v.issues, Issue{Path: r.path, Message: fmt.Sprintf("attribute %s: no element with ID %q", r.kind, r.id), Rule: RuleReference})
+			v.add(r.path, SeverityError, RuleReference, "attribute %s: no element with ID %q", r.kind, r.id)
 		}
 	}
 	for _, r := range v.tids {
 		if !v.texts[r.id] {
-			v.issues = append(v.issues, Issue{Path: r.path, Message: fmt.Sprintf("attribute TextId: no text %q in the ExternalTextList", r.id), Rule: RuleReference})
+			v.add(r.path, SeverityError, RuleReference, "attribute TextId: no text %q in the ExternalTextList", r.id)
 		}
 	}
 	rep := Report{SchemaVersion: schemaVersion(doc)}
 	if rep.SchemaVersion != "" && newerThanCatalog(rep.SchemaVersion) {
-		v.issues = append(v.issues, Issue{Path: "ISO15745Profile", Severity: SeverityUnvalidated, Rule: RuleSchemaVersion,
-			Message: fmt.Sprintf("schema version %s is newer than go-profinet's catalog (up to %s): what that version added is kept, not validated", rep.SchemaVersion, SchemaVersions[len(SchemaVersions)-1])})
+		v.add("ISO15745Profile", SeverityUnvalidated, RuleSchemaVersion,
+			"schema version %s is newer than go-profinet's catalog (up to %s): what that version added is kept, not validated", rep.SchemaVersion, SchemaVersions[len(SchemaVersions)-1])
 	}
 	semantic(doc, v)
+	v.closeIssues()
 	rep.Issues = v.issues
 	return rep
 }
@@ -193,8 +203,10 @@ func newerThanCatalog(v string) bool {
 
 func (v *validator) unknown(nodes []*Node) {
 	for _, n := range nodes {
-		v.issues = append(v.issues, Issue{Path: strings.Join(v.path, "/"), Severity: SeverityUnvalidated, Rule: RuleUnknown,
-			Message: fmt.Sprintf("element %s is not in the catalog: kept, not validated", n.XMLName.Local)})
+		if v.room(SeverityUnvalidated) {
+			v.issues = append(v.issues, Issue{Path: v.where(), Severity: SeverityUnvalidated, Rule: RuleUnknown,
+				Message: fmt.Sprintf("element %s is not in the catalog: kept, not validated", n.XMLName.Local)})
+		}
 	}
 }
 
@@ -206,13 +218,31 @@ func (v *validator) unknownAttrs(attrs []xml.Attr) {
 			a.Name.Space == "http://www.w3.org/2001/XMLSchema-instance" || a.Name.Space == "xsi" || strings.HasPrefix(a.Name.Local, "xsi:") {
 			continue
 		}
-		v.issues = append(v.issues, Issue{Path: strings.Join(v.path, "/"), Severity: SeverityUnvalidated, Rule: RuleUnknown,
-			Message: fmt.Sprintf("attribute %s is not in the catalog: kept, not validated", a.Name.Local)})
+		if v.room(SeverityUnvalidated) {
+			v.issues = append(v.issues, Issue{Path: v.where(), Severity: SeverityUnvalidated, Rule: RuleUnknown,
+				Message: fmt.Sprintf("attribute %s is not in the catalog: kept, not validated", a.Name.Local)})
+		}
 	}
 }
 
-func (v *validator) warn(path, rule, format string, a ...any) {
-	v.issues = append(v.issues, Issue{Path: path, Severity: SeverityWarning, Rule: rule, Message: fmt.Sprintf(format, a...)})
+// warn lists a warning at the path that path returns; the path is built
+// only for a warning that is listed.
+func (v *validator) warn(path func() string, rule, format string, a ...any) {
+	if v.room(SeverityWarning) {
+		v.issues = append(v.issues, Issue{Path: path(), Severity: SeverityWarning, Rule: rule, Message: fmt.Sprintf(format, a...)})
+	}
+}
+
+// maxPathID is the number of octets of an ID an issue path of the
+// semantic rules quotes.
+const maxPathID = 256
+
+// pathID returns an ID as an issue path quotes it.
+func pathID(id string) string {
+	if len(id) <= maxPathID {
+		return id
+	}
+	return id[:maxPathID] + "..."
 }
 
 // maxIOData is the most data of one submodule an RT frame carries: its
@@ -220,29 +250,29 @@ func (v *validator) warn(path, rule, format string, a ...any) {
 const maxIOData = 1439
 
 // dataLength adds up the sizes of data items; items of a type without a
-// known size are left out.
-func dataLength(items []*DataItem) int {
-	total := 0
+// known size are left out. The sum is 64 bits wide on every platform.
+func dataLength(items []*DataItem) int64 {
+	var total int64
 	for _, it := range items {
 		if n, err := DataItemSize(it.DataType, it.Length); err == nil {
-			total += n
+			total += int64(n)
 		}
 	}
 	return total
 }
 
-func (v *validator) checkSubmodules(path string, items []*VirtualSubmoduleItem) {
+func (v *validator) checkSubmodules(path func() string, items []*VirtualSubmoduleItem) {
 	for _, sm := range items {
-		p := path + "/VirtualSubmoduleItem[" + sm.ID + "]"
+		p := func() string { return path() + "/VirtualSubmoduleItem[" + pathID(sm.ID) + "]" }
 		if sm.IOData != nil {
 			if sm.IOData.Input != nil {
-				if n := dataLength(sm.IOData.Input.DataItems); n > maxIOData {
-					v.issues = append(v.issues, Issue{Path: p, Rule: RuleIODataLength, Message: fmt.Sprintf("%d octets of input data: an RT frame carries at most %d with the provider status", n, maxIOData)})
+				if n := dataLength(sm.IOData.Input.DataItems); n > maxIOData && v.room(SeverityError) {
+					v.issues = append(v.issues, Issue{Path: p(), Rule: RuleIODataLength, Message: fmt.Sprintf("%d octets of input data: an RT frame carries at most %d with the provider status", n, maxIOData)})
 				}
 			}
 			if sm.IOData.Output != nil {
-				if n := dataLength(sm.IOData.Output.DataItems); n > maxIOData {
-					v.issues = append(v.issues, Issue{Path: p, Rule: RuleIODataLength, Message: fmt.Sprintf("%d octets of output data: an RT frame carries at most %d with the provider status", n, maxIOData)})
+				if n := dataLength(sm.IOData.Output.DataItems); n > maxIOData && v.room(SeverityError) {
+					v.issues = append(v.issues, Issue{Path: p(), Rule: RuleIODataLength, Message: fmt.Sprintf("%d octets of output data: an RT frame carries at most %d with the provider status", n, maxIOData)})
 				}
 			}
 		}
@@ -256,43 +286,23 @@ func (v *validator) checkSubmodules(path string, items []*VirtualSubmoduleItem) 
 	}
 }
 
-func slotSet(s string) (map[uint32]bool, bool) {
-	if strings.TrimSpace(s) == "" {
-		return nil, false
-	}
-	vs, err := ParseValueList(s, 1<<16)
-	if err != nil {
-		return nil, false
-	}
-	m := map[uint32]bool{}
-	for _, x := range vs {
-		m[x] = true
-	}
-	return m, true
-}
-
 // maxSlotWarnings is the number of slots one list of one module reference
-// is warned about one by one; the rest share one warning.
+// is warned about one by one; the rest share one warning. The values of a
+// reduction ratio list are warned about the same way.
 const maxSlotWarnings = 8
 
-// slotWarnings warns about the slots, the first maxSlotWarnings one by one.
-func slotWarnings(v *validator, path string, slots []uint32, one func(uint32) string, rest string) {
-	for i, s := range slots {
-		if i == maxSlotWarnings {
-			v.warn(path, RuleSlots, rest, len(slots)-i)
-			return
+// slotWarnings warns about total slots: about the first ones, of which
+// there are at most maxSlotWarnings, one by one with the text one makes,
+// and about the others in one warning with the format rest.
+func slotWarnings(v *validator, path func() string, first []uint32, total int, one func(i int, slot uint32) string, rest string) {
+	for i, s := range first {
+		if v.room(SeverityWarning) {
+			v.issues = append(v.issues, Issue{Path: path(), Severity: SeverityWarning, Rule: RuleSlots, Message: one(i, s)})
 		}
-		v.warn(path, RuleSlots, "%s", one(s))
 	}
-}
-
-func sortedSlots(m map[uint32]bool) []uint32 {
-	out := make([]uint32, 0, len(m))
-	for s := range m {
-		out = append(out, s)
+	if total > len(first) {
+		v.warn(path, RuleSlots, rest, total-len(first))
 	}
-	slices.Sort(out)
-	return out
 }
 
 // clip shortens a value quoted in an issue to 64 octets.
@@ -304,6 +314,20 @@ func clip(s string) string {
 	return s[:n] + "..."
 }
 
+// slotLists are the slot lists of a module reference in the order the
+// slot rules look at them, with the formats of the warnings that count
+// the slots beyond maxSlotWarnings.
+var slotLists = [...]struct{ name, morePhysical, moreAllowed string }{
+	{"AllowedInSlots", "AllowedInSlots: %d more slots are not among the PhysicalSlots", ""},
+	{"UsedInSlots", "UsedInSlots: %d more slots are not among the PhysicalSlots", "UsedInSlots: %d more slots are not in AllowedInSlots"},
+	{"FixedInSlots", "FixedInSlots: %d more slots are not among the PhysicalSlots", "FixedInSlots: %d more slots are not in AllowedInSlots"},
+}
+
+// maxReductionRatios is the number of values of a ReductionRatio list
+// that are looked at one by one; ToModel takes as many. The RT_CLASS_1
+// ratios are ten.
+const maxReductionRatios = 64
+
 // semantic applies the semantic rules.
 func semantic(doc *Document, v *validator) {
 	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil {
@@ -314,17 +338,17 @@ func semantic(doc *Document, v *validator) {
 	if ml := ap.ModuleList; ml != nil {
 		idents := map[string]string{}
 		for _, m := range ml.ModuleItems {
-			p := root + "/ModuleList/ModuleItem[" + m.ID + "]"
+			p := func() string { return root + "/ModuleList/ModuleItem[" + pathID(m.ID) + "]" }
 			if n, err := parseUint(m.ModuleIdentNumber, 32); err == nil {
 				key := strconv.FormatUint(n, 16)
 				if prev, dup := idents[key]; dup {
-					v.warn(p, RuleIdentNumber, "ModuleIdentNumber %#x is also the one of module %s", n, prev)
+					v.warn(p, RuleIdentNumber, "ModuleIdentNumber %#x is also the one of module %s", n, clip(prev))
 				} else {
 					idents[key] = m.ID
 				}
 			}
 			if m.VirtualSubmoduleList != nil {
-				v.checkSubmodules(p+"/VirtualSubmoduleList", m.VirtualSubmoduleList.VirtualSubmoduleItems)
+				v.checkSubmodules(func() string { return p() + "/VirtualSubmoduleList" }, m.VirtualSubmoduleList.VirtualSubmoduleItems)
 			}
 		}
 	}
@@ -332,76 +356,60 @@ func semantic(doc *Document, v *validator) {
 		return
 	}
 	for _, dap := range ap.DeviceAccessPointList.DeviceAccessPointItems {
-		p := root + "/DeviceAccessPointList/DeviceAccessPointItem[" + dap.ID + "]"
+		p := func() string { return root + "/DeviceAccessPointList/DeviceAccessPointItem[" + pathID(dap.ID) + "]" }
 		if dap.VirtualSubmoduleList != nil {
-			v.checkSubmodules(p+"/VirtualSubmoduleList", dap.VirtualSubmoduleList.VirtualSubmoduleItems)
+			v.checkSubmodules(func() string { return p() + "/VirtualSubmoduleList" }, dap.VirtualSubmoduleList.VirtualSubmoduleItems)
 		}
-		physical, havePhysical := slotSet(dap.PhysicalSlots)
 		if um := dap.UseableModules; um != nil {
-			fixedBy := map[uint32]string{}
-			for _, ref := range um.ModuleItemRefs {
-				rp := p + "/UseableModules/ModuleItemRef[" + ref.ModuleItemTarget + "]"
-				allowed, haveAllowed := slotSet(ref.AllowedInSlots)
-				for name, list := range map[string]string{"AllowedInSlots": ref.AllowedInSlots, "UsedInSlots": ref.UsedInSlots, "FixedInSlots": ref.FixedInSlots} {
-					set, ok := slotSet(list)
-					if !ok {
-						continue
-					}
-					// One warning per slot up to maxSlotWarnings, then one
-					// for the rest: a list of 65536 slots in a few octets
-					// must not make as many issues.
-					var notPhysical, notAllowed, fixedTwice []uint32
-					fixedPrev := map[uint32]string{}
-					for _, s := range sortedSlots(set) {
-						if havePhysical && !physical[s] {
-							notPhysical = append(notPhysical, s)
-						}
-						if name != "AllowedInSlots" && haveAllowed && !allowed[s] {
-							notAllowed = append(notAllowed, s)
-						}
-						if name == "FixedInSlots" {
-							if prev, dup := fixedBy[s]; dup && prev != ref.ModuleItemTarget {
-								fixedTwice = append(fixedTwice, s)
-								fixedPrev[s] = prev
-							}
-							fixedBy[s] = ref.ModuleItemTarget
-						}
-					}
-					slotWarnings(v, rp, notPhysical, func(s uint32) string {
-						return fmt.Sprintf("%s: slot %d is not among the PhysicalSlots %q", name, s, clip(dap.PhysicalSlots))
-					}, name+": %d more slots are not among the PhysicalSlots")
-					slotWarnings(v, rp, notAllowed, func(s uint32) string {
-						return fmt.Sprintf("%s: slot %d is not in AllowedInSlots %q", name, s, clip(ref.AllowedInSlots))
-					}, name+": %d more slots are not in AllowedInSlots")
-					slotWarnings(v, rp, fixedTwice, func(s uint32) string {
-						return fmt.Sprintf("slot %d is also fixed by module %s", s, clip(fixedPrev[s]))
-					}, "%d more slots are also fixed by another module")
-				}
-			}
+			v.checkSlots(p, dap, um)
 		}
 		sd := dap.SystemDefinedSubmoduleList
 		if sd == nil {
 			continue
 		}
 		for _, it := range sd.InterfaceSubmoduleItems {
-			ip := p + "/SystemDefinedSubmoduleList/InterfaceSubmoduleItem[" + it.ID + "]"
+			ip := func() string {
+				return p() + "/SystemDefinedSubmoduleList/InterfaceSubmoduleItem[" + pathID(it.ID) + "]"
+			}
 			if n, err := parseUint(it.SubslotNumber, 16); err == nil && (n < 0x8000 || n > 0x8FFF) {
 				v.warn(ip, RuleSubslot, "interface submodule in subslot %#x, outside 0x8000-0x8FFF", n)
 			}
 			if ar := it.ApplicationRelations; ar != nil && ar.TimingProperties != nil && ar.TimingProperties.ReductionRatio != "" {
-				if rrs, err := ParseValueList(ar.TimingProperties.ReductionRatio, 1<<16); err == nil {
-					for _, rr := range rrs {
-						if rr < 1 || rr > 512 || rr&(rr-1) != 0 {
-							v.warn(ip, RuleReductionRatio, "reduction ratio %d is not a power of two from 1 to 512", rr)
-						}
-					}
-				}
+				v.checkReductionRatios(ip, ar.TimingProperties.ReductionRatio)
 			}
 		}
 		for _, it := range sd.PortSubmoduleItems {
 			if n, err := parseUint(it.SubslotNumber, 16); err == nil && (n < 0x8000 || n > 0x8FFF) {
-				v.warn(p+"/SystemDefinedSubmoduleList/PortSubmoduleItem["+it.ID+"]", RuleSubslot, "port submodule in subslot %#x, outside 0x8000-0x8FFF", n)
+				v.warn(func() string { return p() + "/SystemDefinedSubmoduleList/PortSubmoduleItem[" + pathID(it.ID) + "]" },
+					RuleSubslot, "port submodule in subslot %#x, outside 0x8000-0x8FFF", n)
 			}
 		}
+	}
+}
+
+// checkReductionRatios warns about the values of a ReductionRatio list
+// that are no RT_CLASS_1 ratio: about the first maxSlotWarnings one by
+// one, about the others in one warning. A list of more than
+// maxReductionRatios values is not expanded: it gets one warning.
+func (v *validator) checkReductionRatios(path func() string, list string) {
+	rrs, err := ParseValueList(list, maxReductionRatios)
+	if errors.Is(err, profinet.ErrResourceExhausted) {
+		v.warn(path, RuleReductionRatio, "reduction ratio list %q has more than %d values: the ratios are the powers of two from 1 to 512", clip(list), maxReductionRatios)
+		return
+	}
+	if err != nil {
+		return
+	}
+	bad := 0
+	for _, rr := range rrs {
+		if rr >= 1 && rr <= 512 && rr&(rr-1) == 0 {
+			continue
+		}
+		if bad++; bad <= maxSlotWarnings {
+			v.warn(path, RuleReductionRatio, "reduction ratio %d is not a power of two from 1 to 512", rr)
+		}
+	}
+	if bad > maxSlotWarnings {
+		v.warn(path, RuleReductionRatio, "%d more reduction ratios are not a power of two from 1 to 512", bad-maxSlotWarnings)
 	}
 }

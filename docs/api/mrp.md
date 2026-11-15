@@ -132,8 +132,13 @@ type Config struct {
 	Prio uint16
 	// Profile is the timer profile; zero means Profile200.
 	Profile Profile
-	// OnChange is called after the ring state or a port state changed,
-	// never with the entity's lock held; it must not block.
+	// OnChange is called after the ring state or a port state changed.
+	// It runs on the entity's goroutines (the link poll, the receiver
+	// of each ring port, a timer); calls may overlap. It is never
+	// called with the entity's lock held and must not block. It may
+	// call Status; it must not call Close, which waits for the
+	// goroutine the callback runs on. A run-time failure in it is not
+	// recovered.
 	OnChange func()
 	Logger   profinet.Logger
 }
@@ -163,6 +168,9 @@ type Entity struct {
 
 	// testNow asks the manager's loop for a test round now.
 
+	// timers counts the timer callbacks that are past their check of
+	// ctx (made under mu): Close waits for them.
+
 }
 ```
 
@@ -182,7 +190,7 @@ New starts an entity.
 func (e *Entity) Close() error
 ```
 
-Close stops the entity. The ring ports keep their last state.
+Close stops the entity. The ring ports keep their last state: once Close has returned the entity changes no port state, flushes nothing and calls OnChange no more, also not from a timer that was already due. It is safe to call more than once and from multiple goroutines. It must not be called from OnChange: it waits for the goroutine that runs the callback.
 
 #### func (Entity) Status
 

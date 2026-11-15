@@ -52,6 +52,36 @@ do not grant it on shared hosts. The virtual network (`vnet`) needs none.
   (16 MiB, `gsdml.MaxModelRecordOctets`). A Connect for an ARUUID whose
   Connect still runs is refused; the RPC client takes an answer only from
   the host it called.
+- Fixed bounds on what files and the network can make the library keep or
+  compute (each is a constant in the package named; none is configurable
+  unless said):
+  - `gsdml`: a document has at most 1 048 576 elements (start tags,
+    counted before decoding; `profinet.ErrResourceExhausted` beyond). A
+    parsed document of that size occupies up to about 300 MiB. `Check`
+    lists at most 16 384 issues per severity plus one that counts the rest
+    (rule `limit`); its work follows the size of the document, not the
+    ranges in its slot and reduction ratio lists. `ToModel` charges
+    `MaxModelRecordOctets` for the module types and again for the modules
+    as plugged, once per slot, and refuses a module or device access point
+    with more than 1440 submodules.
+  - `model`: `Validate` refuses more than 1440 plugged submodules and more
+    than 16 MiB of parameter records in them (`profinet.ErrInvalidConfig`),
+    before any work per submodule, so `device.New` and
+    `Controller.AddDevice` never clone or write more.
+  - `gsdml/gsdx`: `Open` decodes at most 65 536 XML elements into the
+    package model (16 per ZIP entry where `MaxParts` allows more entries
+    than the default), lists at most 16 384 issues plus a count, and
+    parses a certificate part once.
+  - `dcp`: an Identify without `IdentifyOptions.Max` collects at most 4096
+    stations and ends with `profinet.ErrResourceExhausted` when one more
+    answers; `Max` replaces the bound.
+  - `netstack`: the ARP table holds at most 1024 addresses; a full table
+    learns a new address only from traffic for the stack itself, in place
+    of the entry used longest ago.
+  - `pnio`: the MultipleBlockHeaders of a PDRealData record nest at most
+    four deep; deeper records are refused as malformed.
+  - `snmp`: a request reads the LLDP neighbors once, whatever its kind and
+    number of variable bindings.
 - Concurrency is race-tested (`go test -race`) and chaos-tested with seeded
   loss, duplication, corruption, reordering and delay.
 - The DCP responder ignores other requesters for 3 s after a Get or Set, as

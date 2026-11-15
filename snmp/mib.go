@@ -24,10 +24,11 @@ type MIB struct {
 
 type reg struct {
 	prefix OID
-	fn     func() []VarBind
-	// get, when set, answers a Get of an instance below prefix that fn
-	// does not list (the virtual rows of a TimeFilter index).
-	get func(name OID) (Value, bool)
+	// read returns the instances below prefix and, when the subtree has
+	// instances that are not listed (the virtual rows of a TimeFilter
+	// index), a function that answers a Get of one of them from the
+	// same reading; nil otherwise.
+	read func() ([]VarBind, func(name OID) (Value, bool))
 }
 
 // NewMIB returns an empty MIB.
@@ -53,16 +54,19 @@ func (m *MIB) AddScalar(object OID, fn func() Value) error {
 // prefix (other names, duplicates and values that cannot be encoded are
 // ignored).
 func (m *MIB) AddSubtree(prefix OID, fn func() []VarBind) error {
-	return m.addSubtree(prefix, fn, nil)
+	if fn == nil {
+		return m.addSubtree(prefix, nil)
+	}
+	return m.addSubtree(prefix, func() ([]VarBind, func(OID) (Value, bool)) { return fn(), nil })
 }
 
-// addSubtree adds a subtree whose instances fn lists for GetNext and
-// whose other instances get answers for Get (nil: none).
-func (m *MIB) addSubtree(prefix OID, fn func() []VarBind, get func(OID) (Value, bool)) error {
+// addSubtree adds a subtree that read lists once for each request that
+// reads it (see reg.read).
+func (m *MIB) addSubtree(prefix OID, read func() ([]VarBind, func(OID) (Value, bool))) error {
 	if err := prefix.validate(); err != nil {
 		return err
 	}
-	if fn == nil {
+	if read == nil {
 		return fmt.Errorf("snmp: %w: nil provider for %s", profinet.ErrInvalidConfig, prefix)
 	}
 	m.mu.Lock()
@@ -72,19 +76,28 @@ func (m *MIB) addSubtree(prefix OID, fn func() []VarBind, get func(OID) (Value, 
 			return fmt.Errorf("snmp: %w: %s overlaps %s", profinet.ErrInvalidConfig, prefix, r.prefix)
 		}
 	}
-	regs := append(slices.Clip(m.regs), reg{prefix: append(OID(nil), prefix...), fn: fn, get: get})
+	regs := append(slices.Clip(m.regs), reg{prefix: append(OID(nil), prefix...), read: read})
 	slices.SortFunc(regs, func(a, b reg) int { return a.prefix.Compare(b.prefix) })
 	m.regs = regs
 	return nil
 }
 
 // view is the MIB as one request sees it: every subtree is read at most
-// once, so that the variable bindings of a response are consistent.
+// once, whatever the request is and however many of its variable
+// bindings name the subtree, so that the variable bindings of a response
+// are consistent.
 type view struct {
 	regs  []reg
-	cache map[int][]VarBind
+	cache map[int]reading
 	// v1 hides Counter64 instances (RFC 3584 section 4.2.2.1).
 	v1 bool
+}
+
+// reading is what a view keeps of a subtree it read: the instances, and
+// the answer to a Get of an instance that is not among them (nil: none).
+type reading struct {
+	rows []VarBind
+	get  func(name OID) (Value, bool)
 }
 
 func (m *MIB) view(v1 bool) *view {
@@ -95,13 +108,17 @@ func (m *MIB) view(v1 bool) *view {
 
 // rows returns the instances of subtree i, sorted, without duplicates or
 // names outside the subtree.
-func (v *view) rows(i int) []VarBind {
-	if rows, ok := v.cache[i]; ok {
-		return rows
+func (v *view) rows(i int) []VarBind { return v.reading(i).rows }
+
+// reading reads subtree i, the first time it is asked for.
+func (v *view) reading(i int) reading {
+	if rd, ok := v.cache[i]; ok {
+		return rd
 	}
 	r := v.regs[i]
+	list, get := r.read()
 	var rows []VarBind
-	for _, vb := range r.fn() {
+	for _, vb := range list {
 		if len(vb.Name) <= len(r.prefix) || !vb.Name.HasPrefix(r.prefix) || len(vb.Name) > MaxOIDLen || vb.Value.valid() != nil {
 			continue
 		}
@@ -113,10 +130,11 @@ func (v *view) rows(i int) []VarBind {
 	slices.SortStableFunc(rows, func(a, b VarBind) int { return a.Name.Compare(b.Name) })
 	rows = slices.CompactFunc(rows, func(a, b VarBind) bool { return a.Name.Equal(b.Name) })
 	if v.cache == nil {
-		v.cache = map[int][]VarBind{}
+		v.cache = map[int]reading{}
 	}
-	v.cache[i] = rows
-	return rows
+	rd := reading{rows: rows, get: get}
+	v.cache[i] = rd
+	return rd
 }
 
 // get returns the value of the instance name: a NoSuchInstance exception
@@ -127,13 +145,13 @@ func (v *view) get(name OID) Value {
 		if !name.HasPrefix(r.prefix) {
 			continue
 		}
-		rows := v.rows(i)
-		j, found := slices.BinarySearchFunc(rows, name, func(vb VarBind, n OID) int { return vb.Name.Compare(n) })
+		rd := v.reading(i)
+		j, found := slices.BinarySearchFunc(rd.rows, name, func(vb VarBind, n OID) int { return vb.Name.Compare(n) })
 		if found {
-			return rows[j].Value
+			return rd.rows[j].Value
 		}
-		if r.get != nil {
-			if val, ok := r.get(name); ok && val.valid() == nil && !val.Type.IsException() && (!v.v1 || val.Type != TypeCounter64) {
+		if rd.get != nil {
+			if val, ok := rd.get(name); ok && val.valid() == nil && !val.Type.IsException() && (!v.v1 || val.Type != TypeCounter64) {
 				return val
 			}
 		}

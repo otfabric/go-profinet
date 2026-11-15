@@ -2226,7 +2226,7 @@ DecodePDPortDataReal decodes a PDPortDataReal block.
 func DecodePDRealData(b []byte) ([]PDPortDataReal, error)
 ```
 
-DecodePDRealData decodes the PDRealData record (index 0xF841) and returns the PDPortDataReal blocks it holds, at the top level or in MultipleBlockHeaders; the other blocks (PDInterfaceDataReal, ...) are skipped.
+DecodePDRealData decodes the PDRealData record (index 0xF841) and returns the PDPortDataReal blocks it holds, at the top level or in MultipleBlockHeaders; the other blocks (PDInterfaceDataReal, ...) are skipped. MultipleBlockHeaders nested more than four deep are refused with an error matching profinet.ErrMalformed. With an error it returns the ports decoded before it.
 
 #### func (PDPortDataReal) Append
 
@@ -2301,7 +2301,7 @@ PDRealData is the content of the PDRealData record (index 0xF841): the real data
 func DecodePDRealDataRecord(b []byte) (PDRealData, error)
 ```
 
-DecodePDRealDataRecord decodes the PDRealData record: the interface's and the ports' real data, at the top level or in MultipleBlockHeaders. Other blocks are skipped.
+DecodePDRealDataRecord decodes the PDRealData record: the interface's and the ports' real data, at the top level or in MultipleBlockHeaders. Other blocks are skipped. MultipleBlockHeaders nested more than four deep are refused with an error matching profinet.ErrMalformed.
 
 ### type RTClass
 

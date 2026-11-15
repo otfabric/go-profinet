@@ -60,7 +60,8 @@ const (
 	PNSubtypePTCPStatus    uint8 = 6
 )
 
-// TLV is an undecoded TLV. Value aliases the decoded buffer.
+// TLV is an undecoded TLV. In a decoded Frame, Value is a copy: it does
+// not alias the buffer Decode was given.
 type TLV struct {
 	Type  uint8
 	Value []byte

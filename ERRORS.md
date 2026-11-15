@@ -115,6 +115,19 @@ whose sub-second field is a second or more; a Connect whose
 ModuleDiffBlock could not be encoded in 16 bits (Connect, CMRPC out of
 memory: `ErrResourceExhausted`).
 
+Fixed bounds (`ErrResourceExhausted` unless said): a GSDML document of
+more than 1 048 576 elements (`gsdml.Parse`); parameter records of more than
+16 MiB in the modules as plugged (`gsdml.ToModel`); a `[Content_Types].xml`
+with more elements than the package model may have (`gsdx.Open`); a DCP
+Identify without `Max` that more than 4096 stations answer (the 4096 are
+returned with the error). As `ErrInvalidConfig`: a model with more than
+1440 plugged submodules or more than 16 MiB of parameter records in them
+(`model.Validate`, and so `device.New` and `Controller.AddDevice`); an MRP
+profile with a negative `TestInterval`. As `ErrMalformed`: a GSDML module
+or device access point with more than 1440 submodules, or a Const
+ByteOffset or Ref BitOffset that is no number (`gsdml.ToModel`); a
+PDRealData record whose MultipleBlockHeaders nest more than four deep.
+
 The block encoders of `pnio` and `alarm.PDU.AppendPayload` return no error;
 given a length that does not fit, they panic with an error matching
 `ErrInvalidConfig`, as `strings.Repeat` does on misuse. controller and
@@ -122,6 +135,11 @@ device validate or recover at their boundary, so neither configuration nor
 a peer reaches that panic through them.
 
 ## Lifecycle errors
+
+A netstack socket that is closed, by its `Close`, by `Stack.Close` or
+because the stack stopped with its Mux, returns `net.ErrClosed` from
+`ReadFrom` and an error matching both `net.ErrClosed` and
+`profinet.ErrClosed` from `WriteTo`.
 
 `controller.Device.State` returns the error of the last failure of the
 lifecycle (resolve, Connect, parameterization, ApplicationReady, abort) next

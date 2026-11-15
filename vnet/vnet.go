@@ -195,7 +195,8 @@ func (n *Network) Endpoints() []*Endpoint {
 	return append([]*Endpoint(nil), n.endpoints...)
 }
 
-// Close detaches and closes every endpoint.
+// Close detaches and closes every endpoint. It is safe to call more than
+// once and from multiple goroutines.
 func (n *Network) Close() error {
 	n.mu.Lock()
 	n.closed = true
@@ -550,7 +551,8 @@ func (e *Endpoint) runLine(line chan delayed) {
 	}
 }
 
-// Close detaches the endpoint from the network and unblocks ReadFrame.
+// Close detaches the endpoint from the network and unblocks ReadFrame. It
+// is safe to call more than once and from multiple goroutines.
 func (e *Endpoint) Close() error {
 	e.once.Do(func() {
 		close(e.closed)
