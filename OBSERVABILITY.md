@@ -61,7 +61,7 @@ keeps Prometheus-style counters this way.
 |-----------|--------|----------|
 | `l2.Mux` | `Stats()` | `Received`, `Malformed`, `Unclaimed` (no subscription matched), `Overflow` (a subscription's queue was full), `Sent` |
 | `dcp.Client` | `Malformed()` | DCP frames that did not decode |
-| `dcp.Responder` | `Stats()` | `Identify`, `Get`, `Set`, `Malformed`, `Ignored` (not for this station, or the 3 s lock of another requester) |
+| `dcp.Responder` | `Stats()` | `Identify`, `Get`, `Set`, `Malformed`, `Ignored` (not for this station), `RateLimited`, `Refused` (Set blocks refused, including those answered with "resource error" during another requester's transaction) |
 | `lldp.Agent` | `Sent()`, `Malformed()` | LLDP frames sent, frames that did not decode |
 | `rpc.Client` | `Malformed()`, `Foreign()` | packets that did not decode, packets for a call from another host than the called one (dropped) |
 | `rpc.Server` | `Stats()` | `Requests`, `Retransmits` (answered from the response cache), `Malformed`, `Rejected`, `Busy` |

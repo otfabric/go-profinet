@@ -64,7 +64,8 @@ type ResponderStats struct {
 	Identify, Get, Set, Malformed, Ignored uint64
 	// RateLimited counts the Identify responses and Set requests dropped
 	// by the policy's rate limits; Refused the Set blocks refused, by the
-	// read-only mode or the station.
+	// read-only mode, the station or another requester's open Set
+	// transaction.
 	RateLimited, Refused uint64
 	// Hello is the number of DCP Hello requests sent.
 	Hello uint64
@@ -87,12 +88,13 @@ type Responder struct {
 	// only the run goroutine uses them.
 	identifyLim, setLim *limiter
 
-	// lockSrc is the requester of the last Get or Set and lockUntil the
-	// end of its lock (lockFor after it): requests of other sources are
-	// ignored until then. Only the run goroutine uses them.
-	lockSrc   ethernet.MAC
-	lockUntil time.Time
-	lockFor   time.Duration
+	// txSrc is the requester of an open Set transaction (a Start
+	// Transaction block without its End Transaction yet) and txUntil its
+	// end (txFor after the requester's last Set): the Sets of other
+	// sources are refused until then. Only the run goroutine uses them.
+	txSrc   ethernet.MAC
+	txUntil time.Time
+	txFor   time.Duration
 
 	// helloMu guards the running Hello sequence (see StartHello).
 	helloMu   sync.Mutex
@@ -126,7 +128,7 @@ func NewResponder(mux *l2.Mux, station Station, opts ResponderOptions) (*Respond
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &Responder{mux: mux, sub: sub, station: station, opts: opts, log: log, ctx: ctx, cancel: cancel, lockFor: requesterLock,
+	r := &Responder{mux: mux, sub: sub, station: station, opts: opts, log: log, ctx: ctx, cancel: cancel, txFor: transactionHold,
 		identifyLim: newLimiter(pol.IdentifyLimit, pol.Sources), setLim: newLimiter(pol.SetLimit, pol.Sources)}
 	// The spread of Identify responses: a fixed fraction of the window,
 	// derived from the MAC address as IEC 61158-6-10 suggests.
@@ -196,26 +198,22 @@ func (r *Responder) run(ctx context.Context) {
 		if f.Type != TypeRequest {
 			continue
 		}
-		getSet := f.FrameID == FrameIDGetSet && ef.Dst == own && (f.Service == ServiceGet || f.Service == ServiceSet)
-		if getSet && r.locked(ef.Src) {
-			r.ignored.Add(1)
-			r.log.Debugf("dcp: ignore %s from %s: locked by %s", f.Service, ef.Src, r.lockSrc)
-			continue
-		}
 		switch {
 		case f.FrameID == FrameIDIdentifyRequest && f.Service == ServiceIdentify:
 			r.handleIdentify(ctx, ef.Src, &f)
 		case f.FrameID == FrameIDGetSet && ef.Dst == own && f.Service == ServiceGet:
 			r.get.Add(1)
 			r.handleGet(ctx, ef.Src, &f)
-			r.lock(ef.Src)
 		case f.FrameID == FrameIDGetSet && ef.Dst == own && f.Service == ServiceSet:
 			if !r.admit(r.setLim, ef.Src, ServiceSet) {
 				continue
 			}
 			r.set.Add(1)
+			if r.busy(ef.Src) {
+				r.refuseSet(ctx, ef.Src, &f)
+				continue
+			}
 			r.handleSet(ctx, ef.Src, &f)
-			r.lock(ef.Src)
 		case f.FrameID == FrameIDGetSet && ef.Dst == own:
 			r.audit(AuditEvent{Source: ef.Src, Service: f.Service, Outcome: AuditUnsupported})
 			r.reply(ctx, ef.Src, &Frame{FrameID: FrameIDGetSet, Service: f.Service, Type: TypeResponseUnsupported, Xid: f.Xid})
@@ -225,20 +223,56 @@ func (r *Responder) run(ctx context.Context) {
 	}
 }
 
-// requesterLock is how long the responder ignores other requesters after
-// a Get or Set.
-const requesterLock = 3 * time.Second
+// transactionHold bounds a Set transaction: a requester that sent a Start
+// Transaction block (Control option, suboption 1) and no End Transaction
+// (suboption 2) holds the device for this long after its last Set. The
+// value is the 3 s "client hold time" that rt-labs p-net uses
+// (PF_DCP_SAM_TIMEOUT, citing the PROFINET services specification,
+// 6.3.11.2.2); go-profinet applies it only to an open transaction, not
+// after every Get or Set as p-net does.
+const transactionHold = 3 * time.Second
 
-// locked reports whether a Get or Set from src falls in the lock of
-// another requester.
-func (r *Responder) locked(src ethernet.MAC) bool {
-	return src != r.lockSrc && time.Now().Before(r.lockUntil)
+// busy reports whether a Set from src falls in the open Set transaction
+// of another requester.
+func (r *Responder) busy(src ethernet.MAC) bool {
+	return src != r.txSrc && time.Now().Before(r.txUntil)
 }
 
-// lock starts or extends the lock of requester src.
-func (r *Responder) lock(src ethernet.MAC) {
-	r.lockSrc = src
-	r.lockUntil = time.Now().Add(r.lockFor)
+// refuseSet answers a Set that falls in another requester's transaction:
+// every block gets a Control/Response with BlockError 4 (resource error),
+// so that the requester fails at once instead of waiting for a response.
+// Get, Identify and the requester holding the transaction are answered
+// as usual. The DCP block error values are those of IEC 61158-6-10 as
+// Wireshark's PN-DCP dissector names them; the choice of resource error
+// for a device that is busy with another requester is go-profinet's.
+func (r *Responder) refuseSet(ctx context.Context, src ethernet.MAC, f *Frame) {
+	r.log.Debugf("dcp: refuse Set from %s: transaction of %s", src, r.txSrc)
+	resp := &Frame{FrameID: FrameIDGetSet, Service: ServiceSet, Type: TypeResponseSuccess, Xid: f.Xid}
+	for _, b := range f.Blocks {
+		r.refused.Add(1)
+		r.audit(AuditEvent{Source: src, Service: ServiceSet, Block: b.ID, Qualifier: b.Info, Outcome: AuditRefused, Error: BlockErrorResource})
+		resp.Blocks = append(resp.Blocks, Block{ID: CtrlResponse, Data: AppendControlResponse(nil, ControlResponse{Block: b.ID, Error: BlockErrorResource})})
+	}
+	r.reply(ctx, src, resp)
+}
+
+// transaction follows the Start and End Transaction blocks of a Set from
+// src, in their order: a Start opens (or restarts) the transaction of src,
+// an End closes it, and any other Set of the holder extends it.
+func (r *Responder) transaction(src ethernet.MAC, blocks []Block) {
+	now := time.Now()
+	if src == r.txSrc && now.Before(r.txUntil) {
+		r.txUntil = now.Add(r.txFor)
+	}
+	for _, b := range blocks {
+		switch b.ID {
+		case CtrlStart:
+			r.txSrc, r.txUntil = src, now.Add(r.txFor)
+		case CtrlStop:
+			r.txSrc, r.txUntil = ethernet.MAC{}, time.Time{}
+		default: // other blocks leave the transaction as it is
+		}
+	}
 }
 
 // matches reports whether the identity matches every filter block.
@@ -340,6 +374,7 @@ func (r *Responder) handleGet(ctx context.Context, src ethernet.MAC, f *Frame) {
 func (r *Responder) handleSet(ctx context.Context, src ethernet.MAC, f *Frame) {
 	// A tool is configuring the device: it no longer announces itself.
 	r.stopHelloAsync()
+	r.transaction(src, f.Blocks)
 	resp := &Frame{FrameID: FrameIDGetSet, Service: ServiceSet, Type: TypeResponseSuccess, Xid: f.Xid}
 	for _, b := range f.Blocks {
 		outcome := AuditApplied

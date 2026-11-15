@@ -1037,9 +1037,10 @@ type Responder struct {
 	// identifyLim and setLim are the policy's rate limits (nil: none);
 	// only the run goroutine uses them.
 
-	// lockSrc is the requester of the last Get or Set and lockUntil the
-	// end of its lock (lockFor after it): requests of other sources are
-	// ignored until then. Only the run goroutine uses them.
+	// txSrc is the requester of an open Set transaction (a Start
+	// Transaction block without its End Transaction yet) and txUntil its
+	// end (txFor after the requester's last Set): the Sets of other
+	// sources are refused until then. Only the run goroutine uses them.
 
 	// helloMu guards the running Hello sequence (see StartHello).
 
@@ -1115,7 +1116,8 @@ type ResponderStats struct {
 	Identify, Get, Set, Malformed, Ignored uint64
 	// RateLimited counts the Identify responses and Set requests dropped
 	// by the policy's rate limits; Refused the Set blocks refused, by the
-	// read-only mode or the station.
+	// read-only mode, the station or another requester's open Set
+	// transaction.
 	RateLimited, Refused uint64
 	// Hello is the number of DCP Hello requests sent.
 	Hello uint64
