@@ -50,6 +50,7 @@ func TestReleasedAlarmHandoverBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer ep.Close()
 	const N = 50
 	for i := range N {
 		note := pnio.AlarmNotification{Type: pnio.AlarmReleased, Slot: 1, Subslot: 1, ModuleIdentNumber: 0x10, SubmoduleIdentNumber: 0x11, Specifier: uint16(i) & pnio.AlarmSpecSeqMask}
@@ -57,7 +58,9 @@ func TestReleasedAlarmHandoverBounded(t *testing.T) {
 			t.Fatalf("alarm %d: %v", i, err)
 		}
 	}
-	time.Sleep(100 * time.Millisecond)
+	// Every alarm has reached the controller; the handovers it started
+	// wait in PrmEnd (hang).
+	eventually(t, 5*time.Second, "the alarms to arrive", func() bool { return cd.Stats().Alarms == N })
 	if got := handovers(); got > 1 {
 		t.Fatalf("%d handovers of one submodule at once", got)
 	}

@@ -375,14 +375,17 @@ func AppendPDRealDataRecord(b []byte, api uint32, rd *PDRealData) []byte {
 
 // DecodePDRealDataRecord decodes the PDRealData record: the interface's
 // and the ports' real data, at the top level or in MultipleBlockHeaders.
-// Other blocks are skipped.
+// Other blocks are skipped. MultipleBlockHeaders nested more than four
+// deep are refused with an error matching profinet.ErrMalformed.
 func DecodePDRealDataRecord(b []byte) (PDRealData, error) {
 	var rd PDRealData
-	err := decodePDRealData(b, 0, 0, &rd)
+	err := decodePDRealData(b, 0, 0, 0, &rd)
 	return rd, err
 }
 
-func decodePDRealData(b []byte, slot, subslot uint16, rd *PDRealData) error {
+// decodePDRealData decodes the blocks of b, which lies in depth
+// MultipleBlockHeaders, the innermost for slot and subslot, into rd.
+func decodePDRealData(b []byte, depth int, slot, subslot uint16, rd *PDRealData) error {
 	blocks, err := SplitBlocks(b)
 	if err != nil {
 		return err
@@ -409,7 +412,10 @@ func decodePDRealData(b []byte, slot, subslot uint16, rd *PDRealData) error {
 			if r.err != nil {
 				return r.err
 			}
-			if err := decodePDRealData(r.rest(), s, ss, rd); err != nil {
+			if depth == maxPDRealDataNesting {
+				return errPDRealDataNesting()
+			}
+			if err := decodePDRealData(r.rest(), depth+1, s, ss, rd); err != nil {
 				return err
 			}
 		default:

@@ -99,7 +99,8 @@ func lldpID(b []byte) Value {
 // AddLLDP adds the local system data and lldpRemTable of the LLDP-MIB
 // with the values local and remote return; remote may be nil (no
 // neighbors). Ports and rows with indexes out of their range are left
-// out.
+// out. remote is called once for each request that reads lldpRemTable,
+// however many of its variable bindings name the table.
 func (m *MIB) AddLLDP(local func() LLDPLocal, remote func() []LLDPRemote) error {
 	scalars := []struct {
 		sub uint32
@@ -156,38 +157,41 @@ func (m *MIB) AddLLDP(local func() LLDPLocal, remote func() []LLDPRemote) error 
 			col(c.n, rem.Append(c.n, filter, port, idx), c.v)
 		}
 	}
-	list := func() []VarBind {
+	// One reading of the neighbors serves a whole request: the rows at
+	// filter 0 that a walk lists, and the Gets of other filter values.
+	read := func() ([]VarBind, func(OID) (Value, bool)) {
+		rows := remote()
 		var out []VarBind
-		for _, r := range remote() {
+		for _, r := range rows {
 			if port, idx, ok := lldpRowIndex(r); ok {
 				columns(r, 0, port, idx, func(_ uint32, name OID, v Value) { out = append(out, VarBind{Name: name, Value: v}) })
 			}
 		}
-		return out
-	}
-	// A Get of filter t > 0: the row changed at or after t.
-	get := func(name OID) (Value, bool) {
-		if len(name) != len(rem)+4 {
+		// A Get of filter t > 0: the row changed at or after t.
+		get := func(name OID) (Value, bool) {
+			if len(name) != len(rem)+4 {
+				return Value{}, false
+			}
+			c, t, port, idx := name[len(rem)], name[len(rem)+1], name[len(rem)+2], name[len(rem)+3]
+			for _, r := range rows {
+				p, i, ok := lldpRowIndex(r)
+				if !ok || p != port || i != idx || t > r.TimeMark {
+					continue
+				}
+				var val Value
+				found := false
+				columns(r, t, p, i, func(n uint32, _ OID, v Value) {
+					if n == c {
+						val, found = v, true
+					}
+				})
+				return val, found
+			}
 			return Value{}, false
 		}
-		c, t, port, idx := name[len(rem)], name[len(rem)+1], name[len(rem)+2], name[len(rem)+3]
-		for _, r := range remote() {
-			p, i, ok := lldpRowIndex(r)
-			if !ok || p != port || i != idx || t > r.TimeMark {
-				continue
-			}
-			var val Value
-			found := false
-			columns(r, t, p, i, func(n uint32, _ OID, v Value) {
-				if n == c {
-					val, found = v, true
-				}
-			})
-			return val, found
-		}
-		return Value{}, false
+		return out, get
 	}
-	return m.addSubtree(OIDLLDPRemTable, list, get)
+	return m.addSubtree(OIDLLDPRemTable, read)
 }
 
 // lldpRowIndex returns the lldpRemLocalPortNum and lldpRemIndex

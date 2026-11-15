@@ -168,6 +168,7 @@ func hostOf(a net.Addr) string {
 }
 
 // Close stops the client; calls in progress fail with profinet.ErrClosed.
+// It is safe to call more than once and from multiple goroutines.
 func (c *Client) Close() error {
 	var err error
 	c.once.Do(func() {

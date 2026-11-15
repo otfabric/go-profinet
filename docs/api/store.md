@@ -68,7 +68,7 @@ Dir is a Store in a directory: the value of key is the file key.v, its previous 
 func OpenDir(path string, opts DirOptions) (*Dir, error)
 ```
 
-OpenDir opens (and creates, with mode 0o700) the directory of a Dir. It removes the temporary files an interrupted Save left.
+OpenDir opens (and creates, with mode 0o700) the directory of a Dir. It removes the temporary files an interrupted Save left: the regular files of the directory itself that are named as Save names them, a valid key followed by ".tmp" and decimal digits. The files of the values (key.v, key.v.prev) and every other file stay, whatever the key or the path contains.
 
 #### func (Dir) Delete
 
@@ -76,7 +76,7 @@ OpenDir opens (and creates, with mode 0o700) the directory of a Dir. It removes 
 func (d *Dir) Delete(ctx context.Context, key string) error
 ```
 
-Delete implements Store: both versions go.
+Delete implements Store: both versions go, the previous one first, so that a Delete that ends between the two leaves the current value and never brings back the one before it.
 
 #### func (Dir) Load
 
@@ -112,8 +112,12 @@ type DirOptions struct {
 	// atomic against a crash of the program but not of the machine.
 	NoSync bool
 	// OnRecover is called when Load found a value corrupt or missing and
-	// returned the previous version instead; cause says why. It must not
-	// block.
+	// returned the previous version instead; cause says why. It runs on
+	// the goroutine that called Load, before Load returns and with no
+	// lock of the Dir held, so it may call Load, Save and Delete (a
+	// Load of the same key from it reports the recovery again). It must
+	// not block. A run-time failure in it is not recovered: it reaches
+	// the caller of Load.
 	OnRecover func(key string, cause error)
 }
 ```

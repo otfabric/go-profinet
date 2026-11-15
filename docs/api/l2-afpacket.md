@@ -67,7 +67,7 @@ Open opens a port on the named interface.
 func (p *Port) Close() error
 ```
 
-Close implements l2.Port.
+Close implements l2.Port. It is safe to call more than once and from multiple goroutines.
 
 #### func (Port) HardwareAddr
 

@@ -63,7 +63,7 @@ MaxDocumentSize bounds the size of a document Parse reads. Vendor files reach 15
 const MaxModelRecordOctets = 16 << 20
 ```
 
-MaxModelRecordOctets bounds the octets of all parameter records of the model ToModel builds.
+MaxModelRecordOctets bounds the octets of all parameter records of the model ToModel builds, counted two ways: the records of the module types it converts, and the records of the device access point and of the modules as they are plugged, where a module in several slots counts once per slot. Beyond either, ToModel returns an error matching profinet.ErrResourceExhausted.
 
 ```go
 const MaxRecordLength = 65535
@@ -153,6 +153,8 @@ func ToModel(doc *Document, dapID string) (*model.Device, error)
 
 ToModel converts the device access point dapID (the first one when empty) of a document into a device model: the DAP, the modules that are fixed or used in slots, and the other usable modules as the catalog.
 
+It returns an error matching profinet.ErrMalformed for a module or a device access point with more than 1440 submodules, which is more than a C\_SDU carries, and one matching profinet.ErrResourceExhausted for parameter records beyond MaxModelRecordOctets.
+
 ### func Validate
 
 ```go
@@ -185,7 +187,7 @@ FromModel generates a GSDML document that describes a device model: the identity
 func Parse(r io.Reader) (*Document, error)
 ```
 
-Parse reads a GSDML document. UTF-8 (with or without a byte order mark) and ISO-8859-1 encodings are accepted.
+Parse reads a GSDML document. UTF-8 (with or without a byte order mark) and ISO-8859-1 encodings are accepted. A document larger than MaxDocumentSize, or with more elements than ParseBytes reads, is refused with an error matching profinet.ErrResourceExhausted.
 
 #### func ParseBytes
 
@@ -193,7 +195,7 @@ Parse reads a GSDML document. UTF-8 (with or without a byte order mark) and ISO-
 func ParseBytes(data []byte) (*Document, error)
 ```
 
-ParseBytes reads a GSDML document from data.
+ParseBytes reads a GSDML document from data. A document with more than 1 048 576 elements is refused with an error matching profinet.ErrResourceExhausted before it is decoded.
 
 #### func (Document) Text
 
@@ -201,7 +203,7 @@ ParseBytes reads a GSDML document from data.
 func (doc *Document) Text(id string) string
 ```
 
-Text returns the text of a TextId in the primary language, or the id itself when there is none.
+Text returns the text of a TextId in the primary language, or the id itself when there is none. It goes through the texts for every call; ToModel looks its texts up in a table it makes once.
 
 ### type GenerateOptions
 
@@ -235,7 +237,9 @@ type Issue struct {
 	Message string `json:"message"`
 	// Severity grades the issue; Validate reports only errors.
 	Severity Severity `json:"severity"`
-	// Rule names the rule (Rule*); empty means RuleStructure.
+	// Rule names the rule (Rule*); empty means RuleStructure. The issue
+	// that closes a severity with more issues than Check lists has the
+	// rule "limit".
 	Rule string `json:"rule,omitempty"`
 }
 ```
@@ -280,6 +284,8 @@ func Check(doc *Document) Report
 ```
 
 Check validates a document against the catalog (as Validate does) and the semantic rules, and lists the content it did not validate. Nothing it reports makes it PI's GSDML checker.
+
+The report is bounded: Check lists the first 16 384 issues of each severity, and one more issue of that severity with the rule "limit" then says how many it left out; a module reference gets at most eight warnings per slot list and rule and an interface at most eight per reduction ratio list, each followed by one that counts the rest; an ID in the path of an issue of the semantic rules is quoted up to 256 octets. The slot rules look at the slot numbers 0 to 65535: a list is warned about once for the values above them.
 
 #### func (Report) Count
 

@@ -994,11 +994,16 @@ func BenchmarkDecode(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(buf)))
 	for i := 0; i < b.N; i++ {
-		if _, err := Decode(buf); err != nil {
+		var err error
+		if benchFrame, err = Decode(buf); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
+
+// benchFrame keeps the result of BenchmarkDecode, so that the decoding it
+// measures is not optimised away.
+var benchFrame Frame
 
 func BenchmarkAppendTo(b *testing.B) {
 	id := Identity{NameOfStation: "plc-1.line-2", TypeOfStation: "go-profinet", VendorID: 1, DeviceID: 2, Role: RoleIODevice, HasInstance: true}

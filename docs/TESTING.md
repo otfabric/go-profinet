@@ -6,10 +6,12 @@ on real Layer 2 networks.
 | Tier | What | How to run |
 |------|------|------------|
 | Unit | every codec with golden vectors written from the standard, every state machine, every option and error path | `make test` (race detector) |
-| Fuzz | every decoder of network input and of documents (34 targets): no panic, and what decodes re-encodes to the same value | `make fuzz` (`FUZZTIME`, 30 s each; 10 s in CI) |
+| Fuzz | every decoder of network input and of documents (39 targets, among them the receive path of `netstack`, the walk of a BPF read buffer, the MRP manager option and the readers of `internal/capture`): every input is handled without a run-time failure, and what decodes re-encodes to the same value | `make fuzz` (`FUZZTIME`, 30 s each; 10 s in CI; 5 min each in the Extended workflow, every night) |
 | End to end | controller and devices on the virtual network: startup modes, records, alarms, diagnosis, ModuleDiff, IP assignment and rename, many devices, recovery, activity timeouts, a second controller, reset, topology | `make test-e2e` |
 | Chaos | the same with seeded loss, duplication, corruption, reordering, delay and jitter, a reconnect storm, malformed input of every kind | part of `make test-e2e` (seeds are logged; `vnet.New(seed)` reproduces) |
 | Chaos monkey | a controller with three devices under a seeded random sequence of disruptions (fault profiles, link flaps, device restarts, renames, devices removed and re-added, diagnosis storms, record and output traffic); afterwards every AR must be Running with fresh data both ways and working records, and no goroutine may be left (`TestChaosMonkey`; 40 steps, 400 in the extended workflow; `PROFINET_CHAOS_SEED` and `PROFINET_MONKEY_STEPS` reproduce a run). Verified with seeds 7, 42, 99 (200 steps), 1000–1002 | part of `make test-e2e` |
+| Lifecycle contracts | rows L1 to L16 of the organisation's contract test matrix, per long-lived type: see [Lifecycle contract tests](#lifecycle-contract-tests) | `make test` |
+| Goroutines left behind | the packages that start goroutines (`l2`, `dcp`, `rpc`, `alarm`, `rt`, `lldp`, `mrp`, `snmp`, `netstack`, `device`, `controller`) end their tests through `internal/leakcheck`: tests that pass and leave a goroutine fail, and the report names the goroutine by its function and by what started it (a comparison of stacks, not of counts) | `make test` (`TestMain` of each package) |
 | Leaks | three full sessions (an AR with cyclic data, records, an alarm, a device access AR, DCP, LLDP), then everything closed: the goroutine count returns to its baseline (`TestNoLeaks`; it fails with 11 goroutines left when the controller is not closed) | part of `make test-e2e` |
 | Real Layer 2 | the AF_PACKET (Linux) and BPF (macOS) backends on a veth or feth pair, and an AR over them | `make l2-test` (Docker), CI jobs `l2-linux`, `l2-macos` |
 | Interop | p-net, pnio-rs, profinet-py, pnio-dcp, umrp and Net-SNMP in containers (MRP rings of veth cables), captures decoded by scapy and tshark | `make interop-images && make interop` ([INTEROPERABILITY.md](../INTEROPERABILITY.md)) |
@@ -22,6 +24,40 @@ on real Layer 2 networks.
 Coverage is gated at 90 % of the statements of the library packages, and at
 85 % of each package (`make coverage-pkg-check`, `COVER_PKG_MIN`)
 ([COVERAGE.md](COVERAGE.md)).
+
+## Lifecycle contract tests
+
+The long-lived types and the rows of the contract test matrix
+(otfabric/engineering, standards/lifecycle.md) that apply to them. A row
+names the tests that assert it; "open" is a row that applies and has no
+test yet; "n/a" is a row that cannot apply, with the reason.
+
+Long-lived types: `l2.Mux` and `Subscription`, `dcp.Client`,
+`dcp.Responder`, `rpc.Client`, `rpc.Server`, `alarm.Manager` and
+`Endpoint`, `rt.Dispatcher`, `rt.Scheduler`, `lldp.Agent`, `mrp.Entity`,
+`snmp.Agent`, `netstack.Stack` and `PacketConn`, `bridge.Bridge`,
+`vnet.Network` and `Endpoint`, the raw ports (`l2/afpacket`, `l2/bpf`,
+`l2/npcap`), `device.Device`, `controller.Controller` and `Device`.
+`store.Dir` has no `Close`; its callback is in rows L9 and L10.
+
+| Row | Tests | Open | n/a |
+|-----|-------|------|-----|
+| L1 Close twice | l2 `TestMuxClose`; alarm `TestSendTimeoutCancelClose`, `TestManagerRefsAndRouting`; rt `TestSchedulerClose`, `TestCloseConcurrent`; device `TestConnectResources`, `TestCloseConcurrent`; controller `TestAddDeviceValidation`, `TestCloseConcurrent`; snmp `TestServe`, `TestCloseConcurrent`; lldp `TestAgentsExchange`; netstack `TestStackClose`; vnet `TestEndpointClose`, `TestNetworkClose`; rpc `TestCloseConcurrent`; mrp `TestTimersAfterClose` | bridge (`TestQueueOverflowAndClose` closes twice without asserting the result); afpacket and bpf (implicit in their tests) | npcap: the package has no tests (LIMITATIONS.md) |
+| L2 Two goroutines call Close | `TestCloseConcurrent` in l2 (Mux and Subscription), dcp (Client and Responder), rpc (Client and Server), alarm (Manager and Endpoint), rt (Dispatcher and Scheduler), lldp, snmp, l2/bridge, vnet (Network and Endpoint), device, controller (Controller and Device); netstack `TestStackCloseConcurrent` (Stack and PacketConn); mrp `TestTimersAfterClose` | afpacket, bpf (need a privileged interface: `make l2-test`) | npcap: no tests |
+| L3 Close during a blocked read | l2 `TestMuxClose`; dcp `TestIdentifyContext`, `TestClientAgainstFakeDevice`; rpc `TestTimeoutAndCancel`; netstack `TestReadDeadlineAndClose`, `TestStackClose`, `TestMuxStopClosesSockets` (the stack stops with its Mux); vnet `TestEndpointClose`; afpacket `TestOwnFramesAndClose`; snmp `TestServe` | `rpc.Server` on a socket it does not own (the deadline path); bpf (a read in progress ends by the kernel's read timeout) | bridge ports: `Close` of a local port is a no-op by design |
+| L4 Close during a write | alarm `TestSendTimeoutCancelClose`; rpc `TestClientCloseDuringRetransmit`; netstack `TestStackClose`, `TestResolveLeavesNoWaiter`; vnet `TestCloseWithPendingFaults` | lldp and mrp (their sends take a context; no test closes during one) | types that never block in a write: `rt.Scheduler`, `rt.Dispatcher` |
+| L5 Close during handshake | device `TestCloseDuringConnect`, `TestConnectDuringResetToFactory`, `TestAbortDuringConnect`, `TestPeerAbortDuringConnect`; controller `TestStatsWhileConnecting`; e2e `TestCloseDuringPhase` | | types without a handshake: every type but `device.Device` and `controller.Device` |
+| L6 Cancel a pending request | rpc `TestTimeoutAndCancel`; dcp `TestIdentifyContext`; alarm `TestSendTimeoutCancelClose`; netstack `TestWriteDeadline`, `TestResolveLeavesNoWaiter` (the waiter of a cancelled resolution is gone and the next one works) | "the slot is free and the next request succeeds" for `rpc.Client` and `dcp.Client` | types without requests |
+| L7 Response after the request timed out | rpc `TestClientFack` (packets of another sequence number are ignored); dcp `TestClientQueueFull` | a counter of late responses in `rpc.Client` and `dcp.Client` (they are dropped, not counted) | types without requests |
+| L8 Response after reconnect | | controller: no test that an ApplicationReady or alarm of the previous AR cannot complete the new one (the code compares ARUUID and session key) | `rpc` and `dcp`: datagrams, no connection |
+| L9 Callback calls a public method | controller `TestCallbacksMayUseTheDevice` (OnState, OnAlarm); device `TestHandlerMayUseTheDevice`; alarm `TestOnDataMaySend`; lldp `TestOnChangeMayUseTheAgent`; mrp `TestOnChangeMayReadStatus`; store `TestOnRecoverMayUseTheDir`; snmp (the provider of the test MIB reads the agent's statistics in every agent test, `newTestAgent`) | `l2.Matcher`, `rt.Consumer.OnUpdate`, `alarm.EndpointConfig.OnErr` | types without callbacks |
+| L10 Callback calls Close | store `TestOnRecoverMayUseTheDir` (`Dir` has no Close; the callback saves and deletes) | | every other callback: its documentation forbids calling `Close` from it, because `Close` waits for the goroutine the callback runs on (`controller.DeviceConfig`, `device.Handler`, `alarm.EndpointConfig`, `lldp.AgentOptions`, `mrp.Config`) |
+| L11 Slow callback | alarm `TestSlowApplication` | `l2.Matcher`, `rt.Consumer.OnUpdate`, lldp and mrp `OnChange` (documented "must not block", run on the receiving goroutine) | types without callbacks |
+| L12 Queue at capacity | l2 `TestOverflow`; dcp `TestClientQueueFull`, `TestLimiter`, `TestRateLimits`, `TestIdentifyBound`; rpc `TestNewerCallOnExecutingActivityRefused`, `TestServerBusy`; snmp `TestRateLimit`; netstack `TestReceiveFiltering`, `TestARPTableBound`; bridge `TestFDBBoundAndFlush`; vnet `TestQueueOverflow`; lldp `TestAgentTable` | the subscription queue of `mrp.Entity` (counted in the Mux only); a counter for a full LLDP neighbor table and for a full ARP table | |
+| L13 Concurrent sessions | device `TestConcurrentConnects`, `TestTwoConnectsBothAccepted`, `TestConcurrentConnectsOneARUUID`, `TestApplicationReadyFaultFromOtherController`; rpc `TestConcurrentCalls`; e2e (shared device) | | single-session types |
+| L14 Failure during construction | device `TestNewFailureReleases` and controller `TestNewFailureReleases` (each socket failing in turn: the sockets opened before are closed, no goroutine left); dcp `TestNewClientClosedMux`; alarm `TestNewManagerClosedMux`; rt `TestDispatcherClosedMux`; lldp `TestNewAgentErrors`; store `TestDirOpen`, `TestDirFailures`; mrp `TestTestIntervalValidated` | afpacket and bpf: the descriptor after a failed bind; `mrp.New` when the second Subscribe fails | |
+| L15 Shutdown(ctx) | | | no type has a graceful shutdown; `controller.Close` releases every AR first, bounded by `RPCTimeout` |
+| L16 Close racing reconnect | e2e `TestCloseDuringPhase` (Close in every phase of the controller's lifecycle); mrp `TestTimersAfterClose`, `TestCloseWaitsForTimerCallback` (no timer acts after Close) | controller: Close during the backoff wait with a pending Hello wake-up | types without reconnect or timers |
 
 ## The virtual network
 

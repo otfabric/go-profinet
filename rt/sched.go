@@ -137,7 +137,9 @@ func (s *Scheduler) Remove(t *Task) {
 	t.mu.Unlock()
 }
 
-// Close stops the scheduler.
+// Close stops the scheduler and waits for a task that is running. It is
+// safe to call more than once and from multiple goroutines, but not from
+// a task.
 func (s *Scheduler) Close() {
 	s.once.Do(func() { close(s.done) })
 	<-s.exited

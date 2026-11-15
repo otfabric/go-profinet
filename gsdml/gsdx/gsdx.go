@@ -52,9 +52,25 @@ const (
 	RatioFloor = 64 << 10
 )
 
+// Bounds of the package model Open builds, beside the limits of Options.
+const (
+	// elementsPerEntry is the number of XML elements Open decodes into
+	// the package model ([Content_Types].xml, the relationships parts and
+	// the signature parts together) per ZIP entry: 65 536 for the
+	// DefaultMaxParts entries, more where Options.MaxParts allows more
+	// entries. A package needs an Override and a few relationships per
+	// part.
+	elementsPerEntry = 16
+	// maxIssues is the number of Issues Open lists; one more then says
+	// how many it left out.
+	maxIssues = 1 << 14
+)
+
 // Options bound what Open reads. A zero field takes its default.
 type Options struct {
-	// MaxParts bounds the number of ZIP entries.
+	// MaxParts bounds the number of ZIP entries. Above DefaultMaxParts it
+	// also raises the bound on the XML elements of the package model
+	// (see Open).
 	MaxParts int
 	// MaxPartSize bounds the uncompressed size of one entry.
 	MaxPartSize int64
@@ -168,6 +184,14 @@ type Package struct {
 	// by lowercased part name and digest method: each part is hashed once
 	// per method.
 	digests map[string][]byte
+	// certs are the certificate parts read for signatures, by lowercased
+	// part name: each is parsed once. certParses counts the parses.
+	certs      map[string]Certificate
+	certParses int
+	// elements is what is left of the XML elements Open decodes into the
+	// package model; omitted counts the issues beyond maxIssues.
+	elements int
+	omitted  int
 }
 
 func errMalformed(format string, a ...any) error {
@@ -179,7 +203,41 @@ func errLimit(format string, a ...any) error {
 }
 
 func (p *Package) issue(part, format string, a ...any) {
+	if len(p.Issues) >= maxIssues {
+		p.omitted++
+		return
+	}
 	p.Issues = append(p.Issues, Issue{Part: part, Message: fmt.Sprintf(format, a...)})
+}
+
+// startTags counts the start tags of an XML text: every '<' that is not
+// followed by '/', '!' or '?' (a start tag inside a comment or a CDATA
+// section counts as well). It stops counting above limit.
+func startTags(data []byte, limit int) int {
+	n := 0
+	for n <= limit {
+		i := bytes.IndexByte(data, '<')
+		if i < 0 || i+1 >= len(data) {
+			break
+		}
+		if c := data[i+1]; c != '/' && c != '!' && c != '?' {
+			n++
+		}
+		data = data[i+1:]
+	}
+	return n
+}
+
+// spend takes the elements of an XML part from what is left of the
+// elements of the package model. It reports false, and takes nothing,
+// when the part has more: the part is then not decoded.
+func (p *Package) spend(data []byte) bool {
+	n := startTags(data, p.elements)
+	if n > p.elements {
+		return false
+	}
+	p.elements -= n
+	return true
 }
 
 // OpenFile opens the package in the file at path with the default Options.
@@ -203,8 +261,32 @@ func OpenFile(path string) (*Package, error) {
 // entries whose names are equal ignoring ASCII case; and
 // profinet.ErrResourceExhausted when a limit of opts is exceeded. Every
 // entry is decompressed and its CRC-32 checked.
+//
+// The package model is bounded as well. The XML parts Open decodes into
+// it ([Content_Types].xml, the relationships parts and the signature
+// parts) share 65 536 elements, or 16 per ZIP entry where MaxParts allows
+// more entries than DefaultMaxParts: a [Content_Types].xml with more fails
+// with profinet.ErrResourceExhausted, a relationships or signature part
+// with more than is left is not decoded and reported as an Issue. Open
+// lists the first 16 384 Issues and says in one more how many it left out.
 func Open(r io.ReaderAt, size int64, opts Options) (*Package, error) {
 	opts = opts.withDefaults()
+	return open(r, size, opts, elementBudget(opts.MaxParts))
+}
+
+// elementBudget returns the XML elements of the package model of a
+// package of at most maxParts ZIP entries.
+func elementBudget(maxParts int) int {
+	n := max(maxParts, DefaultMaxParts)
+	if n > math.MaxInt/elementsPerEntry {
+		return math.MaxInt
+	}
+	return n * elementsPerEntry
+}
+
+// open is Open with the options completed and the elements of the package
+// model as an argument.
+func open(r io.ReaderAt, size int64, opts Options, elements int) (*Package, error) {
 	zr, err := zip.NewReader(r, size)
 	if err != nil {
 		return nil, errMalformed("%v", err)
@@ -220,7 +302,7 @@ func Open(r io.ReaderAt, size int64, opts Options) (*Package, error) {
 	if opts.MaxRatio > 0 {
 		maxRatio = uint64(opts.MaxRatio)
 	}
-	p := &Package{Comment: zr.Comment, byName: map[string]*entry{}}
+	p := &Package{Comment: zr.Comment, byName: map[string]*entry{}, elements: elements}
 	seen := map[string]string{}
 	var total int64
 	var ctypes *entry
@@ -291,6 +373,9 @@ func Open(r io.ReaderAt, size int64, opts Options) (*Package, error) {
 	p.readRelationships()
 	p.readCoreProperties()
 	p.readSignatures()
+	if p.omitted > 0 {
+		p.Issues = append(p.Issues, Issue{Message: fmt.Sprintf("%d more issues are not listed: Open lists the first %d", p.omitted, maxIssues)})
+	}
 	return p, nil
 }
 

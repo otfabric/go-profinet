@@ -243,7 +243,8 @@ func (p *Port) WriteFrame(ctx context.Context, b []byte) error {
 	return nil
 }
 
-// Close implements l2.Port.
+// Close implements l2.Port. It is safe to call more than once and from
+// multiple goroutines.
 func (p *Port) Close() error {
 	p.once.Do(func() {
 		close(p.closed)

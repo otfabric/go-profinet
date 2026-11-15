@@ -53,6 +53,9 @@ func DataItemSize(dataType, length string) (int, error) {
 	return n, nil
 }
 
+// ioLength adds up the sizes of data items. The sum is compared with
+// maxIOData after every item, so it stays small whatever the number of
+// items.
 func ioLength(items []*DataItem) (uint16, error) {
 	total := 0
 	for _, it := range items {
@@ -60,23 +63,83 @@ func ioLength(items []*DataItem) (uint16, error) {
 		if err != nil {
 			return 0, err
 		}
-		total += n
-	}
-	if total > 1439 {
-		return 0, fmt.Errorf("gsdml: %w: IO data of %d octets", profinet.ErrMalformed, total)
+		if total += n; total > maxIOData {
+			return 0, fmt.Errorf("gsdml: %w: IO data of more than %d octets", profinet.ErrMalformed, maxIOData)
+		}
 	}
 	return uint16(total), nil
+}
+
+// maxModuleSubmodules bounds the submodules of one module (and of the
+// device access point) ToModel converts: a submodule takes at least one
+// octet of each C_SDU of 1440 octets, so no application relationship can
+// carry more.
+const maxModuleSubmodules = 1440
+
+// conv is the state of one ToModel call.
+type conv struct {
+	doc *Document
+	// texts are the texts of the primary language by TextId, made at the
+	// first lookup, so that a lookup does not cost the number of texts.
+	texts map[string]string
+	// budget is what is left of MaxModelRecordOctets for the records of
+	// the modules still to convert.
+	budget int
+}
+
+func newConv(doc *Document) *conv { return &conv{doc: doc, budget: MaxModelRecordOctets} }
+
+// textVisits, when a test set it, is called with the number of texts a
+// lookup, or the making of the lookup table, went through.
+var textVisits func(n int)
+
+// text returns what Document.Text returns for id.
+func (c *conv) text(id string) string {
+	if c.texts == nil {
+		c.texts = map[string]string{}
+		if pl := c.doc.primaryLanguage(); pl != nil {
+			for _, t := range pl.Texts {
+				// As in Document.Text, the first text of an ID counts.
+				if _, dup := c.texts[t.TextID]; !dup {
+					c.texts[t.TextID] = t.Value
+				}
+			}
+			if textVisits != nil {
+				textVisits(len(pl.Texts))
+			}
+		}
+	}
+	if v, ok := c.texts[id]; ok {
+		return v
+	}
+	return id
+}
+
+// recordOctets returns the octets of the parameter records of the
+// submodules.
+func recordOctets(subs []model.Submodule) int {
+	n := 0
+	for i := range subs {
+		for _, r := range subs[i].Records {
+			n += int(r.Length)
+		}
+	}
+	return n
 }
 
 // ToModel converts the device access point dapID (the first one when
 // empty) of a document into a device model: the DAP, the modules that are
 // fixed or used in slots, and the other usable modules as the catalog.
+//
+// It returns an error matching profinet.ErrMalformed for a module or a
+// device access point with more than 1440 submodules, which is more than
+// a C_SDU carries, and one matching profinet.ErrResourceExhausted for
+// parameter records beyond MaxModelRecordOctets.
 func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	bad := func(format string, a ...any) error {
 		return fmt.Errorf("gsdml: %w: "+format, append([]any{profinet.ErrMalformed}, a...)...)
 	}
-	budget := new(int)
-	*budget = MaxModelRecordOctets
+	c := newConv(doc)
 	if doc.ProfileBody == nil || doc.ProfileBody.DeviceIdentity == nil || doc.ProfileBody.ApplicationProcess == nil {
 		return nil, bad("no ProfileBody, DeviceIdentity or ApplicationProcess")
 	}
@@ -113,7 +176,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	m.Identity.TypeOfStation = dap.DNSCompatibleName
 	if mi := dap.ModuleInfo; mi != nil {
 		if mi.Name != nil {
-			m.Identity.TypeOfStation = doc.Text(mi.Name.TextID)
+			m.Identity.TypeOfStation = c.text(mi.Name.TextID)
 		}
 		if mi.OrderNumber != nil {
 			m.Identity.OrderID = mi.OrderNumber.Value
@@ -144,10 +207,13 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	if err != nil {
 		return nil, bad("DAP %s ModuleIdentNumber: %v", dap.ID, err)
 	}
-	m.DAP = model.Module{Name: textOf(doc, dap.ModuleInfo), IdentNumber: dapIdent}
+	m.DAP = model.Module{Name: c.textOf(dap.ModuleInfo), IdentNumber: dapIdent}
+	if n := dapSubmodules(dap); n > maxModuleSubmodules {
+		return nil, bad("DAP %s has %d submodules, more than the %d a C_SDU carries", clip(dap.ID), n, maxModuleSubmodules)
+	}
 	if dap.VirtualSubmoduleList != nil {
 		for _, vs := range dap.VirtualSubmoduleList.VirtualSubmoduleItems {
-			s, err := toSubmodule(doc, vs, 1, budget)
+			s, err := c.toSubmodule(vs, 1)
 			if err != nil {
 				return nil, err
 			}
@@ -156,7 +222,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	}
 	if sd := dap.SystemDefinedSubmoduleList; sd != nil {
 		for _, it := range sd.InterfaceSubmoduleItems {
-			s, err := systemSubmodule(doc, it.TextID, it.SubslotNumber, it.SubmoduleIdentNumber)
+			s, err := c.systemSubmodule(it.TextID, it.SubslotNumber, it.SubmoduleIdentNumber)
 			if err != nil {
 				return nil, err
 			}
@@ -168,7 +234,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 					m.Capabilities.MaxARs = int(n)
 				}
 				if tp := ar.TimingProperties; tp != nil && tp.ReductionRatio != "" {
-					if rr, err := ParseValueList(tp.ReductionRatio, 64); err == nil {
+					if rr, err := ParseValueList(tp.ReductionRatio, maxReductionRatios); err == nil {
 						for _, v := range rr {
 							if v > math.MaxUint16 {
 								continue // not a reduction ratio; Check reports it
@@ -180,7 +246,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			}
 		}
 		for _, it := range sd.PortSubmoduleItems {
-			s, err := systemSubmodule(doc, it.TextID, it.SubslotNumber, it.SubmoduleIdentNumber)
+			s, err := c.systemSubmodule(it.TextID, it.SubslotNumber, it.SubmoduleIdentNumber)
 			if err != nil {
 				return nil, err
 			}
@@ -195,9 +261,14 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			modules[mi.ID] = mi
 		}
 	}
+	// The records of the modules as they are plugged: a module in several
+	// slots shares its records in the model, and a device built from the
+	// model has them once per slot.
+	plugged := recordOctets(m.DAP.Submodules)
 	if dap.UseableModules != nil {
 		used := map[uint16]bool{}
 		converted := map[string]model.Module{}
+		octets := map[string]int{}
 		for _, r := range dap.UseableModules.ModuleItemRefs {
 			mi := modules[r.ModuleItemTarget]
 			if mi == nil {
@@ -207,10 +278,11 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			mod, ok := converted[r.ModuleItemTarget]
 			if !ok {
 				var err error
-				if mod, err = toModule(doc, mi, budget); err != nil {
+				if mod, err = c.toModule(mi); err != nil {
 					return nil, err
 				}
 				converted[r.ModuleItemTarget] = mod
+				octets[r.ModuleItemTarget] = recordOctets(mod.Submodules)
 			}
 			// The configuration: the slots the module is fixed in, else
 			// the slots it is used in, else its only allowed slot.
@@ -232,6 +304,9 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 					continue
 				}
 				used[uint16(s)] = true
+				if plugged += octets[r.ModuleItemTarget]; plugged > MaxModelRecordOctets {
+					return nil, fmt.Errorf("gsdml: %w: parameter records of more than %d octets in the plugged modules", profinet.ErrResourceExhausted, MaxModelRecordOctets)
+				}
 				m.Slots = append(m.Slots, model.Slot{Number: uint16(s), Module: mod})
 			}
 			m.Catalog = append(m.Catalog, mod)
@@ -241,11 +316,24 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	return m, nil
 }
 
-func textOf(doc *Document, mi *ModuleInfo) string {
+// dapSubmodules returns the number of submodules of a device access
+// point: its virtual submodules, its interfaces and its ports.
+func dapSubmodules(dap *DeviceAccessPointItem) int {
+	n := 0
+	if dap.VirtualSubmoduleList != nil {
+		n += len(dap.VirtualSubmoduleList.VirtualSubmoduleItems)
+	}
+	if sd := dap.SystemDefinedSubmoduleList; sd != nil {
+		n += len(sd.InterfaceSubmoduleItems) + len(sd.PortSubmoduleItems)
+	}
+	return n
+}
+
+func (c *conv) textOf(mi *ModuleInfo) string {
 	if mi == nil || mi.Name == nil {
 		return ""
 	}
-	return doc.Text(mi.Name.TextID)
+	return c.text(mi.Name.TextID)
 }
 
 func parseSoftwareRelease(s string) pnio.SoftwareRevision {
@@ -270,7 +358,7 @@ func parseSoftwareRelease(s string) pnio.SoftwareRevision {
 	return r
 }
 
-func systemSubmodule(doc *Document, textID, subslot, ident string) (model.Submodule, error) {
+func (c *conv) systemSubmodule(textID, subslot, ident string) (model.Submodule, error) {
 	ss, err := ParseUint16(subslot)
 	if err != nil {
 		return model.Submodule{}, fmt.Errorf("gsdml: %w: SubslotNumber %q", profinet.ErrMalformed, subslot)
@@ -279,19 +367,22 @@ func systemSubmodule(doc *Document, textID, subslot, ident string) (model.Submod
 	if err != nil {
 		return model.Submodule{}, fmt.Errorf("gsdml: %w: SubmoduleIdentNumber %q", profinet.ErrMalformed, ident)
 	}
-	return model.Submodule{Name: doc.Text(textID), IdentNumber: id, Subslot: ss}, nil
+	return model.Submodule{Name: c.text(textID), IdentNumber: id, Subslot: ss}, nil
 }
 
-func toModule(doc *Document, mi *ModuleItem, budget *int) (model.Module, error) {
+func (c *conv) toModule(mi *ModuleItem) (model.Module, error) {
 	id, err := ParseUint32(mi.ModuleIdentNumber)
 	if err != nil {
 		return model.Module{}, fmt.Errorf("gsdml: %w: module %s ModuleIdentNumber %q", profinet.ErrMalformed, mi.ID, mi.ModuleIdentNumber)
 	}
-	m := model.Module{Name: textOf(doc, mi.ModuleInfo), IdentNumber: id}
+	m := model.Module{Name: c.textOf(mi.ModuleInfo), IdentNumber: id}
 	if mi.VirtualSubmoduleList != nil {
+		if n := len(mi.VirtualSubmoduleList.VirtualSubmoduleItems); n > maxModuleSubmodules {
+			return m, fmt.Errorf("gsdml: %w: module %s has %d submodules, more than the %d a C_SDU carries", profinet.ErrMalformed, clip(mi.ID), n, maxModuleSubmodules)
+		}
 		next := uint16(1)
 		for _, vs := range mi.VirtualSubmoduleList.VirtualSubmoduleItems {
-			s, err := toSubmodule(doc, vs, next, budget)
+			s, err := c.toSubmodule(vs, next)
 			if err != nil {
 				return m, err
 			}
@@ -302,12 +393,12 @@ func toModule(doc *Document, mi *ModuleItem, budget *int) (model.Module, error) 
 	return m, nil
 }
 
-func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16, budget *int) (model.Submodule, error) {
+func (c *conv) toSubmodule(vs *VirtualSubmoduleItem, defSubslot uint16) (model.Submodule, error) {
 	id, err := ParseUint32(vs.SubmoduleIdentNumber)
 	if err != nil {
 		return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s SubmoduleIdentNumber %q", profinet.ErrMalformed, vs.ID, vs.SubmoduleIdentNumber)
 	}
-	s := model.Submodule{Name: textOf(doc, vs.ModuleInfo), IdentNumber: id, Subslot: defSubslot}
+	s := model.Submodule{Name: c.textOf(vs.ModuleInfo), IdentNumber: id, Subslot: defSubslot}
 	if vs.FixedInSubslots != "" {
 		if l, err := ParseValueList(vs.FixedInSubslots, 64); err == nil && len(l) > 0 {
 			first := l[0]
@@ -331,7 +422,7 @@ func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16, bud
 	}
 	if rl := vs.RecordDataList; rl != nil {
 		for _, r := range rl.ParameterRecordDataItems {
-			rec, err := toRecord(doc, r, budget)
+			rec, err := c.toRecord(r)
 			if err != nil {
 				return s, fmt.Errorf("submodule %s: %w", vs.ID, err)
 			}
@@ -345,10 +436,29 @@ func toSubmodule(doc *Document, vs *VirtualSubmoduleItem, defSubslot uint16, bud
 const MaxRecordLength = 65535
 
 // MaxModelRecordOctets bounds the octets of all parameter records of the
-// model ToModel builds.
+// model ToModel builds, counted two ways: the records of the module types
+// it converts, and the records of the device access point and of the
+// modules as they are plugged, where a module in several slots counts
+// once per slot. Beyond either, ToModel returns an error matching
+// profinet.ErrResourceExhausted.
 const MaxModelRecordOctets = 16 << 20
 
-func toRecord(doc *Document, r *ParameterRecordDataItem, budget *int) (model.Record, error) {
+// optionalUint32 parses an attribute whose absence means 0.
+func optionalUint32(s string) (uint32, error) {
+	if strings.TrimSpace(s) == "" {
+		return 0, nil
+	}
+	return ParseUint32(s)
+}
+
+// within reports whether n octets at offset off lie in a record of size
+// octets. It compares in 64 bits, so an offset above the int range of a
+// 32-bit platform is outside like any other.
+func within(off uint32, n, size int) bool {
+	return n >= 0 && uint64(off) <= uint64(size) && uint64(n) <= uint64(size)-uint64(off)
+}
+
+func (c *conv) toRecord(r *ParameterRecordDataItem) (model.Record, error) {
 	idx, err := ParseUint16(r.Index)
 	if err != nil || idx > 0x7FFF {
 		return model.Record{}, fmt.Errorf("gsdml: %w: record Index %q", profinet.ErrMalformed, r.Index)
@@ -357,20 +467,25 @@ func toRecord(doc *Document, r *ParameterRecordDataItem, budget *int) (model.Rec
 	if err != nil || n > MaxRecordLength {
 		return model.Record{}, fmt.Errorf("gsdml: %w: record %d Length %q", profinet.ErrMalformed, idx, r.Length)
 	}
-	if *budget -= int(n); *budget < 0 {
+	if c.budget -= int(n); c.budget < 0 {
 		return model.Record{}, fmt.Errorf("gsdml: %w: parameter records of more than %d octets", profinet.ErrResourceExhausted, MaxModelRecordOctets)
 	}
 	rec := model.Record{Index: pnio.Index(idx), Length: uint16(n), Default: make([]byte, n)}
 	if r.Name != nil {
-		rec.Name = doc.Text(r.Name.TextID)
+		rec.Name = c.text(r.Name.TextID)
 	}
-	for _, c := range r.Consts {
-		off, _ := ParseUint32(c.ByteOffset)
-		data, err := parseOctets(c.Data)
+	for _, k := range r.Consts {
+		// An absent ByteOffset is 0; one that is no number is refused,
+		// as for a Ref.
+		off, err := optionalUint32(k.ByteOffset)
+		if err != nil {
+			return rec, fmt.Errorf("gsdml: %w: record %d: Const ByteOffset %q", profinet.ErrMalformed, idx, clip(k.ByteOffset))
+		}
+		data, err := parseOctets(k.Data)
 		if err != nil {
 			return rec, err
 		}
-		if int(off)+len(data) > len(rec.Default) {
+		if !within(off, len(data), len(rec.Default)) {
 			return rec, fmt.Errorf("gsdml: %w: record %d: Const beyond the record", profinet.ErrMalformed, idx)
 		}
 		copy(rec.Default[off:], data)
@@ -404,13 +519,18 @@ func applyRef(rec []byte, r *Ref) error {
 	}
 	t := DataType(r.DataType)
 	if t == DataTypeBit || t == DataTypeBitArea {
-		bit, _ := ParseUint16(r.BitOffset)
+		// An absent BitOffset is 0; one that is no number is refused.
+		bit32, err := optionalUint32(r.BitOffset)
+		if err != nil || bit32 > math.MaxUint16 {
+			return fmt.Errorf("gsdml: %w: bit Ref BitOffset %q", profinet.ErrMalformed, clip(r.BitOffset))
+		}
+		bit := uint16(bit32)
 		width := uint16(1)
 		if t == DataTypeBitArea {
 			width, _ = ParseUint16(r.BitLength)
 		}
 		v, err := strconv.ParseUint(strings.TrimSpace(r.DefaultValue), 0, 64)
-		if err != nil || int(off) >= len(rec) || bit >= 8 || width == 0 || bit+width > 8 {
+		if err != nil || !within(off, 1, len(rec)) || bit >= 8 || width == 0 || bit+width > 8 {
 			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d", profinet.ErrMalformed, off, bit)
 		}
 		shifted := v << bit
@@ -425,10 +545,10 @@ func applyRef(rec []byte, r *Ref) error {
 	if err != nil {
 		return err
 	}
-	if int(off)+size > len(rec) {
+	if !within(off, size, len(rec)) {
 		return fmt.Errorf("gsdml: %w: Ref at %d of %d octets beyond the record", profinet.ErrMalformed, off, size)
 	}
-	dst := rec[off : int(off)+size]
+	dst := rec[off:][:size]
 	dv := strings.TrimSpace(r.DefaultValue)
 	switch t {
 	case DataTypeFloat32:

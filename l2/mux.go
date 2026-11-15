@@ -136,7 +136,8 @@ func (m *Mux) Err() error {
 }
 
 // Close stops the reader and closes every subscription. It does not
-// close the port.
+// close the port. It is safe to call more than once and from multiple
+// goroutines; every call returns when the reader has stopped.
 func (m *Mux) Close() error {
 	m.once.Do(func() {
 		m.cancel()
@@ -321,7 +322,8 @@ func (s *Subscription) Overflow() uint64 { return s.overflow.Load() }
 // Mux stopped.
 func (s *Subscription) Done() <-chan struct{} { return s.done }
 
-// Close removes the subscription from the Mux.
+// Close removes the subscription from the Mux. It is safe to call more
+// than once and from multiple goroutines.
 func (s *Subscription) Close() {
 	s.mux.remove(s)
 	s.closeLocal()

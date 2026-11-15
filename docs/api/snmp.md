@@ -134,7 +134,7 @@ NewAgent returns an agent that serves on conn once [Agent.Serve](#func-agent-ser
 func (a *Agent) Close() error
 ```
 
-Close stops Serve and waits for it to return; with an owned connection it closes the connection. It is safe to call twice.
+Close stops Serve and waits for it to return; with an owned connection it closes the connection. It is safe to call more than once and from multiple goroutines; a call made while another is in progress returns at once, before that one has finished.
 
 #### func (Agent) Handle
 
@@ -379,7 +379,7 @@ AddInterfaces adds ifNumber and the ifTable (RFC 2863 section 6) with the interf
 func (m *MIB) AddLLDP(local func() LLDPLocal, remote func() []LLDPRemote) error
 ```
 
-AddLLDP adds the local system data and lldpRemTable of the LLDP-MIB with the values local and remote return; remote may be nil (no neighbors). Ports and rows with indexes out of their range are left out.
+AddLLDP adds the local system data and lldpRemTable of the LLDP-MIB with the values local and remote return; remote may be nil (no neighbors). Ports and rows with indexes out of their range are left out. remote is called once for each request that reads lldpRemTable, however many of its variable bindings name the table.
 
 #### func (MIB) AddSNMPGroup
 

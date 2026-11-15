@@ -175,7 +175,7 @@ NewClient returns a client that uses conn. When owned is true, Close closes conn
 func (c *Client) Close() error
 ```
 
-Close stops the client; calls in progress fail with profinet.ErrClosed.
+Close stops the client; calls in progress fail with profinet.ErrClosed. It is safe to call more than once and from multiple goroutines.
 
 #### func (Client) Do
 
@@ -463,7 +463,7 @@ BootTime returns the server boot time sent in every packet.
 func (s *Server) Close() error
 ```
 
-Close stops the server and waits for running handlers, whose context is cancelled.
+Close stops the server and waits for running handlers, whose context is cancelled. It is safe to call more than once and from multiple goroutines, but not from a handler.
 
 #### func (Server) LocalAddr
 

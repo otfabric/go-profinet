@@ -165,7 +165,8 @@ func (r *Responder) Stats() ResponderStats {
 	}
 }
 
-// Close stops the responder.
+// Close stops the responder. It is safe to call more than once and from
+// multiple goroutines.
 func (r *Responder) Close() error {
 	r.once.Do(func() {
 		// Under helloMu: StartHello starts no sequence after this.

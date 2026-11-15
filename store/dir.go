@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/otfabric/go-profinet"
@@ -35,12 +36,18 @@ var (
 	crcTab = crc32.MakeTable(crc32.Castagnoli)
 )
 
-// The file operations of Save, replaced by the tests to inject failures.
+// The file operations of Save and Delete, replaced by the tests to inject
+// failures.
 var (
 	rename   = os.Rename
+	remove   = os.Remove
 	syncFile = (*os.File).Sync
 	write    = (*os.File).Write
 )
+
+// tmpInfix separates a key from the random decimal number os.CreateTemp
+// appends: the temporary file of key k is k.tmp<digits>.
+const tmpInfix = ".tmp"
 
 // DefaultMaxValueSize bounds a value of a Dir.
 const DefaultMaxValueSize = 1 << 20
@@ -53,8 +60,12 @@ type DirOptions struct {
 	// atomic against a crash of the program but not of the machine.
 	NoSync bool
 	// OnRecover is called when Load found a value corrupt or missing and
-	// returned the previous version instead; cause says why. It must not
-	// block.
+	// returned the previous version instead; cause says why. It runs on
+	// the goroutine that called Load, before Load returns and with no
+	// lock of the Dir held, so it may call Load, Save and Delete (a
+	// Load of the same key from it reports the recovery again). It must
+	// not block. A run-time failure in it is not recovered: it reaches
+	// the caller of Load.
 	OnRecover func(key string, cause error)
 }
 
@@ -72,7 +83,11 @@ type Dir struct {
 }
 
 // OpenDir opens (and creates, with mode 0o700) the directory of a Dir. It
-// removes the temporary files an interrupted Save left.
+// removes the temporary files an interrupted Save left: the regular
+// files of the directory itself that are named as Save names them, a
+// valid key followed by ".tmp" and decimal digits. The files of the
+// values (key.v, key.v.prev) and every other file stay, whatever the key
+// or the path contains.
 func OpenDir(path string, opts DirOptions) (*Dir, error) {
 	if opts.MaxValueSize <= 0 {
 		opts.MaxValueSize = DefaultMaxValueSize
@@ -84,14 +99,36 @@ func OpenDir(path string, opts DirOptions) (*Dir, error) {
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
-	tmps, err := filepath.Glob(filepath.Join(path, "*.tmp*"))
+	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, fmt.Errorf("store: %w", err)
 	}
-	for _, t := range tmps {
-		_ = os.Remove(t)
+	for _, e := range entries {
+		if e.Type().IsRegular() && isTemp(e.Name()) {
+			_ = os.Remove(filepath.Join(path, e.Name()))
+		}
 	}
 	return &Dir{path: path, opts: opts}, nil
+}
+
+// isTemp reports whether name is one Save gives a temporary file: a valid
+// key, tmpInfix, then one or more decimal digits. A value file ends in
+// ".v" or ".v.prev" and so never matches.
+func isTemp(name string) bool {
+	i := strings.LastIndex(name, tmpInfix)
+	if i < 0 || ValidKey(name[:i]) != nil {
+		return false
+	}
+	digits := name[i+len(tmpInfix):]
+	if digits == "" {
+		return false
+	}
+	for _, c := range []byte(digits) {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // Path returns the directory.
@@ -108,26 +145,38 @@ func (d *Dir) Load(ctx context.Context, key string) ([]byte, error) {
 	if err := check(ctx, key); err != nil {
 		return nil, err
 	}
+	v, cause, err := d.load(key)
+	if err != nil {
+		return nil, err
+	}
+	// The callback runs with the lock released, so that it may use the
+	// Dir.
+	if cause != nil && d.opts.OnRecover != nil {
+		d.opts.OnRecover(key, cause)
+	}
+	return v, nil
+}
+
+// load returns the value of key under the lock. A non-nil cause says the
+// value is the previous version and why the current one was not used.
+func (d *Dir) load(key string) (v []byte, cause, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	v, err := d.read(base(key))
+	v, err = d.read(base(key))
 	if err == nil {
-		return v, nil
+		return v, nil, nil
 	}
 	prev, perr := d.read(base(key) + ".prev")
 	if perr != nil {
 		if isNotFound(err) && isNotFound(perr) {
-			return nil, ErrNotFound
+			return nil, nil, ErrNotFound
 		}
 		if !isNotFound(err) {
-			return nil, err
+			return nil, nil, err
 		}
-		return nil, perr
+		return nil, nil, perr
 	}
-	if d.opts.OnRecover != nil {
-		d.opts.OnRecover(key, err)
-	}
-	return prev, nil
+	return prev, err, nil
 }
 
 // read reads and checks the file name of the directory. It opens the file
@@ -193,7 +242,7 @@ func (d *Dir) Save(ctx context.Context, key string, value []byte) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	cur := d.file(key)
-	tmp, err := os.CreateTemp(d.path, key+".tmp*")
+	tmp, err := os.CreateTemp(d.path, key+tmpInfix+"*")
 	if err != nil {
 		return fmt.Errorf("store: %w", err)
 	}
@@ -227,15 +276,17 @@ func (d *Dir) Save(ctx context.Context, key string, value []byte) error {
 	return d.syncDir()
 }
 
-// Delete implements Store: both versions go.
+// Delete implements Store: both versions go, the previous one first, so
+// that a Delete that ends between the two leaves the current value and
+// never brings back the one before it.
 func (d *Dir) Delete(ctx context.Context, key string) error {
 	if err := check(ctx, key); err != nil {
 		return err
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	for _, f := range []string{d.file(key), d.file(key) + ".prev"} {
-		if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	for _, f := range []string{d.file(key) + ".prev", d.file(key)} {
+		if err := remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("store: %w", err)
 		}
 	}

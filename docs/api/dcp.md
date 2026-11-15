@@ -388,7 +388,7 @@ NewClient starts a requester on mux.
 func (c *Client) Close() error
 ```
 
-Close stops the requester. Pending requests fail with profinet.ErrClosed.
+Close stops the requester. Pending requests fail with profinet.ErrClosed. It is safe to call more than once and from multiple goroutines.
 
 #### func (Client) Get
 
@@ -421,6 +421,8 @@ func (c *Client) Identify(ctx context.Context, filter Filter, opts IdentifyOptio
 ```
 
 Identify multicasts an Identify request and collects the responses. It returns the devices found when the wait elapses, ctx is done or Max responses arrived; finding no device is not an error. A device that answers twice (a duplicate frame) is reported once.
+
+Without a Max the result holds at most 4096 stations. When another one answers, Identify returns those it has at once, with an error matching profinet.ErrResourceExhausted.
 
 #### func (Client) IdentifyName
 
@@ -844,7 +846,10 @@ type IdentifyOptions struct {
 	// plus 1 s.
 	Wait time.Duration
 	// Max stops collecting after this many responses; zero collects
-	// until Wait elapses.
+	// until Wait elapses, up to 4096 stations: when one more answers,
+	// Identify returns the 4096 with an error matching
+	// profinet.ErrResourceExhausted. A segment with more stations needs
+	// a Max of at least their number.
 	Max int
 }
 ```
@@ -1057,7 +1062,7 @@ NewResponder starts answering DCP requests on mux.
 func (r *Responder) Close() error
 ```
 
-Close stops the responder.
+Close stops the responder. It is safe to call more than once and from multiple goroutines.
 
 #### func (Responder) StartHello
 

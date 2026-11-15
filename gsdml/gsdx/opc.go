@@ -5,6 +5,7 @@ package gsdx
 import (
 	"bytes"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/url"
 	"strings"
@@ -38,6 +39,9 @@ type xmlTypes struct {
 // Override for the part name wins over the Default for its extension;
 // both compare ASCII case-insensitively).
 func (p *Package) readContentTypes(data []byte) error {
+	if !p.spend(data) {
+		return errLimit("%s: more than %d elements", ContentTypesName, p.elements)
+	}
 	var t xmlTypes
 	if err := xml.Unmarshal(data, &t); err != nil {
 		return errMalformed("%s: %v", ContentTypesName, err)
@@ -166,6 +170,9 @@ func (p *Package) readRelationships() {
 
 func (p *Package) parseRelationships(relsPart, source string) ([]Relationship, error) {
 	data, _ := p.data(relsPart)
+	if !p.spend(data) {
+		return nil, fmt.Errorf("not read: more elements than the %d left for the package model", p.elements)
+	}
 	var x xmlRelationships
 	if err := xml.Unmarshal(data, &x); err != nil {
 		return nil, err

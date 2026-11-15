@@ -49,7 +49,7 @@ Open opens a BPF device on the named interface.
 func (p *Port) Close() error
 ```
 
-Close implements l2.Port. A read in progress returns within the read timeout.
+Close implements l2.Port. A read in progress returns within the read timeout. It is safe to call more than once and from multiple goroutines.
 
 #### func (Port) HardwareAddr
 

@@ -114,6 +114,7 @@ func NewClient(mux *l2.Mux, opts ClientOptions) (*Client, error) {
 }
 
 // Close stops the requester. Pending requests fail with profinet.ErrClosed.
+// It is safe to call more than once and from multiple goroutines.
 func (c *Client) Close() error {
 	c.once.Do(func() {
 		c.cancel()
@@ -271,14 +272,26 @@ type IdentifyOptions struct {
 	// plus 1 s.
 	Wait time.Duration
 	// Max stops collecting after this many responses; zero collects
-	// until Wait elapses.
+	// until Wait elapses, up to 4096 stations: when one more answers,
+	// Identify returns the 4096 with an error matching
+	// profinet.ErrResourceExhausted. A segment with more stations needs
+	// a Max of at least their number.
 	Max int
 }
+
+// defaultMaxIdentities bounds the stations one Identify collects when
+// IdentifyOptions.Max is zero. It is several times what a PROFINET
+// segment holds; IdentifyOptions.Max replaces it.
+const defaultMaxIdentities = 4096
 
 // Identify multicasts an Identify request and collects the responses.
 // It returns the devices found when the wait elapses, ctx is done or Max
 // responses arrived; finding no device is not an error. A device that
 // answers twice (a duplicate frame) is reported once.
+//
+// Without a Max the result holds at most 4096 stations. When another one
+// answers, Identify returns those it has at once, with an error matching
+// profinet.ErrResourceExhausted.
 func (c *Client) Identify(ctx context.Context, filter Filter, opts IdentifyOptions) ([]Identity, error) {
 	if len(filter) == 0 {
 		filter = FilterAll()
@@ -302,6 +315,14 @@ func (c *Client) Identify(ctx context.Context, filter Filter, opts IdentifyOptio
 	}
 	t := time.NewTimer(wait)
 	defer t.Stop()
+	return c.collect(ctx, ch, t.C, opts.Max, defaultMaxIdentities)
+}
+
+// collect gathers the stations whose Identify responses arrive on ch
+// until timeout, the end of ctx or of the client, or limit stations
+// (limit > 0). With no limit it holds at most bound stations and ends
+// with profinet.ErrResourceExhausted when one more answers.
+func (c *Client) collect(ctx context.Context, ch <-chan response, timeout <-chan time.Time, limit, bound int) ([]Identity, error) {
 	var out []Identity
 	seen := map[ethernet.MAC]bool{}
 	for {
@@ -316,12 +337,15 @@ func (c *Client) Identify(ctx context.Context, filter Filter, opts IdentifyOptio
 				c.log.Debugf("dcp: identify response from %s: %v", r.src, err)
 				continue
 			}
+			if limit <= 0 && len(out) >= bound {
+				return out, fmt.Errorf("dcp: identify: %w: more than %d stations answered (IdentifyOptions.Max raises the bound)", profinet.ErrResourceExhausted, bound)
+			}
 			seen[r.src] = true
 			out = append(out, id)
-			if opts.Max > 0 && len(out) >= opts.Max {
+			if limit > 0 && len(out) >= limit {
 				return out, nil
 			}
-		case <-t.C:
+		case <-timeout:
 			return out, nil
 		case <-ctx.Done():
 			if len(out) > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {

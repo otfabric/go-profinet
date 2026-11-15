@@ -194,7 +194,9 @@ func (i Issue) String() string
 
 ```go
 type Options struct {
-	// MaxParts bounds the number of ZIP entries.
+	// MaxParts bounds the number of ZIP entries. Above DefaultMaxParts it
+	// also raises the bound on the XML elements of the package model
+	// (see Open).
 	MaxParts int
 	// MaxPartSize bounds the uncompressed size of one entry.
 	MaxPartSize int64
@@ -244,6 +246,12 @@ type Package struct {
 	// by lowercased part name and digest method: each part is hashed once
 	// per method.
 
+	// certs are the certificate parts read for signatures, by lowercased
+	// part name: each is parsed once. certParses counts the parses.
+
+	// elements is what is left of the XML elements Open decodes into the
+	// package model; omitted counts the issues beyond maxIssues.
+
 }
 ```
 
@@ -256,6 +264,8 @@ func Open(r io.ReaderAt, size int64, opts Options) (*Package, error)
 ```
 
 Open reads the package from r. It returns an error wrapping profinet.ErrMalformed for input that is not a ZIP, has no \[Content\_Types].xml, has a part name that is absolute after mapping, contains a "." or ".." segment, an empty segment or a backslash, or two entries whose names are equal ignoring ASCII case; and profinet.ErrResourceExhausted when a limit of opts is exceeded. Every entry is decompressed and its CRC-32 checked.
+
+The package model is bounded as well. The XML parts Open decodes into it (\[Content\_Types].xml, the relationships parts and the signature parts) share 65 536 elements, or 16 per ZIP entry where MaxParts allows more entries than DefaultMaxParts: a \[Content\_Types].xml with more fails with profinet.ErrResourceExhausted, a relationships or signature part with more than is left is not decoded and reported as an Issue. Open lists the first 16 384 Issues and says in one more how many it left out.
 
 #### func OpenFile
 
@@ -407,9 +417,12 @@ type Signature struct {
 	PartReferences []Reference `json:"partReferences,omitempty"`
 	// SignatureTime and SignatureTimeFormat are the OPC SignatureTime
 	// signature property, as written; empty when absent.
-	SignatureTime       string        `json:"signatureTime,omitempty"`
-	SignatureTimeFormat string        `json:"signatureTimeFormat,omitempty"`
-	Certificates        []Certificate `json:"certificates,omitempty"`
+	SignatureTime       string `json:"signatureTime,omitempty"`
+	SignatureTimeFormat string `json:"signatureTimeFormat,omitempty"`
+	// Certificates are the certificates of KeyInfo and of the
+	// certificate parts the relationships of the signature part name,
+	// each part once.
+	Certificates []Certificate `json:"certificates,omitempty"`
 	// Verified is always false; Reason says why.
 	Verified bool   `json:"verified"`
 	Reason   string `json:"reason"`

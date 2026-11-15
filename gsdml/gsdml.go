@@ -40,6 +40,13 @@ import (
 // reach 15 MB; the bound leaves room.
 const MaxDocumentSize = 64 << 20
 
+// maxElements bounds the elements of a document ParseBytes reads. They
+// are counted as the start tags of the text before anything is decoded,
+// so a start tag inside a comment or a CDATA section counts as well.
+// Vendor files of 15 MB hold about 230 000 elements; a document of
+// MaxDocumentSize with their density holds about a million.
+const maxElements = 1 << 20
+
 // Node is an XML element the catalog does not define, kept verbatim.
 type Node struct {
 	XMLName xml.Name
@@ -51,7 +58,9 @@ type Node struct {
 type Document = ISO15745Profile
 
 // Parse reads a GSDML document. UTF-8 (with or without a byte order mark)
-// and ISO-8859-1 encodings are accepted.
+// and ISO-8859-1 encodings are accepted. A document larger than
+// MaxDocumentSize, or with more elements than ParseBytes reads, is refused
+// with an error matching profinet.ErrResourceExhausted.
 func Parse(r io.Reader) (*Document, error) {
 	data, err := io.ReadAll(io.LimitReader(r, MaxDocumentSize+1))
 	if err != nil {
@@ -63,9 +72,36 @@ func Parse(r io.Reader) (*Document, error) {
 	return ParseBytes(data)
 }
 
-// ParseBytes reads a GSDML document from data.
+// ParseBytes reads a GSDML document from data. A document with more than
+// 1 048 576 elements is refused with an error matching
+// profinet.ErrResourceExhausted before it is decoded.
 func ParseBytes(data []byte) (*Document, error) {
+	return parseBytes(data, maxElements)
+}
+
+// startTags counts the start tags of an XML text: every '<' that is not
+// followed by '/', '!' or '?'. It stops counting above limit.
+func startTags(data []byte, limit int) int {
+	n := 0
+	for n <= limit {
+		i := bytes.IndexByte(data, '<')
+		if i < 0 || i+1 >= len(data) {
+			break
+		}
+		if c := data[i+1]; c != '/' && c != '!' && c != '?' {
+			n++
+		}
+		data = data[i+1:]
+	}
+	return n
+}
+
+// parseBytes is ParseBytes with the element bound as an argument.
+func parseBytes(data []byte, elements int) (*Document, error) {
 	data = bytes.TrimPrefix(data, []byte("\xEF\xBB\xBF"))
+	if startTags(data, elements) > elements {
+		return nil, fmt.Errorf("gsdml: %w: document with more than %d elements", profinet.ErrResourceExhausted, elements)
+	}
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.CharsetReader = charsetReader
 	var doc Document
@@ -216,7 +252,9 @@ type Issue struct {
 	Message string `json:"message"`
 	// Severity grades the issue; Validate reports only errors.
 	Severity Severity `json:"severity"`
-	// Rule names the rule (Rule*); empty means RuleStructure.
+	// Rule names the rule (Rule*); empty means RuleStructure. The issue
+	// that closes a severity with more issues than Check lists has the
+	// rule "limit".
 	Rule string `json:"rule,omitempty"`
 }
 
@@ -238,24 +276,88 @@ func (e *ValidationError) Error() string {
 // Is makes a ValidationError match profinet.ErrMalformed.
 func (e *ValidationError) Is(target error) bool { return target == profinet.ErrMalformed }
 
+// maxIssues is the number of issues of one severity Check lists. Further
+// issues of that severity are counted, and one closing issue with the rule
+// ruleLimit says how many there are.
+const maxIssues = 1 << 14
+
+// ruleLimit is the Rule of the issue that closes a severity of which
+// Check found more than maxIssues issues.
+const ruleLimit = "limit"
+
+// severities is the number of Severity values.
+const severities = 3
+
 type validator struct {
-	path   []string
+	path []string
+	// joined is the path as one string, empty until where builds it.
+	joined string
 	issues []Issue
 	ids    map[string]string
 	refs   []ref
 	texts  map[string]bool
 	tids   []ref
+	// listed and omitted count the issues per severity: those in issues
+	// and those beyond maxIssues.
+	listed, omitted [severities]int
+	// slots is the working memory of the slot rules, made when a device
+	// access point first needs it.
+	slots *slotWork
+}
+
+// room reports whether one more issue of severity s is listed, and
+// counts it either way. The caller builds the issue only when it is.
+func (v *validator) room(s Severity) bool {
+	if s < 0 || int(s) >= severities {
+		return true
+	}
+	if v.listed[s] < maxIssues {
+		v.listed[s]++
+		return true
+	}
+	v.omitted[s]++
+	return false
+}
+
+// add lists an issue unless its severity is full.
+func (v *validator) add(path string, s Severity, rule, format string, a ...any) {
+	if v.room(s) {
+		v.issues = append(v.issues, Issue{Path: path, Message: fmt.Sprintf(format, a...), Severity: s, Rule: rule})
+	}
+}
+
+// closeIssues adds, for every severity with more issues than are listed,
+// the issue that says how many were left out. An error among them keeps
+// Validate failing.
+func (v *validator) closeIssues() {
+	for s, n := range v.omitted {
+		if n > 0 {
+			v.issues = append(v.issues, Issue{Path: "ISO15745Profile", Severity: Severity(s), Rule: ruleLimit,
+				Message: fmt.Sprintf("%d more issues of severity %s are not listed: Check lists the first %d of a severity", n, Severity(s), maxIssues)})
+		}
+	}
 }
 
 type ref struct {
 	path, kind, id string
 }
 
-func (v *validator) push(e string) { v.path = append(v.path, e) }
-func (v *validator) pop()          { v.path = v.path[:len(v.path)-1] }
+func (v *validator) push(e string) { v.path, v.joined = append(v.path, e), "" }
+func (v *validator) pop()          { v.path, v.joined = v.path[:len(v.path)-1], "" }
+
+// where returns the path of the element being validated. It is built once
+// per element, whatever the number of its attributes and issues.
+func (v *validator) where() string {
+	if v.joined == "" {
+		v.joined = strings.Join(v.path, "/")
+	}
+	return v.joined
+}
 
 func (v *validator) report(format string, a ...any) {
-	v.issues = append(v.issues, Issue{Path: strings.Join(v.path, "/"), Message: fmt.Sprintf(format, a...), Rule: RuleStructure})
+	if v.room(SeverityError) {
+		v.issues = append(v.issues, Issue{Path: v.where(), Message: fmt.Sprintf(format, a...), Rule: RuleStructure})
+	}
 }
 
 func (v *validator) missing(child string) { v.report("missing required element %s", child) }
@@ -284,7 +386,7 @@ func (v *validator) attr(name, value, typ string, required bool) {
 	if !utf8.ValidString(value) {
 		v.report("attribute %s: invalid UTF-8", name)
 	}
-	path := strings.Join(v.path, "/")
+	path := v.where()
 	switch typ {
 	case "ID":
 		if name == "TextId" {
@@ -412,17 +514,32 @@ func FormatValueList(values []uint32) string {
 }
 
 // Text returns the text of a TextId in the primary language, or the id
-// itself when there is none.
+// itself when there is none. It goes through the texts for every call;
+// ToModel looks its texts up in a table it makes once.
 func (doc *Document) Text(id string) string {
-	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil || doc.ProfileBody.ApplicationProcess.ExternalTextList == nil {
+	pl := doc.primaryLanguage()
+	if pl == nil {
 		return id
 	}
-	if pl := doc.ProfileBody.ApplicationProcess.ExternalTextList.PrimaryLanguage; pl != nil {
-		for _, t := range pl.Texts {
-			if t.TextID == id {
-				return t.Value
+	for i, t := range pl.Texts {
+		if t.TextID == id {
+			if textVisits != nil {
+				textVisits(i + 1)
 			}
+			return t.Value
 		}
 	}
+	if textVisits != nil {
+		textVisits(len(pl.Texts))
+	}
 	return id
+}
+
+// primaryLanguage returns the texts of the primary language, nil when the
+// document has none.
+func (doc *Document) primaryLanguage() *PrimaryLanguage {
+	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil || doc.ProfileBody.ApplicationProcess.ExternalTextList == nil {
+		return nil
+	}
+	return doc.ProfileBody.ApplicationProcess.ExternalTextList.PrimaryLanguage
 }

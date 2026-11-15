@@ -43,7 +43,7 @@ Endpoint is a port on a virtual network. It implements l2.Port, l2.MulticastPort
 func (e *Endpoint) Close() error
 ```
 
-Close detaches the endpoint from the network and unblocks ReadFrame.
+Close detaches the endpoint from the network and unblocks ReadFrame. It is safe to call more than once and from multiple goroutines.
 
 #### func (Endpoint) HardwareAddr
 
@@ -249,7 +249,7 @@ AddTap registers a tap that observes every frame sent on the network.
 func (n *Network) Close() error
 ```
 
-Close detaches and closes every endpoint.
+Close detaches and closes every endpoint. It is safe to call more than once and from multiple goroutines.
 
 #### func (Network) Endpoints
 

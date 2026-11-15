@@ -156,3 +156,51 @@ func normalize(f Frame) Frame {
 	}
 	return f
 }
+
+// FuzzManagerOption decodes any option data as a manager option. What it
+// accepts is one of the two manager options, and its fields encode back
+// to an option that decodes to the same value.
+func FuzzManagerOption(f *testing.F) {
+	for _, m := range []ManagerOption{
+		{Type: SubTestMgrNAck, Prio: 0x8000, SA: sa, OtherPrio: 0xA000, OtherSA: ethernet.MAC{2, 0, 0, 0, 0, 9}},
+		{Type: SubTestPropagate, Prio: 0xFFFF, SA: ethernet.MAC{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}},
+	} {
+		d := NewManagerOption(m).Data
+		f.Add(d)
+		f.Add(d[:len(d)-1])
+		f.Add(d[2:])
+	}
+	f.Add([]byte{})
+	f.Add([]byte{0x04, 0, 0})
+	f.Fuzz(func(t *testing.T, data []byte) {
+		m, ok := Option{OUI: OUISiemens, Data: data}.ManagerOption()
+		if !ok {
+			if m != (ManagerOption{}) {
+				t.Fatalf("a refused option returned %+v", m)
+			}
+			return
+		}
+		if m.Type != SubTestMgrNAck && m.Type != SubTestPropagate {
+			t.Fatalf("type %v accepted", m.Type)
+		}
+		if len(data) < 19 {
+			t.Fatalf("a manager option from %d octets", len(data))
+		}
+		again, ok := NewManagerOption(m).ManagerOption()
+		if !ok || again != m {
+			t.Fatalf("%+v encodes to an option that decodes to %+v (%v)", m, again, ok)
+		}
+		// The same option inside a frame.
+		b, err := (&Frame{Options: []Option{{OUI: OUISiemens, Data: data}}, Common: &Common{}}).AppendTo(nil)
+		if err != nil {
+			return
+		}
+		fr, err := Decode(b)
+		if err != nil || len(fr.Options) != 1 {
+			t.Fatalf("a frame with the option: %d options, %v", len(fr.Options), err)
+		}
+		if got, ok := fr.Options[0].ManagerOption(); !ok || got != m {
+			t.Fatalf("in a frame: %+v (%v), want %+v", got, ok, m)
+		}
+	})
+}

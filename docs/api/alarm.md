@@ -78,7 +78,7 @@ Endpoint is the alarm sender and receiver of one priority of one AR: window size
 func (e *Endpoint) Close()
 ```
 
-Close stops the endpoint and unregisters it.
+Close stops the endpoint and unregisters it. It is safe to call more than once and from multiple goroutines.
 
 #### func (Endpoint) LocalRef
 
@@ -128,9 +128,17 @@ type EndpointConfig struct {
 	Retries int
 	// OnData receives the VarPart of every DATA PDU accepted in sequence,
 	// on the endpoint's own goroutine (it may call Send). The slice is a
-	// copy.
+	// copy. DATA PDUs that arrive while it runs wait in a queue of 32;
+	// when that is full they are left to the peer's retransmission
+	// (EndpointStats.Busy). It must not call the endpoint's Close,
+	// which waits for that goroutine. A run-time failure in it is not
+	// recovered.
 	OnData func(varPart []byte)
-	// OnErr is called when the peer sends an ERR PDU (an abort).
+	// OnErr is called when the peer sends an ERR PDU (an abort), on the
+	// manager's receiving goroutine: it must not block, and it must not
+	// call Manager.Close or the Close of an endpoint, which wait for a
+	// goroutine it may hold up. To end the AR, hand the work to another
+	// goroutine. A run-time failure in it is not recovered.
 	OnErr func(status pnio.Status)
 }
 ```
@@ -182,7 +190,7 @@ AllocRef returns an alarm reference no endpoint uses, or 0 (which Open rejects) 
 func (m *Manager) Close()
 ```
 
-Close stops routing. Endpoints are not closed.
+Close stops routing. Endpoints are not closed. It is safe to call more than once and from multiple goroutines.
 
 #### func (Manager) Malformed
 

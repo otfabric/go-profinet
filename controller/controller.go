@@ -91,6 +91,12 @@ type Controller struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// afterConnect, when a test set it before AddDevice, runs on a
+	// device's lifecycle goroutine once a Connect response was accepted,
+	// before the alarm endpoints and the cyclic machinery of the AR
+	// start.
+	afterConnect func()
 }
 
 // maxNameLen is the longest NameOfStation (and MRP domain name): 240
@@ -239,7 +245,10 @@ func (c *Controller) Device(name string) (*Device, bool) {
 	return d, ok
 }
 
-// Close releases every AR and stops the controller.
+// Close releases every AR and stops the controller. It is safe to call
+// more than once and from multiple goroutines; a call made while another
+// is in progress returns at once, before that one has finished. It must
+// not be called from OnState or OnAlarm (see DeviceConfig).
 func (c *Controller) Close() error {
 	c.mu.Lock()
 	if c.closed {

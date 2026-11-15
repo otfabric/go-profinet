@@ -74,7 +74,7 @@ CPU returns the interface's port: build the device's [l2.Mux](https://pkg.go.dev
 func (b *Bridge) Close() error
 ```
 
-Close stops the bridge: the CPU and local ports report profinet.ErrClosed. The physical ports stay open.
+Close stops the bridge: the CPU and local ports report profinet.ErrClosed. The physical ports stay open. It is safe to call more than once and from multiple goroutines.
 
 #### func (Bridge) Flush
 

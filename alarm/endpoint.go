@@ -31,9 +31,17 @@ type EndpointConfig struct {
 	Retries int
 	// OnData receives the VarPart of every DATA PDU accepted in sequence,
 	// on the endpoint's own goroutine (it may call Send). The slice is a
-	// copy.
+	// copy. DATA PDUs that arrive while it runs wait in a queue of 32;
+	// when that is full they are left to the peer's retransmission
+	// (EndpointStats.Busy). It must not call the endpoint's Close,
+	// which waits for that goroutine. A run-time failure in it is not
+	// recovered.
 	OnData func(varPart []byte)
-	// OnErr is called when the peer sends an ERR PDU (an abort).
+	// OnErr is called when the peer sends an ERR PDU (an abort), on the
+	// manager's receiving goroutine: it must not block, and it must not
+	// call Manager.Close or the Close of an endpoint, which wait for a
+	// goroutine it may hold up. To end the AR, hand the work to another
+	// goroutine. A run-time failure in it is not recovered.
 	OnErr func(status pnio.Status)
 }
 
@@ -277,7 +285,8 @@ func (e *Endpoint) handle(p *PDU) {
 	}
 }
 
-// Close stops the endpoint and unregisters it.
+// Close stops the endpoint and unregisters it. It is safe to call more
+// than once and from multiple goroutines.
 func (e *Endpoint) Close() {
 	e.once.Do(func() {
 		close(e.done)
@@ -375,7 +384,8 @@ func (m *Manager) Malformed() uint64 { return m.malformed.Load() }
 // Unknown returns the number of PDUs for an unknown reference.
 func (m *Manager) Unknown() uint64 { return m.unknown.Load() }
 
-// Close stops routing. Endpoints are not closed.
+// Close stops routing. Endpoints are not closed. It is safe to call more
+// than once and from multiple goroutines.
 func (m *Manager) Close() {
 	m.once.Do(func() {
 		m.cancel()

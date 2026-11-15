@@ -20,7 +20,11 @@ for hello := range c.Hellos(ctx, 16) { ... }
 
 - **Identify** is multicast to 01:0E:CF:00:00:00. Every matching device
   answers after a random delay within `ResponseDelay × 10 ms`; the requester
-  collects the answers for `Wait` and reports each device once. Filters:
+  collects the answers for `Wait` and reports each device once. Without
+  `IdentifyOptions.Max` it collects at most 4096 stations: when one more
+  answers it returns the 4096 at once, with an error matching
+  `profinet.ErrResourceExhausted`. A segment with more stations needs a
+  `Max` of at least their number. Filters:
   `FilterAll`, `FilterName`, `FilterAlias` (the AliasName a device derives
   from its LLDP neighbor, for devices without a name), `FilterIP`,
   `FilterDeviceID`.

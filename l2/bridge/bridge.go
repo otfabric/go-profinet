@@ -269,7 +269,8 @@ func (b *Bridge) Learned(mac ethernet.MAC) (int, bool) {
 }
 
 // Close stops the bridge: the CPU and local ports report
-// profinet.ErrClosed. The physical ports stay open.
+// profinet.ErrClosed. The physical ports stay open. It is safe to call
+// more than once and from multiple goroutines.
 func (b *Bridge) Close() error {
 	b.once.Do(func() {
 		b.cancel()
