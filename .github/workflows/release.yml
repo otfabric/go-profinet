@@ -28,7 +28,8 @@ jobs:
       # As in CI: the shared workflow tests with -timeout=120s, which the
       # end-to-end suite outgrows; CI's e2e job and the soak cover it.
       test-exclude-regex: "(/example(s)?($|/)|/cmd($|/)|/e2e$)"
-      # The direct dependant, built, vetted and tested against the candidate
-      # before the tag is created.
-      consumers: otfabric/profinetctl
+      # No consumers input: a downstream module does not block a release.
+      # Its dependants (audit/dependency-graph.md in otfabric/engineering)
+      # are bumped to the new version after it is cut, each in its own
+      # pull request (standards/release.md).
     secrets: inherit
