@@ -63,6 +63,12 @@ octal `0o`/`0` prefix, binary `0b`, digit separators `_`), fails with
 `ErrMalformed`. That hexadecimal is allowed in a DefaultValue has not been
 checked against the members-only GSDML specification (LIMITATIONS.md).
 
+The Boolean attributes `ToModel` reads (`LLDP_NoD_Supported`,
+`DCP_HelloSupported`) are true, false, 1 or 0, with white space around
+them allowed (xsd:boolean); an empty or absent one is false, and any other
+value fails with `ErrMalformed`. `ParseBool`, the exported helper, still
+returns its default for a value that is no Boolean.
+
 `Parse` refuses a document of more than 64 MiB or more than 1 048 576
 elements (`ErrResourceExhausted`).
 

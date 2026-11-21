@@ -201,7 +201,11 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	if ci := dap.CertificationInfo; ci != nil {
 		m.Capabilities.ConformanceClass = ci.ConformanceClass
 	}
-	m.Capabilities.LLDP = ParseBool(dap.LLDPNoDSupported, false) || m.Capabilities.ConformanceClass != "A"
+	lldp, err := parseBool(dap.LLDPNoDSupported, false)
+	if err != nil {
+		return nil, bad("DAP %s LLDP_NoD_Supported: %v", clip(dap.ID), err)
+	}
+	m.Capabilities.LLDP = lldp || m.Capabilities.ConformanceClass != "A"
 
 	dapIdent, err := ParseUint32(dap.ModuleIdentNumber)
 	if err != nil {
@@ -228,7 +232,9 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			}
 			m.DAP.Submodules = append(m.DAP.Submodules, s)
 			m.Capabilities.SupportedRTClasses = strings.FieldsFunc(it.SupportedRTClasses, func(r rune) bool { return r == ' ' || r == ';' })
-			m.Capabilities.DCPHello = ParseBool(it.DCPHelloSupported, false)
+			if m.Capabilities.DCPHello, err = parseBool(it.DCPHelloSupported, false); err != nil {
+				return nil, bad("DAP %s interface DCP_HelloSupported: %v", clip(dap.ID), err)
+			}
 			if ar := it.ApplicationRelations; ar != nil {
 				if n, err := ParseUint16(ar.NumberOfAR); err == nil && n > 0 {
 					m.Capabilities.MaxARs = int(n)
