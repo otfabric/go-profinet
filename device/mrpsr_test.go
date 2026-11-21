@@ -3,7 +3,9 @@
 package device
 
 import (
+	"fmt"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -275,5 +277,133 @@ func TestSRRDHTExpires(t *testing.T) {
 	}
 	if st := d.SystemRedundancy(); len(st) != 0 {
 		t.Fatalf("set kept after its ARs: %+v", st)
+	}
+}
+
+// TestSRSetLeavesWithAR: an AR leaves its AR set in the same step as it
+// leaves the AR table, so an observer that no longer finds the AR in ARs
+// does not find it in SystemRedundancy either. The ARs close concurrently
+// while a reader checks that invariant, over several cycles to widen the
+// window in which a two-step removal is seen.
+func TestSRSetLeavesWithAR(t *testing.T) {
+	const hold = 5000 // ms: the hold timer is not what closes the ARs here
+	n := newNet(t)
+	h := newRecHandler()
+	d, _ := n.device(h, func(c *Config) { c.SystemRedundancy = &SRConfig{} })
+	p1 := n.peer(d, "192.168.0.2", true)
+	p2 := n.peer(d, "192.168.0.3", true)
+	for cycle := range 10 {
+		r1, r2 := p1.srConnect(1, hold), p2.srConnect(2, hold)
+		r2.AR.StationName = "plc-b"
+		p1.establish(r1)
+		p2.establish(r2)
+		uuids := map[uint8]rpc.UUID{1: r1.AR.ARUUID, 2: r2.AR.ARUUID}
+		d.mu.Lock()
+		a1, a2 := d.ars[r1.AR.ARUUID], d.ars[r2.AR.ARUUID]
+		d.mu.Unlock()
+		if a1 == nil || a2 == nil {
+			t.Fatalf("cycle %d: ARs not established", cycle)
+		}
+
+		stop := make(chan struct{})
+		bad := make(chan string, 1)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				// ARs first: an AR missing there must be missing from the
+				// set read after it.
+				live := map[rpc.UUID]bool{}
+				for _, a := range d.ARs() {
+					live[a.UUID] = true
+				}
+				for _, s := range d.SystemRedundancy() {
+					for _, num := range s.ARs {
+						if !live[uuids[num]] {
+							select {
+							case bad <- fmt.Sprintf("AR %d gone from ARs, still in its set %+v", num, s):
+							default:
+							}
+							return
+						}
+					}
+				}
+			}
+		}()
+		var wg sync.WaitGroup
+		for _, a := range []*ar{a1, a2} {
+			wg.Go(func() { d.abort(a, pnio.AbortUser, false) })
+		}
+		wg.Wait()
+		close(stop)
+		<-done
+		select {
+		case msg := <-bad:
+			t.Fatalf("cycle %d: %s", cycle, msg)
+		default:
+		}
+		if st := d.SystemRedundancy(); len(st) != 0 {
+			t.Fatalf("cycle %d: set kept after its ARs: %+v", cycle, st)
+		}
+	}
+}
+
+// TestSRPrimaryLeaves: the primary AR closing while the other AR of its
+// set stays leaves a set of that AR with no primary and starts the
+// redundancy data hold time; the last AR closing before it expires
+// forgets the set and stops the hold timer.
+func TestSRPrimaryLeaves(t *testing.T) {
+	const hold = 5000 // ms: longer than the test, so only srLeave stops it
+	n := newNet(t)
+	h := newRecHandler()
+	d, _ := n.device(h, func(c *Config) { c.SystemRedundancy = &SRConfig{} })
+	p1 := n.peer(d, "192.168.0.2", true)
+	p2 := n.peer(d, "192.168.0.3", true)
+	r1, r2 := p1.srConnect(1, hold), p2.srConnect(2, hold)
+	r2.AR.StationName = "plc-b"
+	p1.establish(r1)
+	p2.establish(r2)
+	d.mu.Lock()
+	a1, a2 := d.ars[r1.AR.ARUUID], d.ars[r2.AR.ARUUID]
+	d.mu.Unlock()
+	if a1 == nil || a2 == nil || !sameSet(a1, a2) {
+		t.Fatal("the two IOCARSRs are not one AR set")
+	}
+	if !d.srOutput(a1, rt.PrimaryRequest) {
+		t.Fatal("AR 1 not primary")
+	}
+
+	d.abort(a1, pnio.AbortUser, false)
+	waitAR(t, d, r1.AR.ARUUID, ARStateClosed)
+	st := d.SystemRedundancy()
+	if len(st) != 1 || len(st[0].ARs) != 1 || st[0].ARs[0] != 2 || st[0].Primary != 0 {
+		t.Fatalf("set after its primary left: %+v, want ARs [2] primary 0", st)
+	}
+	if st[0].NoPrimaryFor <= 0 {
+		t.Fatalf("no primary for %s, want the hold time running", st[0].NoPrimaryFor)
+	}
+	s := a2.sr.set
+	s.mu.Lock()
+	timer := s.rdht
+	s.mu.Unlock()
+	if timer == nil {
+		t.Fatal("hold timer not started when the primary left")
+	}
+	if st, ok := arState(d, r2.AR.ARUUID); !ok || st != ARStateData {
+		t.Fatalf("AR 2 %v %v after the primary left, want Data", st, ok)
+	}
+
+	d.abort(a2, pnio.AbortUser, false)
+	waitAR(t, d, r2.AR.ARUUID, ARStateClosed)
+	if st := d.SystemRedundancy(); len(st) != 0 {
+		t.Fatalf("set kept after its ARs: %+v", st)
+	}
+	if timer.Stop() {
+		t.Fatal("hold timer still running after the set's last AR left")
 	}
 }

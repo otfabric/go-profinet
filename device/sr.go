@@ -233,11 +233,21 @@ func (d *Device) srStatus(s *srSet) {
 // srLeave takes a closing AR out of its set: a primary that leaves starts
 // the redundancy data hold time; an empty set is forgotten.
 func (d *Device) srLeave(a *ar) {
+	d.mu.Lock()
+	after := d.srLeaveLocked(a)
+	d.mu.Unlock()
+	after()
+}
+
+// srLeaveLocked is srLeave with d.mu held, so that a caller can take an AR
+// out of d.ars and out of its set in one step: nobody sees an AR gone from
+// ARs that SystemRedundancy still lists. The returned func reports the
+// set's new status and must be called after d.mu is released.
+func (d *Device) srLeaveLocked(a *ar) func() {
 	if a.sr == nil {
-		return
+		return func() {}
 	}
 	s := a.sr.set
-	d.mu.Lock()
 	s.mu.Lock()
 	if s.ars[a.sr.number] == a {
 		delete(s.ars, a.sr.number)
@@ -256,8 +266,10 @@ func (d *Device) srLeave(a *ar) {
 		d.srNoPrimaryLocked(s)
 	}
 	s.mu.Unlock()
-	d.mu.Unlock()
-	if wasPrim && !empty {
+	if !wasPrim || empty {
+		return func() {}
+	}
+	return func() {
 		d.log.Infof("device: AR set: primary AR %d gone", a.sr.number)
 		d.srStatus(s)
 	}

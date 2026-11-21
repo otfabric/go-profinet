@@ -32,7 +32,8 @@ section ending with a `---` line and no `---` line inside a section.
 **Previous release:** v0.11.0
 
 GSDML: integer record defaults are read as decimal or 0x hexadecimal, and
-`ToModel` refuses a Boolean capability attribute that is no Boolean. No
+`ToModel` refuses a Boolean capability attribute that is no Boolean.
+System redundancy: an AR leaves its AR set together with the AR table. No
 API change.
 
 ### Breaking
@@ -48,7 +49,6 @@ API change.
   documents `gsdml.Generate` writes (and profinetctl's `gsdml generate`)
   hold no Ref; neither profinetctl nor profinet-interop sets a
   DefaultValue.
-
 - Behaviour: `gsdml.ToModel` fails with `ErrMalformed` when the DAP's
   `LLDP_NoD_Supported` or the interface's `DCP_HelloSupported` is present
   but not one of true, false, 1 or 0 (xsd:boolean). Such a value used to
@@ -68,10 +68,15 @@ API change.
   `DCP_HelloSupported` (for example `"yes"` or `"TRUE"`) into false, so a
   caller that skipped `Validate` got a device model without LLDP or DCP
   Hello and no error.
-
 - gsdml: a leading-zero integer DefaultValue (`"010"`) wrote the octal
   value into the parameter record without an error. That record is what
   the controller writes to the device at start-up.
+- device: a closing IOCARSR left the AR table (`ARs`) before its AR set
+  (`SystemRedundancy`), in two separate steps. A caller could find the AR
+  gone from `ARs` and still listed in its set, or a set with no live AR.
+  Both now change in one step under the device lock. Seen as a rare
+  `TestSRRDHTExpires` failure under `make check`; `TestSRSetLeavesWithAR`
+  checks the ordering.
 
 ---
 
