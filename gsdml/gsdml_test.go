@@ -330,6 +330,9 @@ func FuzzParse(f *testing.F) {
 		}
 		f.Add(b)
 	}
+	// The prolog: a DOCTYPE with and without an internal subset.
+	f.Add([]byte(`<?xml version="1.0"?><!DOCTYPE ISO15745Profile [<!ATTLIST Ref BitLength CDATA "3">]><ISO15745Profile xmlns="` + Namespace + `"/>`))
+	f.Add([]byte(`<!DOCTYPE ISO15745Profile SYSTEM "a[b].dtd"><!-- c --><ISO15745Profile xmlns="` + Namespace + `"/>`))
 	f.Fuzz(func(t *testing.T, b []byte) {
 		doc, err := ParseBytes(b)
 		if err != nil {

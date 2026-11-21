@@ -105,8 +105,12 @@ func parseBytes(data []byte, elements int) (*Document, error) {
 	}
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.CharsetReader = charsetReader
+	start, err := prolog(d)
+	if err != nil {
+		return nil, err
+	}
 	var doc Document
-	if err := d.Decode(&doc); err != nil {
+	if err := d.DecodeElement(&doc, &start); err != nil {
 		return nil, fmt.Errorf("gsdml: %w: %v", profinet.ErrMalformed, err)
 	}
 	if doc.XMLName.Space != Namespace {
@@ -114,6 +118,58 @@ func parseBytes(data []byte, elements int) (*Document, error) {
 	}
 	normalize(&doc)
 	return &doc, nil
+}
+
+// prolog reads the tokens before the root element and returns its start.
+// A document type declaration with an internal subset is refused: XML 1.0
+// (Fifth Edition) section 5.1 has even a non-validating processor apply
+// the attribute defaults and entities it declares, and encoding/xml does
+// not, so the document would read differently here. A declaration without
+// one (a name, an external identifier) declares nothing a non-validating
+// processor must read, and is ignored, as is any DTD it names.
+func prolog(d *xml.Decoder) (xml.StartElement, error) {
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			if err == io.EOF {
+				err = io.ErrUnexpectedEOF
+			}
+			return xml.StartElement{}, fmt.Errorf("gsdml: %w: %v", profinet.ErrMalformed, err)
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			return t, nil
+		case xml.Directive:
+			if internalSubset(t) {
+				return xml.StartElement{}, fmt.Errorf("gsdml: %w: a document type declaration with an internal subset (XML 1.0 section 5.1: its declarations would apply)", profinet.ErrUnsupported)
+			}
+		default:
+		}
+	}
+}
+
+// internalSubset reports whether the directive is a DOCTYPE declaration
+// with an internal subset: a '[' outside the quoted literals of its
+// external identifier.
+func internalSubset(dir xml.Directive) bool {
+	rest, ok := bytes.CutPrefix(dir, []byte("DOCTYPE"))
+	if !ok {
+		return false
+	}
+	var quote byte
+	for _, c := range rest {
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '[':
+			return true
+		}
+	}
+	return false
 }
 
 const nsXML = "http://www.w3.org/XML/1998/namespace"

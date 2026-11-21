@@ -126,7 +126,9 @@ returned with the error). As `ErrInvalidConfig`: a model with more than
 profile with a negative `TestInterval`. As `ErrMalformed`: a GSDML module
 or device access point with more than 1440 submodules, or a Const
 ByteOffset or Ref BitOffset that is no number (`gsdml.ToModel`); a
-PDRealData record whose MultipleBlockHeaders nest more than four deep.
+PDRealData record whose MultipleBlockHeaders nest more than four deep. As
+`ErrUnsupported`: a GSDML document whose document type declaration has an
+internal subset (`gsdml.Parse`; docs/GSDML.md).
 
 The block encoders of `pnio` and `alarm.PDU.AppendPayload` return no error;
 given a length that does not fit, they panic with an error matching
