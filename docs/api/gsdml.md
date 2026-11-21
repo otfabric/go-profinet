@@ -119,7 +119,7 @@ Marshal returns the encoded document.
 func ParseBool(s string, def bool) bool
 ```
 
-ParseBool parses a Boolean attribute value; empty is def.
+ParseBool parses a Boolean attribute value; empty is def, and so is a value that is no Boolean (ToModel refuses one; Validate reports it).
 
 ### func ParseUint16
 

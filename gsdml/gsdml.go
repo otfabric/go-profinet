@@ -477,7 +477,8 @@ func ParseUint16(s string) (uint16, error) {
 	return uint16(v), nil
 }
 
-// ParseBool parses a Boolean attribute value; empty is def.
+// ParseBool parses a Boolean attribute value; empty is def, and so is a
+// value that is no Boolean (ToModel refuses one; Validate reports it).
 func ParseBool(s string, def bool) bool {
 	switch strings.TrimSpace(s) {
 	case "true", "1":
@@ -486,6 +487,24 @@ func ParseBool(s string, def bool) bool {
 		return false
 	default:
 		return def
+	}
+}
+
+// parseBool parses a Boolean attribute value of the xsd:boolean lexical
+// space (true, false, 1, 0, with surrounding white space): an empty value
+// (absent, as the generated types cannot tell the two apart) is def; any
+// other value is an error.
+func parseBool(s string, def bool) (bool, error) {
+	if s == "" {
+		return def, nil
+	}
+	switch strings.TrimSpace(s) {
+	case "true", "1":
+		return true, nil
+	case "false", "0":
+		return false, nil
+	default:
+		return def, fmt.Errorf("%q is not a Boolean", clip(s))
 	}
 }
 
