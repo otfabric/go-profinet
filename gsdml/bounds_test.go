@@ -17,14 +17,31 @@ import (
 	"github.com/otfabric/go-profinet"
 )
 
-// allocated returns the octets fn allocates (runtime.MemStats.TotalAlloc).
+// allocRuns is how often allocated runs fn.
+const allocRuns = 5
+
+// allocated returns the fewest octets fn allocates
+// (runtime.MemStats.TotalAlloc) in allocRuns runs; fn must do the same
+// work each time. One run is not enough under the race detector: there
+// sync.Pool.Put drops one item in four at random (sync/pool.go), and
+// every catalog pattern is a regexp.Regexp, whose backtracker comes from
+// such a pool, so a run of Check allocates a random number of fresh
+// backtrackers, up to 32 KiB each. With -race one run of the 32 reduction
+// ratio lists of TestCheckReductionRatiosBounded ranged from 109 to 665
+// KB against a budget of 632 KB, mean 390, standard deviation 92 (200
+// runs, Go 1.27); without it, 58 to 95 KB. An allocation that Check makes
+// itself is in every run and so in the fewest.
 func allocated(fn func()) uint64 {
-	runtime.GC()
-	var m0, m1 runtime.MemStats
-	runtime.ReadMemStats(&m0)
-	fn()
-	runtime.ReadMemStats(&m1)
-	return m1.TotalAlloc - m0.TotalAlloc
+	least := ^uint64(0)
+	for range allocRuns {
+		runtime.GC()
+		var m0, m1 runtime.MemStats
+		runtime.ReadMemStats(&m0)
+		fn()
+		runtime.ReadMemStats(&m1)
+		least = min(least, m1.TotalAlloc-m0.TotalAlloc)
+	}
+	return least
 }
 
 func mustParse(t *testing.T, b []byte) *Document {
