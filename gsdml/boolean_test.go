@@ -37,12 +37,16 @@ func TestParseBoolAttr(t *testing.T) {
 		{"01", false, false, false},
 		{"t", false, false, false},
 	} {
-		got, err := parseBool(tc.s, tc.def)
+		got, err := parseBool(tc.s, false, tc.def)
 		if tc.ok != (err == nil) || got != tc.want {
 			t.Errorf("parseBool(%q, %v) = %v, %v; want %v ok %v", tc.s, tc.def, got, err, tc.want, tc.ok)
 		}
 	}
-	if _, err := parseBool("yes", false); err == nil || !strings.Contains(err.Error(), `"yes"`) {
+	// Given as "" (present but empty) is no Boolean either.
+	if _, err := parseBool("", true, true); err == nil {
+		t.Fatal("an empty attribute was taken for an absent one")
+	}
+	if _, err := parseBool("yes", false, false); err == nil || !strings.Contains(err.Error(), `"yes"`) {
 		t.Fatalf("err %v", err)
 	}
 }

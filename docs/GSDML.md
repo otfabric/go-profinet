@@ -51,9 +51,19 @@ in use (for example V2.35 and V2.42, which published files without a
 BitLength carry) have not been checked: the XSDs are members-only and no
 licensed copy was at hand. A BitLength that is present but no Unsigned8,
 or 0, fails with `ErrMalformed`; so does a bit area that leaves its octet
-(see LIMITATIONS.md). An attribute written as `BitLength=""` cannot be told
-from an absent one (the generated types hold attributes as strings) and
-takes the default.
+(see LIMITATIONS.md). An attribute a parsed document gives as `""`
+(`BitLength=""`) is present, not absent: it takes no default, and
+`ToModel` refuses it (`ErrMalformed`) as it refuses any BitLength that is
+no Unsigned8.
+
+`Parse` records, per element, which typed optional attributes the
+document gave as `""`; `Validate` reports those whose type does not admit
+the empty string (`attribute BitLength: empty, not a Unsigned8`). An empty
+attribute of type string or TokenList, or one marked always written (`~`,
+such as `ApplicationClass`), is valid. A document built in Go cannot say
+"present but empty": there an empty field is absent, as before. Encoding
+writes no optional attribute that is empty, so a parsed `BitLength=""`
+is absent once the document is written and read again.
 
 The DefaultValue of an integer or bit Ref is decimal with an optional
 sign, where leading zeros are decimal (`"010"` is ten), as in the lexical
@@ -65,8 +75,8 @@ checked against the members-only GSDML specification (LIMITATIONS.md).
 
 The Boolean attributes `ToModel` reads (`LLDP_NoD_Supported`,
 `DCP_HelloSupported`) are true, false, 1 or 0, with white space around
-them allowed (xsd:boolean); an empty or absent one is false, and any other
-value fails with `ErrMalformed`. `ParseBool`, the exported helper, still
+them allowed (xsd:boolean); an absent one is false, and an empty one or any
+other value fails with `ErrMalformed`. `ParseBool`, the exported helper, still
 returns its default for a value that is no Boolean.
 
 `Parse` refuses a document of more than 64 MiB or more than 1 048 576

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -113,5 +114,25 @@ func TestCompareXSD(t *testing.T) {
 	}
 	if err := compareXSD(c, t.TempDir()); err == nil {
 		t.Fatal("no schema")
+	}
+}
+
+// TestTrackedAttrs: the attributes whose emptiness is recorded are the
+// optional, typed, unqualified ones; required, always-written (~), string
+// and xml: attributes are not.
+func TestTrackedAttrs(t *testing.T) {
+	e := element{Name: "E", Attrs: []string{
+		"Req:Unsigned8!", "Always:token~", "Text:string", "xml:lang:Language",
+		"Width:Unsigned8=1", "Flag:Boolean", "List:TokenList",
+	}}
+	var got []string
+	for _, a := range trackedAttrs(e) {
+		got = append(got, a.name)
+	}
+	if want := []string{"Width", "Flag", "List"}; !slices.Equal(got, want) {
+		t.Fatalf("%q, want %q", got, want)
+	}
+	if trackedAttrs(element{Name: "F", Attrs: []string{"Text:string"}}) != nil {
+		t.Fatal("an element with no tracked attribute")
 	}
 }
