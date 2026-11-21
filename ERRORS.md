@@ -130,7 +130,9 @@ UTF8String or OctetString Ref default longer than its Length
 (`gsdml.ToModel`); a
 PDRealData record whose MultipleBlockHeaders nest more than four deep. As
 `ErrUnsupported`: a GSDML document whose document type declaration has an
-internal subset (`gsdml.Parse`; docs/GSDML.md).
+internal subset (`gsdml.Parse`; docs/GSDML.md); a Ref whose DataType has no
+verified DefaultValue encoding, such as `Integer16_S`, `TimeStamp` or `N2`
+(`gsdml.ToModel`; docs/GSDML.md).
 
 The block encoders of `pnio` and `alarm.PDU.AppendPayload` return no error;
 given a length that does not fit, they panic with an error matching

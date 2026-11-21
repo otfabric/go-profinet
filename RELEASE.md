@@ -31,9 +31,8 @@ section ending with a `---` line and no `---` line inside a section.
 **Date:** 2026-11-21
 **Previous release:** v0.11.0
 
-GSDML input hardening (work packages A1, A2, A3, A4, A5 and A7 of
-docs/research/INTEROP-COMPLIANCE-PLAN.md) and a system-redundancy
-ordering fix. `gsdml.ToModel` no longer turns a malformed, empty or
+GSDML input hardening (work packages A1 to A7 of the interoperability
+and compliance plan) and a system-redundancy ordering fix. `gsdml.ToModel` no longer turns a malformed, empty or
 unsupported value into a default without an error. API: additive only
 (`UnmarshalXML` on generated GSDML types); several conversions that used
 to succeed now fail, listed under Breaking.
@@ -85,6 +84,14 @@ every lexically malformed value except where noted.
   wrote there, which it used to leave; and a string default keeps its
   leading and trailing white space, which was trimmed. A UTF-8 value
   counts its encoded octets. `Validate` does not check DefaultValue.
+- A Boolean Ref DefaultValue is true, false, 1 or 0 and writes 0x00 or
+  0x01 (A6). It was read as an Unsigned8: `"true"` failed, and now
+  converts; `"2"` wrote 0x02, and now fails with `ErrMalformed`. A Ref of a DataType whose
+  DefaultValue encoding is not verified fails with `ErrUnsupported`: the
+  `_S` types, the composite, date and time types, the PROFIdrive types
+  (`N2`, `V2`, …) and F_MessageTrailer4Byte/5Byte. They were written as an
+  unsigned number. No GSDML file of profinet-interop or profinetctl has
+  such a Ref.
 
 ### Added
 
@@ -100,6 +107,10 @@ every lexically malformed value except where noted.
 - gsdml: an over-long string or octet Ref default was cut short without
   an error, so the device started with a value other than the one the
   document gives; a short one left a Const's octets after it.
+- gsdml: an `Integer16_S` Ref default could not be negative and ignored
+  the type's status bits, and a `TimeStamp` or `Float64+Status8` default
+  was written as a 64-bit number with the remaining octets zero; such a
+  record now fails rather than reaching the device wrong.
 - gsdml: `ToModel` discarded the parse errors of the optional numbers and
   value lists above, so a `MinDeviceInterval="32ms"` gave a model with a
   MinDeviceInterval of 0, and a `device` run from it applied no lower

@@ -333,6 +333,28 @@ func FuzzParse(f *testing.F) {
 	// The prolog: a DOCTYPE with and without an internal subset.
 	f.Add([]byte(`<?xml version="1.0"?><!DOCTYPE ISO15745Profile [<!ATTLIST Ref BitLength CDATA "3">]><ISO15745Profile xmlns="` + Namespace + `"/>`))
 	f.Add([]byte(`<!DOCTYPE ISO15745Profile SYSTEM "a[b].dtd"><!-- c --><ISO15745Profile xmlns="` + Namespace + `"/>`))
+	// One edit of the modular fixture per GSDML input change of v0.12.0
+	// (RELEASE.md), so that the fuzzer starts from the changed paths.
+	mod, err := os.ReadFile("testdata/fixtures/GSDML-V2.43-OTFabric-ModularFixture-20261027.xml")
+	if err != nil {
+		f.Fatal(err)
+	}
+	const u16 = `<Ref ByteOffset="2" DataType="Unsigned16" DefaultValue="50" AllowedValues="10..1000" TextId="T_Filter"/>`
+	for _, e := range [][2]string{
+		{u16, `<Ref ByteOffset="2" DataType="Unsigned16" DefaultValue="010" TextId="T_Filter"/>`},               // A1
+		{u16, `<Ref ByteOffset="2" DataType="VisibleString" Length="2" DefaultValue="abc" TextId="T_Filter"/>`}, // A2
+		{`LLDP_NoD_Supported="true"`, `LLDP_NoD_Supported="yes"`},                                               // A3
+		{`BitLength="2"`, `BitLength=""`},                                                                       // A4
+		{`MinDeviceInterval="32"`, `MinDeviceInterval="32ms"`},                                                  // A5
+		{u16, `<Ref ByteOffset="2" DataType="Boolean" DefaultValue="true" TextId="T_Filter"/>`},                 // A6
+		{u16, `<Ref ByteOffset="2" DataType="Integer16_S" DefaultValue="-1" TextId="T_Filter"/>`},               // A6
+		{`<ISO15745Profile`, `<!DOCTYPE ISO15745Profile [<!ATTLIST Ref BitLength CDATA "3">]><ISO15745Profile`}, // A7
+	} {
+		if !bytes.Contains(mod, []byte(e[0])) {
+			f.Fatalf("the fixture no longer holds %s", e[0])
+		}
+		f.Add(bytes.Replace(mod, []byte(e[0]), []byte(e[1]), 1))
+	}
 	f.Fuzz(func(t *testing.T, b []byte) {
 		doc, err := ParseBytes(b)
 		if err != nil {

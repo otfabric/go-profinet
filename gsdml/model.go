@@ -552,6 +552,21 @@ func parseOctets(s string) ([]byte, error) {
 	return out, nil
 }
 
+// refDefaultEncoded are the DataTypes whose Ref DefaultValue applyRef
+// writes. For every other one the encoding is not established by a source
+// this package has (docs/GSDML.md): the _S types embed two status bits at
+// positions OPC 30144 v1.00 Table 17 does not give, the composite and time
+// types and the PROFIdrive types (N2, V2, …) have no stated lexical form,
+// and the types of more than 8 octets were zero-filled above 64 bits.
+// applyRef refuses those with ErrUnsupported rather than write a guess.
+var refDefaultEncoded = map[DataType]bool{
+	DataTypeBoolean:  true,
+	DataTypeInteger8: true, DataTypeInteger16: true, DataTypeInteger32: true, DataTypeInteger64: true,
+	DataTypeUnsigned8: true, DataTypeUnsigned16: true, DataTypeUnsigned32: true, DataTypeUnsigned64: true,
+	DataTypeFloat32: true, DataTypeFloat64: true,
+	DataTypeVisibleString: true, DataTypeUTF8String: true, DataTypeOctetString: true,
+}
+
 // applyRef writes the DefaultValue of a Ref into a record.
 func applyRef(rec []byte, r *Ref) error {
 	off, err := ParseUint32(r.ByteOffset)
@@ -589,6 +604,9 @@ func applyRef(rec []byte, r *Ref) error {
 		rec[off] = rec[off]&^mask | byte(shifted)
 		return nil
 	}
+	if !refDefaultEncoded[t] {
+		return fmt.Errorf("gsdml: %w: Ref at %d: no verified DefaultValue encoding for DataType %s", profinet.ErrUnsupported, off, clip(r.DataType))
+	}
 	size, err := DataItemSize(r.DataType, r.Length)
 	if err != nil {
 		return err
@@ -611,6 +629,20 @@ func applyRef(rec []byte, r *Ref) error {
 			return fmt.Errorf("gsdml: %w: Float64 default %q", profinet.ErrMalformed, dv)
 		}
 		binary.BigEndian.PutUint64(dst, math.Float64bits(f))
+	case DataTypeBoolean:
+		// One octet: false 0x00, true 0x01 (any nonzero octet reads as
+		// true; 0x01 is the canonical one; IEC 61158-6-10, section
+		// 4.1.2, draft edition). The xsd:boolean forms true, false, 1
+		// and 0 are accepted; that the GSDML specification writes a
+		// Boolean DefaultValue so is not verified (LIMITATIONS.md).
+		b, err := parseBool(dv, true, false)
+		if err != nil {
+			return fmt.Errorf("gsdml: %w: Boolean default: %v", profinet.ErrMalformed, err)
+		}
+		dst[0] = 0
+		if b {
+			dst[0] = 1
+		}
 	case DataTypeVisibleString, DataTypeUTF8String:
 		// The value is taken as written: DefaultValue is an xsd:string,
 		// whose white space is preserved, so it is not trimmed. Length is
@@ -638,8 +670,8 @@ func applyRef(rec []byte, r *Ref) error {
 		for i := range size {
 			dst[size-1-i] = byte((v >> (8 * i)) & 0xFF)
 		}
-	default:
-		v, err := parseUint(dv, min(size*8, 64))
+	default: // Unsigned8, Unsigned16, Unsigned32, Unsigned64
+		v, err := parseUint(dv, size*8)
 		if err != nil {
 			return fmt.Errorf("gsdml: %w: %s default %q", profinet.ErrMalformed, t, dv)
 		}
