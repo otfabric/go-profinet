@@ -632,9 +632,9 @@ func applyRef(rec []byte, r *Ref) error {
 	case DataTypeBoolean:
 		// One octet: false 0x00, true 0x01 (any nonzero octet reads as
 		// true; 0x01 is the canonical one; IEC 61158-6-10, section
-		// 4.1.2, in the draft read for WP A6). The xsd:boolean forms true, false, 1 and 0 are
-		// accepted; that the GSDML specification writes a Boolean
-		// DefaultValue so is not verified (LIMITATIONS.md).
+		// 4.1.2, draft edition). The xsd:boolean forms true, false, 1
+		// and 0 are accepted; that the GSDML specification writes a
+		// Boolean DefaultValue so is not verified (LIMITATIONS.md).
 		b, err := parseBool(dv, true, false)
 		if err != nil {
 			return fmt.Errorf("gsdml: %w: Boolean default: %v", profinet.ErrMalformed, err)

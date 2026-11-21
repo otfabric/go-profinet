@@ -104,6 +104,10 @@ func TestToModelUnverifiedEncoding(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Validate checks the DataType, not the DefaultValue.
+		if err := Validate(doc); err != nil {
+			t.Errorf("%s: Validate: %v", tc.ref, err)
+		}
 		_, err = ToModel(doc, "DAP_2P")
 		if tc.want == nil && err != nil || tc.want != nil && (!errors.Is(err, tc.want) || !strings.Contains(err.Error(), "record 102")) {
 			t.Errorf("%s: %v", tc.ref, err)

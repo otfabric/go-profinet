@@ -31,9 +31,8 @@ section ending with a `---` line and no `---` line inside a section.
 **Date:** 2026-11-21
 **Previous release:** v0.11.0
 
-GSDML input hardening (work packages A1 to A7 of
-docs/research/INTEROP-COMPLIANCE-PLAN.md) and a system-redundancy
-ordering fix. `gsdml.ToModel` no longer turns a malformed, empty or
+GSDML input hardening (work packages A1 to A7 of the interoperability
+and compliance plan) and a system-redundancy ordering fix. `gsdml.ToModel` no longer turns a malformed, empty or
 unsupported value into a default without an error. API: additive only
 (`UnmarshalXML` on generated GSDML types); several conversions that used
 to succeed now fail, listed under Breaking.

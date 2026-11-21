@@ -47,7 +47,15 @@ func TestOptionalNumbersMalformed(t *testing.T) {
 		{"FixedInSubslots empty", sm, sm + ` FixedInSubslots=""`, "FixedInSubslots"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := dap1P(t, tc.old, tc.new)
+			// Validate reports it too (RELEASE.md v0.12.0 says so).
+			doc, err := ParseBytes(fixtureVariant(t, tc.old, tc.new))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verr := Validate(doc); verr == nil || !strings.Contains(verr.Error(), tc.attr) {
+				t.Errorf("Validate: %v", verr)
+			}
+			_, err = dap1P(t, tc.old, tc.new)
 			if !errors.Is(err, profinet.ErrMalformed) || !strings.Contains(err.Error(), tc.attr) {
 				t.Fatalf("ToModel: %v", err)
 			}
