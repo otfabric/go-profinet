@@ -519,18 +519,25 @@ func applyRef(rec []byte, r *Ref) error {
 	}
 	t := DataType(r.DataType)
 	if t == DataTypeBit || t == DataTypeBitArea {
-		// An absent BitOffset is 0; one that is no number is refused.
-		bit32, err := optionalUint32(r.BitOffset)
-		if err != nil || bit32 > math.MaxUint16 {
+		// An absent BitOffset is 0 and an absent BitLength 1, the defaults
+		// of the Ref attributes (ISO 15745-4:2003/Amd 1:2006, Annex D,
+		// Table D.31; docs/GSDML.md). A value that is present but no
+		// Unsigned8 is refused, as is a BitLength of 0.
+		bit8, err := parseUint(r.bitOffsetOrDefault(), 8)
+		if err != nil {
 			return fmt.Errorf("gsdml: %w: bit Ref BitOffset %q", profinet.ErrMalformed, clip(r.BitOffset))
 		}
-		bit := uint16(bit32)
+		bit := uint16(bit8)
 		width := uint16(1)
 		if t == DataTypeBitArea {
-			width, _ = ParseUint16(r.BitLength)
+			w, err := parseUint(r.bitLengthOrDefault(), 8)
+			if err != nil || w == 0 {
+				return fmt.Errorf("gsdml: %w: bit Ref at %d.%d BitLength %q", profinet.ErrMalformed, off, bit, clip(r.BitLength))
+			}
+			width = uint16(w)
 		}
 		v, err := strconv.ParseUint(strings.TrimSpace(r.DefaultValue), 0, 64)
-		if err != nil || !within(off, 1, len(rec)) || bit >= 8 || width == 0 || bit+width > 8 {
+		if err != nil || !within(off, 1, len(rec)) || bit >= 8 || bit+width > 8 {
 			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d", profinet.ErrMalformed, off, bit)
 		}
 		shifted := v << bit

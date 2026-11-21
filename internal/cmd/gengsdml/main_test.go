@@ -42,6 +42,14 @@ func TestCatalogChecks(t *testing.T) {
 		`{"root": "A", "elements": [{"name": "A", "children": ["B"]}]}`,
 		`{"root": "A", "elements": [{"name": "A", "text": "string", "children": ["A"]}]}`,
 		`{"root": "A", "unknownField": 1, "elements": [{"name": "A"}]}`,
+		// Defaults: only for an optional attribute, and a value of its type.
+		`{"root": "A", "simpleTypes": {"u": {"uint": 8}}, "elements": [{"name": "A", "attrs": ["a:u!=1"]}]}`,
+		`{"root": "A", "simpleTypes": {"u": {"uint": 8}}, "elements": [{"name": "A", "attrs": ["a:u~=1"]}]}`,
+		`{"root": "A", "simpleTypes": {"u": {"uint": 8}}, "elements": [{"name": "A", "attrs": ["a:u=256"]}]}`,
+		`{"root": "A", "simpleTypes": {"u": {"uint": 8}}, "elements": [{"name": "A", "attrs": ["a:u="]}]}`,
+		`{"root": "A", "simpleTypes": {"e": {"enum": ["x"]}}, "elements": [{"name": "A", "attrs": ["a:e=y"]}]}`,
+		`{"root": "A", "simpleTypes": {"p": {"pattern": "^a$"}}, "elements": [{"name": "A", "attrs": ["a:p=b"]}]}`,
+		`{"root": "A", "elements": [{"name": "A", "attrs": ["a:missing=1"]}]}`,
 	}
 	dir := t.TempDir()
 	for i, b := range bad {
@@ -53,6 +61,20 @@ func TestCatalogChecks(t *testing.T) {
 	}
 	if _, _, err := load(filepath.Join(dir, "missing.json")); err == nil {
 		t.Fatal("missing file")
+	}
+	// A valid default.
+	p := filepath.Join(dir, "ok.json")
+	_ = os.WriteFile(p, []byte(`{"root": "A", "simpleTypes": {"u": {"uint": 8}, "e": {"enum": ["x"]}}, "elements": [{"name": "A", "attrs": ["a:u=1", "b:e=x"]}]}`), 0o644)
+	c, _, err := load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := generateGo(c, []byte("{}"))
+	if err != nil || !bytes.Contains(src, []byte("func (x *A) aOrDefault() string {")) || !bytes.Contains(src, []byte(`return "1"`)) {
+		t.Fatalf("accessor missing: %v\n%s", err, src)
+	}
+	if doc := generateDoc(c); !bytes.Contains(doc, []byte("| `a` | `u` | default `1` |")) {
+		t.Fatalf("doc\n%s", doc)
 	}
 }
 
@@ -80,11 +102,13 @@ func TestNames(t *testing.T) {
 
 func TestCompareXSD(t *testing.T) {
 	c := &catalog{Elements: []element{
-		{Name: "Item", Attrs: []string{"ID:x!", "Kind:x!", "Missing:x"}, Children: []string{"Name"}},
+		// Kind required, Missing undeclared, Width's default 2 (the schema's
+		// is 1), Note a default the schema lacks.
+		{Name: "Item", Attrs: []string{"ID:x!", "Kind:x!", "Missing:x", "Width:x=2", "Note:x=n"}, Children: []string{"Name"}},
 		{Name: "Absent"},
 	}}
 	err := compareXSD(c, "../../xsd/testdata")
-	if err == nil || !strings.Contains(err.Error(), "3 places") {
+	if err == nil || !strings.Contains(err.Error(), "5 places") {
 		t.Fatalf("err %v", err)
 	}
 	if err := compareXSD(c, t.TempDir()); err == nil {

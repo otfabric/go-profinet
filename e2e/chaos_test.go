@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -85,7 +86,8 @@ func TestChaos(t *testing.T) {
 				base := runtime.NumGoroutine()
 				func() {
 					e := newEnv(t, seed)
-					dev, dn := e.device("dut", "192.168.0.10", testModel(), nil)
+					closed := &closedRec{}
+					dev, dn := e.device("dut", "192.168.0.10", testModel(), closed)
 					ctrl, cn := e.controller("192.168.0.1")
 					dn.ep.SetFaults(p.faults)
 					cn.ep.SetFaults(p.faults)
@@ -130,6 +132,13 @@ func TestChaos(t *testing.T) {
 						t.Fatalf("no faults injected: %+v %+v", st, ct)
 					}
 					t.Logf("device %+v controller %+v; AR aborts %d", st, ct, cd.Stats().Aborts)
+					// Every AR the device closed under the faults reports
+					// the output IOCR's timing of the Connect (issue #73).
+					for _, i := range closed.infos() {
+						if i.ReductionRatio != 8 || i.DataHoldFactor != 10 || i.SendClockFactor == 0 || i.WatchdogFactor == 0 {
+							t.Fatalf("closed AR %+v", i)
+						}
+					}
 					_ = e.net.Close()
 					_ = ctrl.Close()
 					_ = dev.Close()
@@ -138,6 +147,28 @@ func TestChaos(t *testing.T) {
 			})
 		}
 	}
+}
+
+// closedRec records the ARInfo of every IOCAR the device closes.
+type closedRec struct {
+	device.NopHandler
+	mu     sync.Mutex
+	closed []device.ARInfo
+}
+
+func (h *closedRec) StateChanged(ar device.ARInfo, _, to device.ARState) {
+	if to != device.ARStateClosed || ar.Type == pnio.ARTypeIOSAR {
+		return
+	}
+	h.mu.Lock()
+	h.closed = append(h.closed, ar)
+	h.mu.Unlock()
+}
+
+func (h *closedRec) infos() []device.ARInfo {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]device.ARInfo(nil), h.closed...)
 }
 
 // TestMalformedInput floods a running device and controller with random

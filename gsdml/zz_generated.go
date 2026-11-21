@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSHA256 is the SHA-256 of the catalog the types were generated from.
-const CatalogSHA256 = "9392d3b05d577fc97b0014dd59c5989894d6485a5a919508da58072cf4d60168"
+const CatalogSHA256 = "a71e0d2807fed37c3a0d7eef835541e79e5d3fa94b89d5ebd2d34ebb62b5556d"
 
 // Namespace is the XML namespace of GSDML documents.
 const Namespace = "http://www.profibus.com/GSDML/2003/11/DeviceProfile"
@@ -1559,9 +1559,9 @@ type Ref struct {
 	ValueItemTarget string `xml:"ValueItemTarget,attr,omitempty"`
 	// ByteOffset is the attribute ByteOffset (Unsigned32, required).
 	ByteOffset string `xml:"ByteOffset,attr"`
-	// BitOffset is the attribute BitOffset (Unsigned8).
+	// BitOffset is the attribute BitOffset (Unsigned8, default 0 when absent).
 	BitOffset string `xml:"BitOffset,attr,omitempty"`
-	// BitLength is the attribute BitLength (Unsigned8).
+	// BitLength is the attribute BitLength (Unsigned8, default 1 when absent).
 	BitLength string `xml:"BitLength,attr,omitempty"`
 	// DataType is the attribute DataType (DataType, required).
 	DataType string `xml:"DataType,attr"`
@@ -1585,6 +1585,22 @@ type Ref struct {
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// bitOffsetOrDefault returns BitOffset, or its default "0" when it is absent.
+func (x *Ref) bitOffsetOrDefault() string {
+	if x.BitOffset == "" {
+		return "0"
+	}
+	return x.BitOffset
+}
+
+// bitLengthOrDefault returns BitLength, or its default "1" when it is absent.
+func (x *Ref) bitLengthOrDefault() string {
+	if x.BitLength == "" {
+		return "1"
+	}
+	return x.BitLength
 }
 
 func (x *Ref) validate(v *validator) {

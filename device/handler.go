@@ -187,8 +187,15 @@ type ARInfo struct {
 	// InputFrameID and OutputFrameID are the FrameIDs of the cyclic
 	// frames (zero for an IOSAR).
 	InputFrameID, OutputFrameID uint16
-	// Cycle is the cycle time of the IOCRs.
+	// CycleNanos is the cycle time of the input IOCR (zero for an IOSAR).
 	CycleNanos int64
+	// SendClockFactor, ReductionRatio, WatchdogFactor and DataHoldFactor
+	// are those of the output IOCR the controller requested in the
+	// Connect (zero for an IOSAR). Its cycle is SendClockFactor ×
+	// ReductionRatio × 31.25 µs, and the AR is aborted with
+	// pnio.AbortConsumerDHT once no valid output frame has arrived for
+	// DataHoldFactor cycles.
+	SendClockFactor, ReductionRatio, WatchdogFactor, DataHoldFactor uint16
 	// CloseReason is set once the AR is closed: the abort reason, or 0
 	// after a release.
 	CloseReason pnio.AbortReason

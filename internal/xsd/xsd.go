@@ -22,6 +22,9 @@ import (
 type Attr struct {
 	Required bool
 	Type     string
+	// Default is the value of the declaration's default attribute, ""
+	// for none.
+	Default string
 }
 
 // Element merges the declarations of every element with one name.
@@ -217,7 +220,7 @@ func (l *loader) content(c *node, e *Element) {
 			name = local(c.attr("ref"))
 		}
 		if name != "" {
-			e.Attributes[name] = Attr{Required: c.attr("use") == "required", Type: local(c.attr("type"))}
+			e.Attributes[name] = Attr{Required: c.attr("use") == "required", Type: local(c.attr("type")), Default: c.attr("default")}
 		}
 	case "attributeGroup":
 		if g := l.attrGroups[local(c.attr("ref"))]; g != nil {

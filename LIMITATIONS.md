@@ -47,6 +47,12 @@ outside the catalog are kept verbatim and reported as unvalidated by
 most 1 048 576 elements and a module at most 1440 submodules; `Check` lists
 at most 16 384 issues per severity (SECURITY.md lists every fixed bound). Schema versions after 2.45
 (2.46, 2.50) are not in the catalog: their schemas are members-only.
+The defaults of optional attributes come from public sources, not the
+XSDs: Ref BitOffset 0 and BitLength 1 from ISO 15745-4:2003/Amd 1:2006
+(docs/GSDML.md), not yet compared with the V2.3x/V2.4x XSDs. An empty
+attribute (`BitLength=""`) is treated as absent. A BitArea Ref must lie in
+one octet (BitOffset + BitLength ≤ 8), although the 2006 definition allows
+BitLength up to 15.
 
 ## GSDX containers
 

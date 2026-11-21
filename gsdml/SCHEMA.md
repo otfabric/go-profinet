@@ -5,7 +5,8 @@
 The GSDML elements and attributes package `gsdml` models, generated from
 [schema/catalog.json](schema/catalog.json). Namespace `http://www.profibus.com/GSDML/2003/11/DeviceProfile`; written for
 schema versions 2.25, 2.3, 2.31, 2.32, 2.33, 2.34, 2.35, 2.4, 2.41, 2.42, 2.43, 2.44, 2.45. Attributes marked **required** must be present and
-not empty, "required, may be empty" ones are always written;
+not empty, "required, may be empty" ones are always written; an
+optional attribute with a default has that value when it is absent;
 children marked `?` are optional, `*` repeated, `+` one or more. Elements
 and attributes a document has beyond these are kept and written back.
 
@@ -364,8 +365,8 @@ Children: [Name](#name), [Const](#const)*, [Ref](#ref)*, [MenuList](#menulist)?
 |-----------|------|---|
 | `ValueItemTarget` | `IDRef` |  |
 | `ByteOffset` | `Unsigned32` | **required** |
-| `BitOffset` | `Unsigned8` |  |
-| `BitLength` | `Unsigned8` |  |
+| `BitOffset` | `Unsigned8` | default `0` |
+| `BitLength` | `Unsigned8` | default `1` |
 | `DataType` | `DataType` | **required** |
 | `DefaultValue` | `string` |  |
 | `AllowedValues` | `string` |  |

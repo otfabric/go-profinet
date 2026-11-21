@@ -225,11 +225,15 @@ are one implementation's choices, not the CPU's requirements.
 Found and fixed (v0.8.0): alarm sequence numbers per AR instead of per
 priority; no answer to a peer's ERR-RTA (device and controller); a
 NUL-padded NameOfStation of an S7-300 kept with its padding; the LLDP
-management address's ifIndex and OID dropped. The differences that remain
-(ModuleDiffBlock with ApplicationReadyPending, MaxAlarmDataLength 256, USI
-0x8000, the encoder's block order and IOCS placement) are listed in
-testdata/captures/README.md; nothing recorded shows how the CPU would
-treat them.
+management address's ifIndex and OID dropped. Found and fixed (v0.11.0),
+from a field report rather than these recordings (go-profinet issue #72): a
+soft-PLC IO controller (advanced startup, ARProperties 0x40000011) skipped
+every parameter write between Connect and PrmEnd while the device's
+Connect response listed each matching submodule as ApplicationReadyPending;
+with no ModuleDiffBlock, as p-net answers, it wrote them. The differences
+that remain (MaxAlarmDataLength 256, USI 0x8000, the encoder's block order
+and IOCS placement) are listed in testdata/captures/README.md; nothing
+recorded shows how the CPU would treat them.
 
 ## Against our own release (not independent)
 

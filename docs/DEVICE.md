@@ -114,8 +114,17 @@ device), and IOSARs (device access, unless `RejectSupervisorAR`), up to
 `MaxARs`. It
 validates a Connect block by block and answers faults with the PNIO status of
 the faulty field; it reports differences from its model in the
-ModuleDiffBlock and sends their IO data with IOPS bad. `dev.ARs()` describes
-the ARs. A watchdog or data hold expiry, a Release, an abort by the
+ModuleDiffBlock and sends their IO data with IOPS bad. A matching submodule
+the AR owns is "Own" and is listed only when it has a diagnosis (with the
+Fault, MaintenanceRequired or MaintenanceDemanded bit of its
+SubmoduleState), so a matching configuration has no ModuleDiffBlock; this
+is p-net's choice (`pf_cmdev_generate_module_diff`). The device never
+reports ApplicationReadyPending: an IO controller treats such a submodule
+as not ready for its parameters (issue #72). `dev.ARs()` describes the ARs,
+with the output IOCR's SendClockFactor, ReductionRatio, WatchdogFactor and
+DataHoldFactor from the Connect: after a "consumer data hold timer expired"
+abort (`pnio.AbortConsumerDHT`) they say how long a gap the controller
+asked the device to accept (DataHoldFactor × the output cycle). A watchdog or data hold expiry, a Release, an abort by the
 controller, a CM activity timeout or a DCP reset closes an AR.
 
 ### Shared device

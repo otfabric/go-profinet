@@ -377,6 +377,7 @@ type recHandler struct {
 	mu        sync.Mutex
 	trans     map[rpc.UUID][]ARState
 	reasons   map[rpc.UUID]pnio.AbortReason
+	closed    map[rpc.UUID]ARInfo
 	acks      []pnio.AlarmAck
 	names     []string
 	ips       []dcp.IPSuite
@@ -388,7 +389,7 @@ type recHandler struct {
 }
 
 func newRecHandler() *recHandler {
-	return &recHandler{trans: map[rpc.UUID][]ARState{}, reasons: map[rpc.UUID]pnio.AbortReason{}}
+	return &recHandler{trans: map[rpc.UUID][]ARState{}, reasons: map[rpc.UUID]pnio.AbortReason{}, closed: map[rpc.UUID]ARInfo{}}
 }
 
 func (h *recHandler) StateChanged(ar ARInfo, from, to ARState) {
@@ -400,7 +401,15 @@ func (h *recHandler) StateChanged(ar ARInfo, from, to ARState) {
 	h.trans[ar.UUID] = append(h.trans[ar.UUID], to)
 	if to == ARStateClosed {
 		h.reasons[ar.UUID] = ar.CloseReason
+		h.closed[ar.UUID] = ar
 	}
+}
+
+// closedInfo returns the ARInfo the handler saw when the AR closed.
+func (h *recHandler) closedInfo(u rpc.UUID) ARInfo {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.closed[u]
 }
 
 func (h *recHandler) states(u rpc.UUID) []ARState {
