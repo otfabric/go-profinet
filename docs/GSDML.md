@@ -94,7 +94,18 @@ unplugged, as before. `HardwareRelease` and `SoftwareRelease` are text
 `"V2.1.0"`) and leaves 0 otherwise, which is not an error.
 
 `Parse` refuses a document of more than 64 MiB or more than 1 048 576
-elements (`ErrResourceExhausted`).
+elements (`ErrResourceExhausted`). It refuses a document type declaration
+with an internal subset (`<!DOCTYPE ISO15745Profile [ … ]>`) with
+`ErrUnsupported`: XML 1.0 (Fifth Edition) section 5.1 has even a
+non-validating processor apply the attribute defaults (ATTLIST) and
+entities declared there, and encoding/xml does not, so the document would
+read differently here than in a conforming XML processor. A declaration
+without an internal subset declares nothing a non-validating processor
+must read; it is ignored, and the DTD it names is not fetched. An entity
+reference other than the five predefined ones is malformed. Unknown
+elements are kept as their inner XML, so nesting depth costs no recursion
+(200 000 nested elements parse in under 0.1 s); the element bound limits
+it.
 
 A controller connects with `controller.DeviceConfig{Model: m}`; plug further
 modules of the catalog into `m.Slots` first (profinetctl's `--plug`).

@@ -28,95 +28,88 @@ section ending with a `---` line and no `---` line inside a section.
 
 ## v0.12.0
 
-**Date:** unreleased
+**Date:** 2026-11-21
 **Previous release:** v0.11.0
 
-GSDML: integer record defaults are read as decimal or 0x hexadecimal, and
-`ToModel` refuses a Boolean capability attribute that is no Boolean.
-System redundancy: an AR leaves its AR set together with the AR table.
-GSDML: a typed optional attribute a document gives as "" is no longer
-taken for an absent one, and a malformed optional number or ValueList
-`ToModel` reads is refused. API: the generated element types with such
-attributes gain an `UnmarshalXML` method.
+GSDML input hardening (work packages A1, A3, A4, A5 and A7 of
+docs/research/INTEROP-COMPLIANCE-PLAN.md) and a system-redundancy
+ordering fix. `gsdml.ToModel` no longer turns a malformed, empty or
+unsupported value into a default without an error. API: additive only
+(`UnmarshalXML` on generated GSDML types); several conversions that used
+to succeed now fail, listed under Breaking.
 
 ### Breaking
 
-- Behaviour: `gsdml.ToModel` reads the DefaultValue of an integer or bit
-  Ref as decimal, with an optional sign, or as 0x hexadecimal. It used
-  Go's literal syntax, so `"010"` was octal 8 and `"0b101"`, `"0o7"` and
-  `"1_0"` were accepted. Now `"010"` is ten, as in xsd:integer, and the
-  other forms fail with `ErrMalformed`. Consumer assessment: a document
-  with decimal defaults without leading zeros, or with 0x defaults, gives
-  the same records as before; one with leading zeros now gets the value
-  it wrote. go-profinet's fixtures use only decimal and 0x defaults; the
-  documents `gsdml.Generate` writes (and profinetctl's `gsdml generate`)
-  hold no Ref; neither profinetctl nor profinet-interop sets a
-  DefaultValue.
-- Behaviour: `gsdml.ToModel` fails with `ErrMalformed` when the DAP's
-  `LLDP_NoD_Supported` or the interface's `DCP_HelloSupported` is present
-  but not one of true, false, 1 or 0 (xsd:boolean). Such a value used to
-  become false without an error, though `Validate` reported it. An empty
-  or absent attribute is still false. Consumer assessment: profinetctl
-  loading a device from `--gsdml` now stops with its invalid-GSDML error
-  instead of going on without LLDP or DCP Hello, and `gsdml inspect`
-  shows the error for that DAP (it already marked such a document not
-  valid); its `DeviceAccessSupported` display uses `ParseBool`, which is
-  unchanged. profinet-interop's own/go-profinet adapter converts the
-  GSDML file it is given, and the repository ships none; a caller giving
-  it a document with such a value now gets an error.
+Every item is a behaviour change of `gsdml`. Consumer assessment for all
+of them: profinet-interop ships no GSDML file and sets no DefaultValue;
+`gsdml.Generate` (profinetctl's `gsdml generate`) writes no Ref, no DOCTYPE
+and no empty attribute; profinetctl's `--gsdml` loading and `gsdml
+inspect` report the new errors (its invalid-GSDML error) where they used
+to go on with a model missing the value; `Validate` already reported
+every lexically malformed value except where noted.
 
-- Behaviour: `gsdml.Parse` records which optional attributes of a type
-  other than string a document gives as `""`. `Validate` reports one whose
-  type does not admit the empty string (`attribute BitLength: empty, not
-  a Unsigned8`), and `ToModel` no longer gives a `BitLength=""` or
-  `BitOffset=""` of a Ref its default, nor takes an empty
-  `LLDP_NoD_Supported` or `DCP_HelloSupported` for false: each fails with
-  `ErrMalformed`. API (additive): the generated types of elements with
-  such attributes have an `UnmarshalXML` method, and so satisfy
-  `xml.Unmarshaler`. Consumer assessment: profinetctl's `gsdml validate`
-  and `check` may now report issues for a vendor file with empty typed
-  attributes, and its `--gsdml` loading refuses one with an empty Ref
-  BitLength or BitOffset or Boolean capability; profinet-interop ships no
-  GSDML. Documents built in Go are unaffected (an empty field there is
-  absent), as is code that only reads the struct fields.
+- Integer and bit Ref DefaultValues are decimal, with an optional sign,
+  or 0x hexadecimal (A1). Go's literal syntax was used, so `"010"` was
+  octal 8 and `"0b101"`, `"0o7"` and `"1_0"` were accepted. Now `"010"`
+  is ten, as in xsd:integer, and the other forms fail with
+  `ErrMalformed`. Decimal values without leading zeros and 0x values give
+  the same records as before. `Validate` does not check DefaultValue
+  (type string).
+- `LLDP_NoD_Supported` and `DCP_HelloSupported` that are present but not
+  true, false, 1 or 0 fail with `ErrMalformed` (A3); they became false.
+- An optional attribute of a type other than string that a document
+  gives as `""` is no longer taken for an absent one (A4). `Validate`
+  reports it when its type does not admit the empty string (`attribute
+  BitLength: empty, not a Unsigned8`; newly reported), and `ToModel`
+  gives a `BitLength=""` or `BitOffset=""` no default and refuses an
+  empty Boolean capability. Documents built in Go are unaffected: an
+  empty field there is absent.
+- `ObjectUUID_LocalIndex`, `MinDeviceInterval`, `NumberOfAR`,
+  `ReductionRatio`, `FixedInSlots`, `UsedInSlots`, `AllowedInSlots` and
+  `FixedInSubslots` that are present but no number or ValueList, or
+  empty, fail with `ErrMalformed`; a list of more than 64 reduction ratios
+  or fixed subslots fails with `ErrResourceExhausted`, which `Validate`
+  does not report (A5). Absent attributes keep their defaults;
+  `NumberOfAR="0"` keeps one AR; more than one allowed slot still leaves a
+  module unplugged.
+- `Parse` refuses a document type declaration with an internal subset
+  (`<!DOCTYPE x [ … ]>`) with `ErrUnsupported` (A7): XML 1.0 section 5.1
+  has even a non-validating processor apply the attribute defaults and
+  entities it declares, and encoding/xml ignores them, so such a document
+  read differently here. A declaration without one is still ignored, and
+  no DTD is fetched. `Validate` cannot report this (the document does not
+  parse).
 
-- Behaviour: `gsdml.ToModel` fails with `ErrMalformed` when
-  `ObjectUUID_LocalIndex`, `MinDeviceInterval`, `NumberOfAR`,
-  `ReductionRatio`, `FixedInSlots`, `UsedInSlots`, `AllowedInSlots` or
-  `FixedInSubslots` is present but no number or ValueList, or empty, and
-  with `ErrResourceExhausted` for more than 64 reduction ratios or fixed
-  subslots. It used to skip such a value: the model got a
-  MinDeviceInterval of 0, one AR, no reduction ratios, the default subslot
-  or an unplugged module, with no error. Absent attributes keep their
-  defaults. Consumer assessment: `Validate` reports each malformed or
-  empty value, so apart from a list of more than 64 values a document
-  profinetctl's `gsdml validate` accepts converts as before; its
-  `--gsdml` loading and `gsdml inspect` now report the error instead of a
-  model with these capabilities missing. profinet-interop ships no
-  GSDML.
+### Added
+
+- gsdml: the generated types of the 29 elements with optional typed
+  attributes implement `xml.Unmarshaler`, recording which of those
+  attributes a document gave as `""` (docs/CODEGEN.md).
 
 ### Fixed
 
-- gsdml: `ToModel` discarded the parse errors of the optional numbers
-  and value lists above, so a `MinDeviceInterval="32ms"` gave a device
-  model with a MinDeviceInterval of 0, and a `device` run from that model
-  applied no lower bound to the IOCR cycle.
+- gsdml: a leading-zero integer DefaultValue (`"010"`) wrote the octal
+  value into the parameter record the controller writes to the device at
+  start-up, without an error.
+- gsdml: `ToModel` discarded the parse errors of the optional numbers and
+  value lists above, so a `MinDeviceInterval="32ms"` gave a model with a
+  MinDeviceInterval of 0, and a `device` run from it applied no lower
+  bound to the IOCR cycle.
 - gsdml: an attribute given as `""` took the default of an absent one
   (Ref `BitLength=""` became 1, an empty Boolean capability false) and
   passed `Validate`, which skipped every empty attribute.
 - gsdml: `ToModel` turned an invalid `LLDP_NoD_Supported` or
-  `DCP_HelloSupported` (for example `"yes"` or `"TRUE"`) into false, so a
-  caller that skipped `Validate` got a device model without LLDP or DCP
-  Hello and no error.
-- gsdml: a leading-zero integer DefaultValue (`"010"`) wrote the octal
-  value into the parameter record without an error. That record is what
-  the controller writes to the device at start-up.
+  `DCP_HelloSupported` (`"yes"`, `"TRUE"`) into false, so a caller that
+  skipped `Validate` got a model without LLDP or DCP Hello.
 - device: a closing IOCARSR left the AR table (`ARs`) before its AR set
-  (`SystemRedundancy`), in two separate steps. A caller could find the AR
-  gone from `ARs` and still listed in its set, or a set with no live AR.
-  Both now change in one step under the device lock. Seen as a rare
-  `TestSRRDHTExpires` failure under `make check`; `TestSRSetLeavesWithAR`
-  checks the ordering.
+  (`SystemRedundancy`), in two separate steps, so a caller could see the
+  AR gone from `ARs` and still in its set. Both now change in one step
+  under the device lock (`TestSRSetLeavesWithAR`).
+- Tests: the GSDML allocation budgets take the fewest octets of five runs
+  (under `-race`, `sync.Pool` drops items at random); `TestSRPrimaryLeaves`
+  waits for the no-primary time to grow (a coarse monotonic clock on
+  Windows read 0); `TestCaptureReplayAlarms` reads the AR table once per
+  round (an index panic when the AR left between two reads).
 
 ---
 

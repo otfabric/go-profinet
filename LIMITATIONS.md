@@ -56,6 +56,9 @@ one octet (BitOffset + BitLength ≤ 8), although the 2006 definition allows
 BitLength up to 15. A Ref DefaultValue in 0x hexadecimal is accepted, as every
 number of the package is; whether the GSDML specification allows it there
 has not been checked (its text is members-only).
+A document type declaration with an internal subset is refused
+(`ErrUnsupported`): its attribute defaults and entities are not applied, so
+the document is not read at all rather than read differently.
 
 ## GSDX containers
 

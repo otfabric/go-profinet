@@ -47,8 +47,10 @@ do not grant it on shared hosts. The virtual network (`vnet`) needs none.
   (`make fuzz`); malformed input is dropped and counted, never a panic.
 - Resources are bounded: RPC messages (64 KiB, 256 fragments), RPC
   activities and handler workers, ARs per device, subscription queues, alarm
-  windows, GSDML documents (64 MiB; `encoding/xml` processes no DTDs or
-  external entities) and the parameter records a model gets from one
+  windows, GSDML documents (64 MiB and 1 048 576 elements; `encoding/xml`
+  fetches no DTD and expands no entity beyond the predefined five, and
+  `gsdml.Parse` refuses an internal DTD subset, whose declarations it
+  cannot apply) and the parameter records a model gets from one
   (16 MiB, `gsdml.MaxModelRecordOctets`). A Connect for an ARUUID whose
   Connect still runs is refused; the RPC client takes an answer only from
   the host it called.
