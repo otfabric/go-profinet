@@ -4,9 +4,11 @@ package gsdml
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -23,10 +25,10 @@ func TestEmptyAttrs(t *testing.T) {
 		{Name: xml.Name{Space: "urn:x", Local: "DataType"}, Value: ""},
 		{Name: xml.Name{Local: "Other"}, Value: ""},
 	}
-	if got := emptyAttrs(attrs, "BitLength", "BitOffset", "DataType"); !slices.Equal(got, []string{"BitLength"}) {
+	if got := emptyAttrs(attrs, []trackedAttr{{"BitLength", "Unsigned8"}, {"BitOffset", "Unsigned8"}, {"DataType", "DataType"}}); !slices.Equal(got, []string{"BitLength"}) {
 		t.Fatalf("%q", got)
 	}
-	if got := emptyAttrs(attrs, "Visible"); got != nil {
+	if got := emptyAttrs(attrs, []trackedAttr{{"Visible", "Boolean"}}); got != nil {
 		t.Fatalf("%q", got)
 	}
 }
@@ -109,11 +111,141 @@ func TestEmptyAttributeBuilt(t *testing.T) {
 	if err := xml.Unmarshal([]byte(`<Ref BitLength="" BitOffset="4"/>`), &parsed); err != nil {
 		t.Fatal(err)
 	}
-	if parsed.bitLengthOrDefault() != "" || parsed.bitOffsetOrDefault() != "4" || !parsed.emptyAttr("BitLength") || parsed.emptyAttr("BitOffset") {
+	if parsed.bitLengthOrDefault() != "" || parsed.bitOffsetOrDefault() != "4" || !emptyIn(parsed.empty, "BitLength") || emptyIn(parsed.empty, "BitOffset") {
 		t.Fatalf("%q %q %q", parsed.bitLengthOrDefault(), parsed.bitOffsetOrDefault(), parsed.empty)
 	}
-	var none *Ref
-	if none.emptyAttr("BitLength") {
-		t.Fatal("nil Ref")
+	// A malformed element is refused, as without the tracking.
+	if err := xml.Unmarshal([]byte(`<Ref BitLength=""><x></Ref>`), &parsed); err == nil {
+		t.Fatal("malformed Ref decoded")
 	}
+}
+
+// TestEveryTrackedAttribute: for every element of the catalog, each
+// optional, typed, unqualified attribute (the rule of gengsdml's
+// trackedAttrs) given as "" is recorded by the element's UnmarshalXML and
+// reported by its validate when its type does not admit "", and no other
+// attribute is; a typed attribute that is present with a value is not
+// recorded.
+func TestEveryTrackedAttribute(t *testing.T) {
+	raw, err := os.ReadFile("schema/catalog.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cat struct {
+		Namespace, Root string
+		Elements        []struct {
+			Name  string
+			Attrs []string
+		}
+	}
+	if err := json.Unmarshal(raw, &cat); err != nil {
+		t.Fatal(err)
+	}
+	types := elementTypes(reflect.TypeFor[Document]())
+	n := 0
+	for _, e := range cat.Elements {
+		var tracked []trackedAttr
+		for _, s := range e.Attrs {
+			decl, _, _ := strings.Cut(s, "=")
+			i := strings.LastIndex(decl, ":")
+			name, typ := decl[:i], decl[i+1:]
+			if strings.HasSuffix(typ, "!") || strings.HasSuffix(typ, "~") || typ == "string" || strings.HasPrefix(name, "xml:") {
+				continue
+			}
+			tracked = append(tracked, trackedAttr{name, typ})
+		}
+		if len(tracked) == 0 {
+			continue
+		}
+		typ, ok := types[e.Name]
+		if !ok {
+			t.Errorf("%s: no Go type reachable from Document", e.Name)
+			continue
+		}
+		n++
+		var src strings.Builder
+		src.WriteString("<" + e.Name)
+		if e.Name == cat.Root {
+			src.WriteString(` xmlns="` + cat.Namespace + `"`)
+		}
+		var want, reported []string
+		for _, a := range tracked {
+			src.WriteString(" " + a.name + `=""`)
+			want = append(want, a.name)
+			st := simpleTypes[a.typ]
+			if (st.enum != nil && !st.enum[""]) || (st.pattern != nil && !st.pattern.MatchString("")) || (st.pattern == nil && st.enum == nil && st.uintBits > 0) {
+				reported = append(reported, a.name)
+			}
+		}
+		src.WriteString("/>")
+		x := reflect.New(typ)
+		if _, ok := x.Interface().(xml.Unmarshaler); !ok {
+			t.Errorf("%s has no UnmarshalXML", e.Name)
+			continue
+		}
+		if err := xml.Unmarshal([]byte(src.String()), x.Interface()); err != nil {
+			t.Errorf("%s: %v", e.Name, err)
+			continue
+		}
+		emptyField := x.Elem().FieldByName("empty")
+		var got []string
+		for i := range emptyField.Len() {
+			got = append(got, emptyField.Index(i).String())
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s: recorded %q, want %q", e.Name, got, want)
+		}
+		v := &validator{ids: map[string]string{}, texts: map[string]bool{}}
+		x.Interface().(interface{ validate(*validator) }).validate(v)
+		for _, a := range reported {
+			found := false
+			for _, is := range v.issues {
+				found = found || strings.Contains(is.Message, "attribute "+a+": empty")
+			}
+			if !found {
+				t.Errorf("%s: empty %s not reported", e.Name, a)
+			}
+		}
+		// The same attributes with a value are not recorded.
+		withValue := strings.ReplaceAll(src.String(), `=""`, `="1"`)
+		y := reflect.New(typ)
+		if err := xml.Unmarshal([]byte(withValue), y.Interface()); err != nil || y.Elem().FieldByName("empty").Len() != 0 {
+			t.Errorf("%s with values: %v, recorded %d", e.Name, err, y.Elem().FieldByName("empty").Len())
+		}
+	}
+	if n == 0 {
+		t.Fatal("no element with tracked attributes")
+	}
+}
+
+// elementTypes maps the XML name of every struct type reachable from t to
+// the type.
+func elementTypes(t reflect.Type) map[string]reflect.Type {
+	out := map[string]reflect.Type{}
+	var visit func(reflect.Type)
+	visit = func(t reflect.Type) {
+		for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice {
+			t = t.Elem()
+		}
+		if t.Kind() != reflect.Struct {
+			return
+		}
+		f, ok := t.FieldByName("XMLName")
+		if !ok {
+			return
+		}
+		tag := f.Tag.Get("xml")
+		name := tag[strings.LastIndex(tag, " ")+1:]
+		if _, seen := out[name]; seen {
+			return
+		}
+		out[name] = t
+		for i := range t.NumField() {
+			if t.Field(i).IsExported() {
+				visit(t.Field(i).Type)
+			}
+		}
+	}
+	visit(t)
+	return out
 }

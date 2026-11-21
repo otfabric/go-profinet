@@ -7,7 +7,6 @@ package gsdml
 import (
 	"encoding/xml"
 	"regexp"
-	"slices"
 )
 
 // CatalogSHA256 is the SHA-256 of the catalog the types were generated from.
@@ -542,21 +541,14 @@ type Family struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedFamily lists the attributes of Family whose emptiness parsing records.
+var trackedFamily = []trackedAttr{{"ProductFamily", "token"}}
+
 // UnmarshalXML decodes a Family and records which of its typed optional
 // attributes are present but empty.
 func (x *Family) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain Family
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "ProductFamily")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *Family) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedFamily)
 }
 
 func (x *Family) validate(v *validator) {
@@ -567,9 +559,7 @@ func (x *Family) validate(v *validator) {
 	defer v.pop()
 	v.attr("MainFamily", x.MainFamily, "MainFamily", true)
 	v.attr("ProductFamily", x.ProductFamily, "token", false)
-	if x.emptyAttr("ProductFamily") {
-		v.emptyAttr("ProductFamily", "token")
-	}
+	v.emptyAttrs(x.empty, trackedFamily)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -718,21 +708,14 @@ type DeviceAccessPointItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedDeviceAccessPointItem lists the attributes of DeviceAccessPointItem whose emptiness parsing records.
+var trackedDeviceAccessPointItem = []trackedAttr{{"RequiredSchemaVersion", "Version"}, {"ImplementationType", "token"}, {"MultipleWriteSupported", "Boolean"}, {"LLDP_NoD_Supported", "Boolean"}, {"ResetToFactoryModes", "ValueList"}, {"SharedDeviceSupported", "Boolean"}, {"SharedInputSupported", "Boolean"}, {"NumberOfDeviceAccessAR", "Unsigned16"}, {"PrmBeginPrmEndSequenceSupported", "Boolean"}, {"AddressAssignment", "TokenList"}, {"PowerOnToCommReady", "Unsigned32"}, {"MaxSupportedRecordSize", "Unsigned32"}, {"AutoConfigurationSupported", "Boolean"}}
+
 // UnmarshalXML decodes a DeviceAccessPointItem and records which of its typed optional
 // attributes are present but empty.
 func (x *DeviceAccessPointItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain DeviceAccessPointItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "RequiredSchemaVersion", "ImplementationType", "MultipleWriteSupported", "LLDP_NoD_Supported", "ResetToFactoryModes", "SharedDeviceSupported", "SharedInputSupported", "NumberOfDeviceAccessAR", "PrmBeginPrmEndSequenceSupported", "AddressAssignment", "PowerOnToCommReady", "MaxSupportedRecordSize", "AutoConfigurationSupported")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *DeviceAccessPointItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedDeviceAccessPointItem)
 }
 
 func (x *DeviceAccessPointItem) validate(v *validator) {
@@ -766,45 +749,7 @@ func (x *DeviceAccessPointItem) validate(v *validator) {
 	v.attr("MaxSupportedRecordSize", x.MaxSupportedRecordSize, "Unsigned32", false)
 	v.attr("WebServer", x.WebServer, "string", false)
 	v.attr("AutoConfigurationSupported", x.AutoConfigurationSupported, "Boolean", false)
-	if x.emptyAttr("RequiredSchemaVersion") {
-		v.emptyAttr("RequiredSchemaVersion", "Version")
-	}
-	if x.emptyAttr("ImplementationType") {
-		v.emptyAttr("ImplementationType", "token")
-	}
-	if x.emptyAttr("MultipleWriteSupported") {
-		v.emptyAttr("MultipleWriteSupported", "Boolean")
-	}
-	if x.emptyAttr("LLDP_NoD_Supported") {
-		v.emptyAttr("LLDP_NoD_Supported", "Boolean")
-	}
-	if x.emptyAttr("ResetToFactoryModes") {
-		v.emptyAttr("ResetToFactoryModes", "ValueList")
-	}
-	if x.emptyAttr("SharedDeviceSupported") {
-		v.emptyAttr("SharedDeviceSupported", "Boolean")
-	}
-	if x.emptyAttr("SharedInputSupported") {
-		v.emptyAttr("SharedInputSupported", "Boolean")
-	}
-	if x.emptyAttr("NumberOfDeviceAccessAR") {
-		v.emptyAttr("NumberOfDeviceAccessAR", "Unsigned16")
-	}
-	if x.emptyAttr("PrmBeginPrmEndSequenceSupported") {
-		v.emptyAttr("PrmBeginPrmEndSequenceSupported", "Boolean")
-	}
-	if x.emptyAttr("AddressAssignment") {
-		v.emptyAttr("AddressAssignment", "TokenList")
-	}
-	if x.emptyAttr("PowerOnToCommReady") {
-		v.emptyAttr("PowerOnToCommReady", "Unsigned32")
-	}
-	if x.emptyAttr("MaxSupportedRecordSize") {
-		v.emptyAttr("MaxSupportedRecordSize", "Unsigned32")
-	}
-	if x.emptyAttr("AutoConfigurationSupported") {
-		v.emptyAttr("AutoConfigurationSupported", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedDeviceAccessPointItem)
 	if x.ModuleInfo == nil {
 		v.missing("ModuleInfo")
 	}
@@ -851,21 +796,14 @@ type ModuleInfo struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedModuleInfo lists the attributes of ModuleInfo whose emptiness parsing records.
+var trackedModuleInfo = []trackedAttr{{"CategoryRef", "IDRef"}, {"SubCategory1Ref", "IDRef"}}
+
 // UnmarshalXML decodes a ModuleInfo and records which of its typed optional
 // attributes are present but empty.
 func (x *ModuleInfo) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ModuleInfo
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "CategoryRef", "SubCategory1Ref")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *ModuleInfo) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedModuleInfo)
 }
 
 func (x *ModuleInfo) validate(v *validator) {
@@ -876,12 +814,7 @@ func (x *ModuleInfo) validate(v *validator) {
 	defer v.pop()
 	v.attr("CategoryRef", x.CategoryRef, "IDRef", false)
 	v.attr("SubCategory1Ref", x.SubCategory1Ref, "IDRef", false)
-	if x.emptyAttr("CategoryRef") {
-		v.emptyAttr("CategoryRef", "IDRef")
-	}
-	if x.emptyAttr("SubCategory1Ref") {
-		v.emptyAttr("SubCategory1Ref", "IDRef")
-	}
+	v.emptyAttrs(x.empty, trackedModuleInfo)
 	if x.Name == nil {
 		v.missing("Name")
 	}
@@ -1014,21 +947,14 @@ type CertificationInfo struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedCertificationInfo lists the attributes of CertificationInfo whose emptiness parsing records.
+var trackedCertificationInfo = []trackedAttr{{"NetloadClass", "NetloadClass"}}
+
 // UnmarshalXML decodes a CertificationInfo and records which of its typed optional
 // attributes are present but empty.
 func (x *CertificationInfo) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain CertificationInfo
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "NetloadClass")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *CertificationInfo) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedCertificationInfo)
 }
 
 func (x *CertificationInfo) validate(v *validator) {
@@ -1040,9 +966,7 @@ func (x *CertificationInfo) validate(v *validator) {
 	v.attr("ConformanceClass", x.ConformanceClass, "ConformanceClass", true)
 	v.attr("ApplicationClass", x.ApplicationClass, "TokenList", false)
 	v.attr("NetloadClass", x.NetloadClass, "NetloadClass", false)
-	if x.emptyAttr("NetloadClass") {
-		v.emptyAttr("NetloadClass", "NetloadClass")
-	}
+	v.emptyAttrs(x.empty, trackedCertificationInfo)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1124,21 +1048,14 @@ type IOConfigData struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedIOConfigData lists the attributes of IOConfigData whose emptiness parsing records.
+var trackedIOConfigData = []trackedAttr{{"MaxDataLength", "Unsigned16"}, {"ApplicationLengthIncludesIOxS", "Boolean"}}
+
 // UnmarshalXML decodes a IOConfigData and records which of its typed optional
 // attributes are present but empty.
 func (x *IOConfigData) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain IOConfigData
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "MaxDataLength", "ApplicationLengthIncludesIOxS")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *IOConfigData) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedIOConfigData)
 }
 
 func (x *IOConfigData) validate(v *validator) {
@@ -1151,12 +1068,7 @@ func (x *IOConfigData) validate(v *validator) {
 	v.attr("MaxOutputLength", x.MaxOutputLength, "Unsigned16", true)
 	v.attr("MaxDataLength", x.MaxDataLength, "Unsigned16", false)
 	v.attr("ApplicationLengthIncludesIOxS", x.ApplicationLengthIncludesIOxS, "Boolean", false)
-	if x.emptyAttr("MaxDataLength") {
-		v.emptyAttr("MaxDataLength", "Unsigned16")
-	}
-	if x.emptyAttr("ApplicationLengthIncludesIOxS") {
-		v.emptyAttr("ApplicationLengthIncludesIOxS", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedIOConfigData)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1211,21 +1123,14 @@ type ModuleItemRef struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedModuleItemRef lists the attributes of ModuleItemRef whose emptiness parsing records.
+var trackedModuleItemRef = []trackedAttr{{"AllowedInSlots", "ValueList"}, {"UsedInSlots", "ValueList"}, {"FixedInSlots", "ValueList"}}
+
 // UnmarshalXML decodes a ModuleItemRef and records which of its typed optional
 // attributes are present but empty.
 func (x *ModuleItemRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ModuleItemRef
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "AllowedInSlots", "UsedInSlots", "FixedInSlots")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *ModuleItemRef) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedModuleItemRef)
 }
 
 func (x *ModuleItemRef) validate(v *validator) {
@@ -1238,15 +1143,7 @@ func (x *ModuleItemRef) validate(v *validator) {
 	v.attr("AllowedInSlots", x.AllowedInSlots, "ValueList", false)
 	v.attr("UsedInSlots", x.UsedInSlots, "ValueList", false)
 	v.attr("FixedInSlots", x.FixedInSlots, "ValueList", false)
-	if x.emptyAttr("AllowedInSlots") {
-		v.emptyAttr("AllowedInSlots", "ValueList")
-	}
-	if x.emptyAttr("UsedInSlots") {
-		v.emptyAttr("UsedInSlots", "ValueList")
-	}
-	if x.emptyAttr("FixedInSlots") {
-		v.emptyAttr("FixedInSlots", "ValueList")
-	}
+	v.emptyAttrs(x.empty, trackedModuleItemRef)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1301,21 +1198,14 @@ type SubmoduleItemRef struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedSubmoduleItemRef lists the attributes of SubmoduleItemRef whose emptiness parsing records.
+var trackedSubmoduleItemRef = []trackedAttr{{"AllowedInSubslots", "ValueList"}, {"UsedInSubslots", "ValueList"}, {"FixedInSubslots", "ValueList"}}
+
 // UnmarshalXML decodes a SubmoduleItemRef and records which of its typed optional
 // attributes are present but empty.
 func (x *SubmoduleItemRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain SubmoduleItemRef
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "AllowedInSubslots", "UsedInSubslots", "FixedInSubslots")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *SubmoduleItemRef) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedSubmoduleItemRef)
 }
 
 func (x *SubmoduleItemRef) validate(v *validator) {
@@ -1328,15 +1218,7 @@ func (x *SubmoduleItemRef) validate(v *validator) {
 	v.attr("AllowedInSubslots", x.AllowedInSubslots, "ValueList", false)
 	v.attr("UsedInSubslots", x.UsedInSubslots, "ValueList", false)
 	v.attr("FixedInSubslots", x.FixedInSubslots, "ValueList", false)
-	if x.emptyAttr("AllowedInSubslots") {
-		v.emptyAttr("AllowedInSubslots", "ValueList")
-	}
-	if x.emptyAttr("UsedInSubslots") {
-		v.emptyAttr("UsedInSubslots", "ValueList")
-	}
-	if x.emptyAttr("FixedInSubslots") {
-		v.emptyAttr("FixedInSubslots", "ValueList")
-	}
+	v.emptyAttrs(x.empty, trackedSubmoduleItemRef)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1403,21 +1285,14 @@ type VirtualSubmoduleItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedVirtualSubmoduleItem lists the attributes of VirtualSubmoduleItem whose emptiness parsing records.
+var trackedVirtualSubmoduleItem = []trackedAttr{{"API", "Unsigned32"}, {"FixedInSubslots", "ValueList"}, {"Writeable_IM_Records", "ValueList"}, {"Max_iParameterSize", "Unsigned32"}, {"PROFIsafeSupported", "Boolean"}}
+
 // UnmarshalXML decodes a VirtualSubmoduleItem and records which of its typed optional
 // attributes are present but empty.
 func (x *VirtualSubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain VirtualSubmoduleItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "API", "FixedInSubslots", "Writeable_IM_Records", "Max_iParameterSize", "PROFIsafeSupported")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *VirtualSubmoduleItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedVirtualSubmoduleItem)
 }
 
 func (x *VirtualSubmoduleItem) validate(v *validator) {
@@ -1434,21 +1309,7 @@ func (x *VirtualSubmoduleItem) validate(v *validator) {
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
 	v.attr("Max_iParameterSize", x.MaxIParameterSize, "Unsigned32", false)
 	v.attr("PROFIsafeSupported", x.PROFIsafeSupported, "Boolean", false)
-	if x.emptyAttr("API") {
-		v.emptyAttr("API", "Unsigned32")
-	}
-	if x.emptyAttr("FixedInSubslots") {
-		v.emptyAttr("FixedInSubslots", "ValueList")
-	}
-	if x.emptyAttr("Writeable_IM_Records") {
-		v.emptyAttr("Writeable_IM_Records", "ValueList")
-	}
-	if x.emptyAttr("Max_iParameterSize") {
-		v.emptyAttr("Max_iParameterSize", "Unsigned32")
-	}
-	if x.emptyAttr("PROFIsafeSupported") {
-		v.emptyAttr("PROFIsafeSupported", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedVirtualSubmoduleItem)
 	if x.IOData == nil {
 		v.missing("IOData")
 	}
@@ -1519,21 +1380,14 @@ type SubmoduleItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedSubmoduleItem lists the attributes of SubmoduleItem whose emptiness parsing records.
+var trackedSubmoduleItem = []trackedAttr{{"API", "Unsigned32"}, {"Writeable_IM_Records", "ValueList"}}
+
 // UnmarshalXML decodes a SubmoduleItem and records which of its typed optional
 // attributes are present but empty.
 func (x *SubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain SubmoduleItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "API", "Writeable_IM_Records")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *SubmoduleItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedSubmoduleItem)
 }
 
 func (x *SubmoduleItem) validate(v *validator) {
@@ -1547,12 +1401,7 @@ func (x *SubmoduleItem) validate(v *validator) {
 	v.attr("API", x.API, "Unsigned32", false)
 	v.attr("MayIssueProcessAlarm", x.MayIssueProcessAlarm, "Boolean", true)
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
-	if x.emptyAttr("API") {
-		v.emptyAttr("API", "Unsigned32")
-	}
-	if x.emptyAttr("Writeable_IM_Records") {
-		v.emptyAttr("Writeable_IM_Records", "ValueList")
-	}
+	v.emptyAttrs(x.empty, trackedSubmoduleItem)
 	if x.IOData == nil {
 		v.missing("IOData")
 	}
@@ -1587,21 +1436,14 @@ type IOData struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedIOData lists the attributes of IOData whose emptiness parsing records.
+var trackedIOData = []trackedAttr{{"F_IO_StructureDescVersion", "Unsigned8"}, {"F_IO_StructureDescCRC", "Unsigned32"}}
+
 // UnmarshalXML decodes a IOData and records which of its typed optional
 // attributes are present but empty.
 func (x *IOData) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain IOData
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "F_IO_StructureDescVersion", "F_IO_StructureDescCRC")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *IOData) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedIOData)
 }
 
 func (x *IOData) validate(v *validator) {
@@ -1612,12 +1454,7 @@ func (x *IOData) validate(v *validator) {
 	defer v.pop()
 	v.attr("F_IO_StructureDescVersion", x.FIOStructureDescVersion, "Unsigned8", false)
 	v.attr("F_IO_StructureDescCRC", x.FIOStructureDescCRC, "Unsigned32", false)
-	if x.emptyAttr("F_IO_StructureDescVersion") {
-		v.emptyAttr("F_IO_StructureDescVersion", "Unsigned8")
-	}
-	if x.emptyAttr("F_IO_StructureDescCRC") {
-		v.emptyAttr("F_IO_StructureDescCRC", "Unsigned32")
-	}
+	v.emptyAttrs(x.empty, trackedIOData)
 	x.Input.validate(v)
 	x.Output.validate(v)
 	v.unknownAttrs(x.Attrs)
@@ -1641,21 +1478,14 @@ type Input struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedInput lists the attributes of Input whose emptiness parsing records.
+var trackedInput = []trackedAttr{{"Consistency", "Consistency"}}
+
 // UnmarshalXML decodes a Input and records which of its typed optional
 // attributes are present but empty.
 func (x *Input) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain Input
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "Consistency")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *Input) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedInput)
 }
 
 func (x *Input) validate(v *validator) {
@@ -1665,9 +1495,7 @@ func (x *Input) validate(v *validator) {
 	v.push("Input")
 	defer v.pop()
 	v.attr("Consistency", x.Consistency, "Consistency", false)
-	if x.emptyAttr("Consistency") {
-		v.emptyAttr("Consistency", "Consistency")
-	}
+	v.emptyAttrs(x.empty, trackedInput)
 	if len(x.DataItems) == 0 {
 		v.missing("DataItem")
 	}
@@ -1695,21 +1523,14 @@ type Output struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedOutput lists the attributes of Output whose emptiness parsing records.
+var trackedOutput = []trackedAttr{{"Consistency", "Consistency"}}
+
 // UnmarshalXML decodes a Output and records which of its typed optional
 // attributes are present but empty.
 func (x *Output) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain Output
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "Consistency")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *Output) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedOutput)
 }
 
 func (x *Output) validate(v *validator) {
@@ -1719,9 +1540,7 @@ func (x *Output) validate(v *validator) {
 	v.push("Output")
 	defer v.pop()
 	v.attr("Consistency", x.Consistency, "Consistency", false)
-	if x.emptyAttr("Consistency") {
-		v.emptyAttr("Consistency", "Consistency")
-	}
+	v.emptyAttrs(x.empty, trackedOutput)
 	if len(x.DataItems) == 0 {
 		v.missing("DataItem")
 	}
@@ -1757,21 +1576,14 @@ type DataItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedDataItem lists the attributes of DataItem whose emptiness parsing records.
+var trackedDataItem = []trackedAttr{{"Length", "Unsigned16"}, {"UseAsBits", "Boolean"}, {"Subordinate", "Boolean"}}
+
 // UnmarshalXML decodes a DataItem and records which of its typed optional
 // attributes are present but empty.
 func (x *DataItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain DataItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "Length", "UseAsBits", "Subordinate")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *DataItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedDataItem)
 }
 
 func (x *DataItem) validate(v *validator) {
@@ -1785,15 +1597,7 @@ func (x *DataItem) validate(v *validator) {
 	v.attr("Length", x.Length, "Unsigned16", false)
 	v.attr("UseAsBits", x.UseAsBits, "Boolean", false)
 	v.attr("Subordinate", x.Subordinate, "Boolean", false)
-	if x.emptyAttr("Length") {
-		v.emptyAttr("Length", "Unsigned16")
-	}
-	if x.emptyAttr("UseAsBits") {
-		v.emptyAttr("UseAsBits", "Boolean")
-	}
-	if x.emptyAttr("Subordinate") {
-		v.emptyAttr("Subordinate", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedDataItem)
 	for _, c := range x.BitDataItems {
 		c.validate(v)
 	}
@@ -1881,21 +1685,14 @@ type ParameterRecordDataItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedParameterRecordDataItem lists the attributes of ParameterRecordDataItem whose emptiness parsing records.
+var trackedParameterRecordDataItem = []trackedAttr{{"TransferSequence", "Unsigned16"}, {"ChangeableWithBump", "Boolean"}}
+
 // UnmarshalXML decodes a ParameterRecordDataItem and records which of its typed optional
 // attributes are present but empty.
 func (x *ParameterRecordDataItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ParameterRecordDataItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "TransferSequence", "ChangeableWithBump")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *ParameterRecordDataItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedParameterRecordDataItem)
 }
 
 func (x *ParameterRecordDataItem) validate(v *validator) {
@@ -1908,12 +1705,7 @@ func (x *ParameterRecordDataItem) validate(v *validator) {
 	v.attr("Length", x.Length, "Unsigned32", true)
 	v.attr("TransferSequence", x.TransferSequence, "Unsigned16", false)
 	v.attr("ChangeableWithBump", x.ChangeableWithBump, "Boolean", false)
-	if x.emptyAttr("TransferSequence") {
-		v.emptyAttr("TransferSequence", "Unsigned16")
-	}
-	if x.emptyAttr("ChangeableWithBump") {
-		v.emptyAttr("ChangeableWithBump", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedParameterRecordDataItem)
 	if x.Name == nil {
 		v.missing("Name")
 	}
@@ -1947,21 +1739,14 @@ type Const struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedConst lists the attributes of Const whose emptiness parsing records.
+var trackedConst = []trackedAttr{{"ByteOffset", "Unsigned32"}}
+
 // UnmarshalXML decodes a Const and records which of its typed optional
 // attributes are present but empty.
 func (x *Const) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain Const
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "ByteOffset")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *Const) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedConst)
 }
 
 func (x *Const) validate(v *validator) {
@@ -1972,9 +1757,7 @@ func (x *Const) validate(v *validator) {
 	defer v.pop()
 	v.attr("ByteOffset", x.ByteOffset, "Unsigned32", false)
 	v.attr("Data", x.Data, "string", true)
-	if x.emptyAttr("ByteOffset") {
-		v.emptyAttr("ByteOffset", "Unsigned32")
-	}
+	v.emptyAttrs(x.empty, trackedConst)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2020,7 +1803,7 @@ type Ref struct {
 // bitOffsetOrDefault returns BitOffset, or its default "0" when it is absent; "" when
 // the document gave it empty.
 func (x *Ref) bitOffsetOrDefault() string {
-	if x.BitOffset == "" && !x.emptyAttr("BitOffset") {
+	if x.BitOffset == "" && !emptyIn(x.empty, "BitOffset") {
 		return "0"
 	}
 	return x.BitOffset
@@ -2029,27 +1812,20 @@ func (x *Ref) bitOffsetOrDefault() string {
 // bitLengthOrDefault returns BitLength, or its default "1" when it is absent; "" when
 // the document gave it empty.
 func (x *Ref) bitLengthOrDefault() string {
-	if x.BitLength == "" && !x.emptyAttr("BitLength") {
+	if x.BitLength == "" && !emptyIn(x.empty, "BitLength") {
 		return "1"
 	}
 	return x.BitLength
 }
 
+// trackedRef lists the attributes of Ref whose emptiness parsing records.
+var trackedRef = []trackedAttr{{"ValueItemTarget", "IDRef"}, {"BitOffset", "Unsigned8"}, {"BitLength", "Unsigned8"}, {"Changeable", "Boolean"}, {"Visible", "Boolean"}, {"Length", "Unsigned32"}, {"ID", "ID"}}
+
 // UnmarshalXML decodes a Ref and records which of its typed optional
 // attributes are present but empty.
 func (x *Ref) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain Ref
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "ValueItemTarget", "BitOffset", "BitLength", "Changeable", "Visible", "Length", "ID")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *Ref) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedRef)
 }
 
 func (x *Ref) validate(v *validator) {
@@ -2070,27 +1846,7 @@ func (x *Ref) validate(v *validator) {
 	v.attr("TextId", x.TextID, "IDRef", true)
 	v.attr("Length", x.Length, "Unsigned32", false)
 	v.attr("ID", x.ID, "ID", false)
-	if x.emptyAttr("ValueItemTarget") {
-		v.emptyAttr("ValueItemTarget", "IDRef")
-	}
-	if x.emptyAttr("BitOffset") {
-		v.emptyAttr("BitOffset", "Unsigned8")
-	}
-	if x.emptyAttr("BitLength") {
-		v.emptyAttr("BitLength", "Unsigned8")
-	}
-	if x.emptyAttr("Changeable") {
-		v.emptyAttr("Changeable", "Boolean")
-	}
-	if x.emptyAttr("Visible") {
-		v.emptyAttr("Visible", "Boolean")
-	}
-	if x.emptyAttr("Length") {
-		v.emptyAttr("Length", "Unsigned32")
-	}
-	if x.emptyAttr("ID") {
-		v.emptyAttr("ID", "ID")
-	}
+	v.emptyAttrs(x.empty, trackedRef)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2228,21 +1984,14 @@ type FParameterRecordDataItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedFParameterRecordDataItem lists the attributes of F_ParameterRecordDataItem whose emptiness parsing records.
+var trackedFParameterRecordDataItem = []trackedAttr{{"TransferSequence", "Unsigned16"}}
+
 // UnmarshalXML decodes a F_ParameterRecordDataItem and records which of its typed optional
 // attributes are present but empty.
 func (x *FParameterRecordDataItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain FParameterRecordDataItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "TransferSequence")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *FParameterRecordDataItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedFParameterRecordDataItem)
 }
 
 func (x *FParameterRecordDataItem) validate(v *validator) {
@@ -2254,9 +2003,7 @@ func (x *FParameterRecordDataItem) validate(v *validator) {
 	v.attr("F_ParamDescCRC", x.FParamDescCRC, "Unsigned16", true)
 	v.attr("Index", x.Index, "Unsigned16", true)
 	v.attr("TransferSequence", x.TransferSequence, "Unsigned16", false)
-	if x.emptyAttr("TransferSequence") {
-		v.emptyAttr("TransferSequence", "Unsigned16")
-	}
+	v.emptyAttrs(x.empty, trackedFParameterRecordDataItem)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2339,21 +2086,14 @@ type InterfaceSubmoduleItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedInterfaceSubmoduleItem lists the attributes of InterfaceSubmoduleItem whose emptiness parsing records.
+var trackedInterfaceSubmoduleItem = []trackedAttr{{"SubslotNumber", "Unsigned16"}, {"SupportedRT_Classes", "RTClasses"}, {"DCP_HelloSupported", "Boolean"}, {"PTP_BoundarySupported", "Boolean"}, {"DCP_BoundarySupported", "Boolean"}, {"DelayMeasurementSupported", "Boolean"}, {"IsochroneModeSupported", "Boolean"}, {"Writeable_IM_Records", "ValueList"}, {"NetworkComponentDiagnosisSupported", "Boolean"}, {"MulticastBoundarySupported", "Boolean"}}
+
 // UnmarshalXML decodes a InterfaceSubmoduleItem and records which of its typed optional
 // attributes are present but empty.
 func (x *InterfaceSubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain InterfaceSubmoduleItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "SubslotNumber", "SupportedRT_Classes", "DCP_HelloSupported", "PTP_BoundarySupported", "DCP_BoundarySupported", "DelayMeasurementSupported", "IsochroneModeSupported", "Writeable_IM_Records", "NetworkComponentDiagnosisSupported", "MulticastBoundarySupported")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *InterfaceSubmoduleItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedInterfaceSubmoduleItem)
 }
 
 func (x *InterfaceSubmoduleItem) validate(v *validator) {
@@ -2376,36 +2116,7 @@ func (x *InterfaceSubmoduleItem) validate(v *validator) {
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
 	v.attr("NetworkComponentDiagnosisSupported", x.NetworkComponentDiagnosisSupported, "Boolean", false)
 	v.attr("MulticastBoundarySupported", x.MulticastBoundarySupported, "Boolean", false)
-	if x.emptyAttr("SubslotNumber") {
-		v.emptyAttr("SubslotNumber", "Unsigned16")
-	}
-	if x.emptyAttr("SupportedRT_Classes") {
-		v.emptyAttr("SupportedRT_Classes", "RTClasses")
-	}
-	if x.emptyAttr("DCP_HelloSupported") {
-		v.emptyAttr("DCP_HelloSupported", "Boolean")
-	}
-	if x.emptyAttr("PTP_BoundarySupported") {
-		v.emptyAttr("PTP_BoundarySupported", "Boolean")
-	}
-	if x.emptyAttr("DCP_BoundarySupported") {
-		v.emptyAttr("DCP_BoundarySupported", "Boolean")
-	}
-	if x.emptyAttr("DelayMeasurementSupported") {
-		v.emptyAttr("DelayMeasurementSupported", "Boolean")
-	}
-	if x.emptyAttr("IsochroneModeSupported") {
-		v.emptyAttr("IsochroneModeSupported", "Boolean")
-	}
-	if x.emptyAttr("Writeable_IM_Records") {
-		v.emptyAttr("Writeable_IM_Records", "ValueList")
-	}
-	if x.emptyAttr("NetworkComponentDiagnosisSupported") {
-		v.emptyAttr("NetworkComponentDiagnosisSupported", "Boolean")
-	}
-	if x.emptyAttr("MulticastBoundarySupported") {
-		v.emptyAttr("MulticastBoundarySupported", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedInterfaceSubmoduleItem)
 	x.RTClass3Properties.validate(v)
 	x.SynchronisationMode.validate(v)
 	x.ApplicationRelations.validate(v)
@@ -2444,21 +2155,14 @@ type ApplicationRelations struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedApplicationRelations lists the attributes of ApplicationRelations whose emptiness parsing records.
+var trackedApplicationRelations = []trackedAttr{{"StartupMode", "StartupMode"}, {"NumberOfAdditionalInputCR", "Unsigned16"}, {"NumberOfAdditionalOutputCR", "Unsigned16"}, {"NumberOfAdditionalMulticastProviderCR", "Unsigned16"}, {"NumberOfMulticastConsumerCR", "Unsigned16"}, {"PullModuleAlarmSupported", "Boolean"}, {"NumberOfAR", "Unsigned16"}}
+
 // UnmarshalXML decodes a ApplicationRelations and records which of its typed optional
 // attributes are present but empty.
 func (x *ApplicationRelations) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ApplicationRelations
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "StartupMode", "NumberOfAdditionalInputCR", "NumberOfAdditionalOutputCR", "NumberOfAdditionalMulticastProviderCR", "NumberOfMulticastConsumerCR", "PullModuleAlarmSupported", "NumberOfAR")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *ApplicationRelations) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedApplicationRelations)
 }
 
 func (x *ApplicationRelations) validate(v *validator) {
@@ -2474,27 +2178,7 @@ func (x *ApplicationRelations) validate(v *validator) {
 	v.attr("NumberOfMulticastConsumerCR", x.NumberOfMulticastConsumerCR, "Unsigned16", false)
 	v.attr("PullModuleAlarmSupported", x.PullModuleAlarmSupported, "Boolean", false)
 	v.attr("NumberOfAR", x.NumberOfAR, "Unsigned16", false)
-	if x.emptyAttr("StartupMode") {
-		v.emptyAttr("StartupMode", "StartupMode")
-	}
-	if x.emptyAttr("NumberOfAdditionalInputCR") {
-		v.emptyAttr("NumberOfAdditionalInputCR", "Unsigned16")
-	}
-	if x.emptyAttr("NumberOfAdditionalOutputCR") {
-		v.emptyAttr("NumberOfAdditionalOutputCR", "Unsigned16")
-	}
-	if x.emptyAttr("NumberOfAdditionalMulticastProviderCR") {
-		v.emptyAttr("NumberOfAdditionalMulticastProviderCR", "Unsigned16")
-	}
-	if x.emptyAttr("NumberOfMulticastConsumerCR") {
-		v.emptyAttr("NumberOfMulticastConsumerCR", "Unsigned16")
-	}
-	if x.emptyAttr("PullModuleAlarmSupported") {
-		v.emptyAttr("PullModuleAlarmSupported", "Boolean")
-	}
-	if x.emptyAttr("NumberOfAR") {
-		v.emptyAttr("NumberOfAR", "Unsigned16")
-	}
+	v.emptyAttrs(x.empty, trackedApplicationRelations)
 	x.TimingProperties.validate(v)
 	x.RTClass3TimingProperties.validate(v)
 	v.unknownAttrs(x.Attrs)
@@ -2521,21 +2205,14 @@ type TimingProperties struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedTimingProperties lists the attributes of TimingProperties whose emptiness parsing records.
+var trackedTimingProperties = []trackedAttr{{"SendClock", "ValueList"}, {"ReductionRatio", "ValueList"}, {"ReductionRatioPow2", "ValueList"}}
+
 // UnmarshalXML decodes a TimingProperties and records which of its typed optional
 // attributes are present but empty.
 func (x *TimingProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain TimingProperties
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "SendClock", "ReductionRatio", "ReductionRatioPow2")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *TimingProperties) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedTimingProperties)
 }
 
 func (x *TimingProperties) validate(v *validator) {
@@ -2547,15 +2224,7 @@ func (x *TimingProperties) validate(v *validator) {
 	v.attr("SendClock", x.SendClock, "ValueList", false)
 	v.attr("ReductionRatio", x.ReductionRatio, "ValueList", false)
 	v.attr("ReductionRatioPow2", x.ReductionRatioPow2, "ValueList", false)
-	if x.emptyAttr("SendClock") {
-		v.emptyAttr("SendClock", "ValueList")
-	}
-	if x.emptyAttr("ReductionRatio") {
-		v.emptyAttr("ReductionRatio", "ValueList")
-	}
-	if x.emptyAttr("ReductionRatioPow2") {
-		v.emptyAttr("ReductionRatioPow2", "ValueList")
-	}
+	v.emptyAttrs(x.empty, trackedTimingProperties)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2580,21 +2249,14 @@ type RTClass3TimingProperties struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedRTClass3TimingProperties lists the attributes of RT_Class3TimingProperties whose emptiness parsing records.
+var trackedRTClass3TimingProperties = []trackedAttr{{"SendClock", "ValueList"}, {"ReductionRatio", "ValueList"}, {"ReductionRatioPow2", "ValueList"}}
+
 // UnmarshalXML decodes a RT_Class3TimingProperties and records which of its typed optional
 // attributes are present but empty.
 func (x *RTClass3TimingProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain RTClass3TimingProperties
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "SendClock", "ReductionRatio", "ReductionRatioPow2")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *RTClass3TimingProperties) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedRTClass3TimingProperties)
 }
 
 func (x *RTClass3TimingProperties) validate(v *validator) {
@@ -2606,15 +2268,7 @@ func (x *RTClass3TimingProperties) validate(v *validator) {
 	v.attr("SendClock", x.SendClock, "ValueList", false)
 	v.attr("ReductionRatio", x.ReductionRatio, "ValueList", false)
 	v.attr("ReductionRatioPow2", x.ReductionRatioPow2, "ValueList", false)
-	if x.emptyAttr("SendClock") {
-		v.emptyAttr("SendClock", "ValueList")
-	}
-	if x.emptyAttr("ReductionRatio") {
-		v.emptyAttr("ReductionRatio", "ValueList")
-	}
-	if x.emptyAttr("ReductionRatioPow2") {
-		v.emptyAttr("ReductionRatioPow2", "ValueList")
-	}
+	v.emptyAttrs(x.empty, trackedRTClass3TimingProperties)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2641,21 +2295,14 @@ type RTClass3Properties struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedRTClass3Properties lists the attributes of RT_Class3Properties whose emptiness parsing records.
+var trackedRTClass3Properties = []trackedAttr{{"StartupMode", "StartupMode"}, {"ForwardingMode", "TokenList"}}
+
 // UnmarshalXML decodes a RT_Class3Properties and records which of its typed optional
 // attributes are present but empty.
 func (x *RTClass3Properties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain RTClass3Properties
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "StartupMode", "ForwardingMode")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *RTClass3Properties) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedRTClass3Properties)
 }
 
 func (x *RTClass3Properties) validate(v *validator) {
@@ -2668,12 +2315,7 @@ func (x *RTClass3Properties) validate(v *validator) {
 	v.attr("MaxNumberIR_FrameData", x.MaxNumberIRFrameData, "Unsigned32", true)
 	v.attr("StartupMode", x.StartupMode, "StartupMode", false)
 	v.attr("ForwardingMode", x.ForwardingMode, "TokenList", false)
-	if x.emptyAttr("StartupMode") {
-		v.emptyAttr("StartupMode", "StartupMode")
-	}
-	if x.emptyAttr("ForwardingMode") {
-		v.emptyAttr("ForwardingMode", "TokenList")
-	}
+	v.emptyAttrs(x.empty, trackedRTClass3Properties)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2700,21 +2342,14 @@ type SynchronisationMode struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedSynchronisationMode lists the attributes of SynchronisationMode whose emptiness parsing records.
+var trackedSynchronisationMode = []trackedAttr{{"SupportedRole", "TokenList"}, {"MaxLocalJitter", "Unsigned32"}, {"T_PLL_MAX", "Unsigned32"}, {"SupportedSyncProtocols", "TokenList"}}
+
 // UnmarshalXML decodes a SynchronisationMode and records which of its typed optional
 // attributes are present but empty.
 func (x *SynchronisationMode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain SynchronisationMode
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "SupportedRole", "MaxLocalJitter", "T_PLL_MAX", "SupportedSyncProtocols")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *SynchronisationMode) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedSynchronisationMode)
 }
 
 func (x *SynchronisationMode) validate(v *validator) {
@@ -2727,18 +2362,7 @@ func (x *SynchronisationMode) validate(v *validator) {
 	v.attr("MaxLocalJitter", x.MaxLocalJitter, "Unsigned32", false)
 	v.attr("T_PLL_MAX", x.TPLLMAX, "Unsigned32", false)
 	v.attr("SupportedSyncProtocols", x.SupportedSyncProtocols, "TokenList", false)
-	if x.emptyAttr("SupportedRole") {
-		v.emptyAttr("SupportedRole", "TokenList")
-	}
-	if x.emptyAttr("MaxLocalJitter") {
-		v.emptyAttr("MaxLocalJitter", "Unsigned32")
-	}
-	if x.emptyAttr("T_PLL_MAX") {
-		v.emptyAttr("T_PLL_MAX", "Unsigned32")
-	}
-	if x.emptyAttr("SupportedSyncProtocols") {
-		v.emptyAttr("SupportedSyncProtocols", "TokenList")
-	}
+	v.emptyAttrs(x.empty, trackedSynchronisationMode)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2763,21 +2387,14 @@ type MediaRedundancy struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedMediaRedundancy lists the attributes of MediaRedundancy whose emptiness parsing records.
+var trackedMediaRedundancy = []trackedAttr{{"SupportedRole", "TokenList"}, {"MaxMRP_Instances", "Unsigned8"}, {"AdditionalProtocolsSupported", "Boolean"}}
+
 // UnmarshalXML decodes a MediaRedundancy and records which of its typed optional
 // attributes are present but empty.
 func (x *MediaRedundancy) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain MediaRedundancy
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "SupportedRole", "MaxMRP_Instances", "AdditionalProtocolsSupported")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *MediaRedundancy) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedMediaRedundancy)
 }
 
 func (x *MediaRedundancy) validate(v *validator) {
@@ -2789,15 +2406,7 @@ func (x *MediaRedundancy) validate(v *validator) {
 	v.attr("SupportedRole", x.SupportedRole, "TokenList", false)
 	v.attr("MaxMRP_Instances", x.MaxMRPInstances, "Unsigned8", false)
 	v.attr("AdditionalProtocolsSupported", x.AdditionalProtocolsSupported, "Boolean", false)
-	if x.emptyAttr("SupportedRole") {
-		v.emptyAttr("SupportedRole", "TokenList")
-	}
-	if x.emptyAttr("MaxMRP_Instances") {
-		v.emptyAttr("MaxMRP_Instances", "Unsigned8")
-	}
-	if x.emptyAttr("AdditionalProtocolsSupported") {
-		v.emptyAttr("AdditionalProtocolsSupported", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedMediaRedundancy)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2843,21 +2452,14 @@ type PortSubmoduleItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedPortSubmoduleItem lists the attributes of PortSubmoduleItem whose emptiness parsing records.
+var trackedPortSubmoduleItem = []trackedAttr{{"MaxPortTxDelay", "Unsigned16"}, {"MaxPortRxDelay", "Unsigned16"}, {"PortDeactivationSupported", "Boolean"}, {"LinkStateDiagnosisCapability", "TokenList"}, {"IsDefaultRingport", "Boolean"}, {"SupportsRingportConfig", "Boolean"}, {"CheckMAUTypeSupported", "Boolean"}, {"Writeable_IM_Records", "ValueList"}, {"ShortPreamble100MBitSupported", "Boolean"}}
+
 // UnmarshalXML decodes a PortSubmoduleItem and records which of its typed optional
 // attributes are present but empty.
 func (x *PortSubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain PortSubmoduleItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "MaxPortTxDelay", "MaxPortRxDelay", "PortDeactivationSupported", "LinkStateDiagnosisCapability", "IsDefaultRingport", "SupportsRingportConfig", "CheckMAUTypeSupported", "Writeable_IM_Records", "ShortPreamble100MBitSupported")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *PortSubmoduleItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedPortSubmoduleItem)
 }
 
 func (x *PortSubmoduleItem) validate(v *validator) {
@@ -2879,33 +2481,7 @@ func (x *PortSubmoduleItem) validate(v *validator) {
 	v.attr("CheckMAUTypeSupported", x.CheckMAUTypeSupported, "Boolean", false)
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
 	v.attr("ShortPreamble100MBitSupported", x.ShortPreamble100MBitSupported, "Boolean", false)
-	if x.emptyAttr("MaxPortTxDelay") {
-		v.emptyAttr("MaxPortTxDelay", "Unsigned16")
-	}
-	if x.emptyAttr("MaxPortRxDelay") {
-		v.emptyAttr("MaxPortRxDelay", "Unsigned16")
-	}
-	if x.emptyAttr("PortDeactivationSupported") {
-		v.emptyAttr("PortDeactivationSupported", "Boolean")
-	}
-	if x.emptyAttr("LinkStateDiagnosisCapability") {
-		v.emptyAttr("LinkStateDiagnosisCapability", "TokenList")
-	}
-	if x.emptyAttr("IsDefaultRingport") {
-		v.emptyAttr("IsDefaultRingport", "Boolean")
-	}
-	if x.emptyAttr("SupportsRingportConfig") {
-		v.emptyAttr("SupportsRingportConfig", "Boolean")
-	}
-	if x.emptyAttr("CheckMAUTypeSupported") {
-		v.emptyAttr("CheckMAUTypeSupported", "Boolean")
-	}
-	if x.emptyAttr("Writeable_IM_Records") {
-		v.emptyAttr("Writeable_IM_Records", "ValueList")
-	}
-	if x.emptyAttr("ShortPreamble100MBitSupported") {
-		v.emptyAttr("ShortPreamble100MBitSupported", "Boolean")
-	}
+	v.emptyAttrs(x.empty, trackedPortSubmoduleItem)
 	x.MAUTypeList.validate(v)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
@@ -2959,21 +2535,14 @@ type MAUTypeItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedMAUTypeItem lists the attributes of MAUTypeItem whose emptiness parsing records.
+var trackedMAUTypeItem = []trackedAttr{{"AdjustSupported", "Boolean"}, {"Extension", "Unsigned16"}}
+
 // UnmarshalXML decodes a MAUTypeItem and records which of its typed optional
 // attributes are present but empty.
 func (x *MAUTypeItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain MAUTypeItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "AdjustSupported", "Extension")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *MAUTypeItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedMAUTypeItem)
 }
 
 func (x *MAUTypeItem) validate(v *validator) {
@@ -2985,12 +2554,7 @@ func (x *MAUTypeItem) validate(v *validator) {
 	v.attr("Value", x.Value, "Unsigned16", true)
 	v.attr("AdjustSupported", x.AdjustSupported, "Boolean", false)
 	v.attr("Extension", x.Extension, "Unsigned16", false)
-	if x.emptyAttr("AdjustSupported") {
-		v.emptyAttr("AdjustSupported", "Boolean")
-	}
-	if x.emptyAttr("Extension") {
-		v.emptyAttr("Extension", "Unsigned16")
-	}
+	v.emptyAttrs(x.empty, trackedMAUTypeItem)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -3105,21 +2669,14 @@ type ModuleItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedModuleItem lists the attributes of ModuleItem whose emptiness parsing records.
+var trackedModuleItem = []trackedAttr{{"RequiredSchemaVersion", "Version"}, {"PhysicalSubslots", "ValueList"}}
+
 // UnmarshalXML decodes a ModuleItem and records which of its typed optional
 // attributes are present but empty.
 func (x *ModuleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ModuleItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "RequiredSchemaVersion", "PhysicalSubslots")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *ModuleItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedModuleItem)
 }
 
 func (x *ModuleItem) validate(v *validator) {
@@ -3132,12 +2689,7 @@ func (x *ModuleItem) validate(v *validator) {
 	v.attr("ModuleIdentNumber", x.ModuleIdentNumber, "Unsigned32Hex", true)
 	v.attr("RequiredSchemaVersion", x.RequiredSchemaVersion, "Version", false)
 	v.attr("PhysicalSubslots", x.PhysicalSubslots, "ValueList", false)
-	if x.emptyAttr("RequiredSchemaVersion") {
-		v.emptyAttr("RequiredSchemaVersion", "Version")
-	}
-	if x.emptyAttr("PhysicalSubslots") {
-		v.emptyAttr("PhysicalSubslots", "ValueList")
-	}
+	v.emptyAttrs(x.empty, trackedModuleItem)
 	if x.ModuleInfo == nil {
 		v.missing("ModuleInfo")
 	}
@@ -3334,21 +2886,14 @@ type ChannelDiagItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedChannelDiagItem lists the attributes of ChannelDiagItem whose emptiness parsing records.
+var trackedChannelDiagItem = []trackedAttr{{"MaintenanceAlarmState", "TokenList"}}
+
 // UnmarshalXML decodes a ChannelDiagItem and records which of its typed optional
 // attributes are present but empty.
 func (x *ChannelDiagItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ChannelDiagItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "MaintenanceAlarmState")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *ChannelDiagItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedChannelDiagItem)
 }
 
 func (x *ChannelDiagItem) validate(v *validator) {
@@ -3359,9 +2904,7 @@ func (x *ChannelDiagItem) validate(v *validator) {
 	defer v.pop()
 	v.attr("ErrorType", x.ErrorType, "Unsigned16", true)
 	v.attr("MaintenanceAlarmState", x.MaintenanceAlarmState, "TokenList", false)
-	if x.emptyAttr("MaintenanceAlarmState") {
-		v.emptyAttr("MaintenanceAlarmState", "TokenList")
-	}
+	v.emptyAttrs(x.empty, trackedChannelDiagItem)
 	if x.Name == nil {
 		v.missing("Name")
 	}
@@ -3420,21 +2963,14 @@ type ExtChannelDiagItem struct {
 	Unknown []*Node `xml:",any"`
 }
 
+// trackedExtChannelDiagItem lists the attributes of ExtChannelDiagItem whose emptiness parsing records.
+var trackedExtChannelDiagItem = []trackedAttr{{"MaintenanceAlarmState", "TokenList"}}
+
 // UnmarshalXML decodes a ExtChannelDiagItem and records which of its typed optional
 // attributes are present but empty.
 func (x *ExtChannelDiagItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ExtChannelDiagItem
-	if err := d.DecodeElement((*plain)(x), &start); err != nil {
-		return err
-	}
-	x.empty = emptyAttrs(start.Attr, "MaintenanceAlarmState")
-	return nil
-}
-
-// emptyAttr reports whether a parsed document gave the attribute name
-// as "".
-func (x *ExtChannelDiagItem) emptyAttr(name string) bool {
-	return x != nil && slices.Contains(x.empty, name)
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedExtChannelDiagItem)
 }
 
 func (x *ExtChannelDiagItem) validate(v *validator) {
@@ -3445,9 +2981,7 @@ func (x *ExtChannelDiagItem) validate(v *validator) {
 	defer v.pop()
 	v.attr("ErrorType", x.ErrorType, "Unsigned16", true)
 	v.attr("MaintenanceAlarmState", x.MaintenanceAlarmState, "TokenList", false)
-	if x.emptyAttr("MaintenanceAlarmState") {
-		v.emptyAttr("MaintenanceAlarmState", "TokenList")
-	}
+	v.emptyAttrs(x.empty, trackedExtChannelDiagItem)
 	if x.Name == nil {
 		v.missing("Name")
 	}

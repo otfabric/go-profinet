@@ -366,28 +366,57 @@ func (v *validator) report(format string, a ...any) {
 
 func (v *validator) missing(child string) { v.report("missing required element %s", child) }
 
-// emptyAttrs returns the names among names of the unqualified attributes
+// trackedAttr is an attribute whose emptiness parsing records: optional,
+// typed, unqualified (internal/cmd/gengsdml, trackedAttrs).
+type trackedAttr struct{ name, typ string }
+
+// decodeTracked decodes the element start into v (the element's type
+// without its UnmarshalXML) and sets *empty to the attributes of tracked
+// the element gives as "".
+func decodeTracked(d *xml.Decoder, start xml.StartElement, v any, empty *[]string, tracked []trackedAttr) error {
+	if err := d.DecodeElement(v, &start); err != nil {
+		return err
+	}
+	*empty = emptyAttrs(start.Attr, tracked)
+	return nil
+}
+
+// emptyAttrs returns the names among tracked of the unqualified attributes
 // in attrs whose value is "", or nil.
-func emptyAttrs(attrs []xml.Attr, names ...string) []string {
+func emptyAttrs(attrs []xml.Attr, tracked []trackedAttr) []string {
 	var out []string
 	for _, a := range attrs {
-		if a.Value == "" && a.Name.Space == "" && slices.Contains(names, a.Name.Local) {
-			out = append(out, a.Name.Local)
+		if a.Value != "" || a.Name.Space != "" {
+			continue
+		}
+		for _, t := range tracked {
+			if t.name == a.Name.Local {
+				out = append(out, t.name)
+				break
+			}
 		}
 	}
 	return out
 }
 
-// emptyAttr reports an attribute the document gave as "" when its type
-// does not allow the empty string; a typed optional attribute that is
-// empty is not absent.
-func (v *validator) emptyAttr(name, typ string) {
-	t := simpleTypes[typ]
-	switch {
-	case t.enum != nil && !t.enum[""],
-		t.pattern != nil && !t.pattern.MatchString(""),
-		t.pattern == nil && t.enum == nil && t.uintBits > 0:
-		v.report("attribute %s: empty, not a %s", name, typ)
+// emptyIn reports whether name is in empty, the attributes a parsed
+// element gave as "".
+func emptyIn(empty []string, name string) bool {
+	return slices.Contains(empty, name)
+}
+
+// emptyAttrs reports each attribute of tracked the document gave as ""
+// (listed in empty) whose type does not allow the empty string; a typed
+// optional attribute that is empty is not absent.
+func (v *validator) emptyAttrs(empty []string, tracked []trackedAttr) {
+	for _, a := range tracked {
+		if !emptyIn(empty, a.name) {
+			continue
+		}
+		t := simpleTypes[a.typ]
+		if (t.enum != nil && !t.enum[""]) || (t.pattern != nil && !t.pattern.MatchString("")) || (t.pattern == nil && t.enum == nil && t.uintBits > 0) {
+			v.report("attribute %s: empty, not a %s", a.name, a.typ)
+		}
 	}
 }
 
