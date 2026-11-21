@@ -26,6 +26,36 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.12.0
+
+**Date:** unreleased
+**Previous release:** v0.11.0
+
+GSDML: integer record defaults are read as decimal or 0x hexadecimal. No
+API change.
+
+### Breaking
+
+- Behaviour: `gsdml.ToModel` reads the DefaultValue of an integer or bit
+  Ref as decimal, with an optional sign, or as 0x hexadecimal. It used
+  Go's literal syntax, so `"010"` was octal 8 and `"0b101"`, `"0o7"` and
+  `"1_0"` were accepted. Now `"010"` is ten, as in xsd:integer, and the
+  other forms fail with `ErrMalformed`. Consumer assessment: a document
+  with decimal defaults without leading zeros, or with 0x defaults, gives
+  the same records as before; one with leading zeros now gets the value
+  it wrote. go-profinet's fixtures use only decimal and 0x defaults; the
+  documents `gsdml.Generate` writes (and profinetctl's `gsdml generate`)
+  hold no Ref; neither profinetctl nor profinet-interop sets a
+  DefaultValue.
+
+### Fixed
+
+- gsdml: a leading-zero integer DefaultValue (`"010"`) wrote the octal
+  value into the parameter record without an error. That record is what
+  the controller writes to the device at start-up.
+
+---
+
 ## v0.11.0
 
 **Date:** 2026-11-21

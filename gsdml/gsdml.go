@@ -433,6 +433,32 @@ func parseUint(s string, bits int) (uint64, error) {
 	return v, nil
 }
 
+// parseInt parses a decimal or 0x hexadecimal signed value of bits bits:
+// an optional sign, then the digits. Decimal is the lexical space of
+// xsd:integer, where leading zeros are decimal ("010" is ten); 0x is the
+// hexadecimal form parseUint accepts. Go's other integer literals (octal
+// 0 and 0o, binary 0b, digit separators _) are refused.
+func parseInt(s string, bits int) (int64, error) {
+	s = strings.TrimSpace(s)
+	neg := false
+	digits := s
+	if digits != "" && (digits[0] == '-' || digits[0] == '+') {
+		neg, digits = digits[0] == '-', digits[1:]
+	}
+	if digits == "" || digits[0] < '0' || digits[0] > '9' {
+		return 0, fmt.Errorf("%q is not a signed %d-bit value", s, bits)
+	}
+	m, err := parseUint(digits, 64)
+	limit := uint64(1) << (bits - 1) // the magnitude of the minimum
+	if err != nil || m > limit || (!neg && m == limit) {
+		return 0, fmt.Errorf("%q is not a signed %d-bit value", s, bits)
+	}
+	if neg {
+		return -int64(m-1) - 1, nil
+	}
+	return int64(m), nil
+}
+
 // ParseUint32 parses a decimal or 0x hexadecimal attribute value.
 func ParseUint32(s string) (uint32, error) {
 	v, err := parseUint(s, 32)
