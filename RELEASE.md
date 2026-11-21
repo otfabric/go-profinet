@@ -34,6 +34,24 @@ section ending with a `---` line and no `---` line inside a section.
 Fixes for three reports by @mprotogerakis. API: four fields added to
 `device.ARInfo`; the device's ModuleDiffBlock changes behaviour.
 
+### Breaking
+
+- `gsdml.CatalogSHA256` has a new value, because the catalog now records
+  the Ref BitOffset and BitLength defaults. gorelease reports a changed
+  constant as incompatible. Consumer assessment: no dependant
+  (profinetctl, profinet-interop's own/go-profinet adapter) refers to the
+  constant; code that compares it with a stored value must store the new
+  one.
+- Behaviour: an IO controller connecting to `device` gets no
+  ModuleDiffBlock for a matching configuration, where it got every
+  submodule as ApplicationReadyPending (see Changed). Consumer assessment:
+  go-profinet's own controller treats both alike (`ModuleDiff()` is now
+  nil for a matching device, as against p-net); profinetctl's mismatch
+  warning ignores ARInfo and is unchanged, and the `module_diff` of its
+  `ar` output no longer lists those submodules of a go-profinet device;
+  pnio-rs and profinet-py as controllers against the device pass in the
+  interop suite.
+
 ### Changed
 
 - device: the ModuleDiffBlock of the Connect response and of the ModuleDiff
