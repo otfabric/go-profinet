@@ -125,7 +125,9 @@ returned with the error). As `ErrInvalidConfig`: a model with more than
 (`model.Validate`, and so `device.New` and `Controller.AddDevice`); an MRP
 profile with a negative `TestInterval`. As `ErrMalformed`: a GSDML module
 or device access point with more than 1440 submodules, or a Const
-ByteOffset or Ref BitOffset that is no number (`gsdml.ToModel`); a
+ByteOffset or Ref BitOffset that is no number, or a VisibleString,
+UTF8String or OctetString Ref default longer than its Length
+(`gsdml.ToModel`); a
 PDRealData record whose MultipleBlockHeaders nest more than four deep. As
 `ErrUnsupported`: a GSDML document whose document type declaration has an
 internal subset (`gsdml.Parse`; docs/GSDML.md).
