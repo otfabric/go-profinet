@@ -600,15 +600,9 @@ func TestRunningDevice(t *testing.T) {
 	if cd.Name() != "dut" || cd.MAC() != dn.mux.HardwareAddr() || cd.IP() != suite(devIP) || cd.ARUUID().IsNil() {
 		t.Fatalf("getters %s %s %s", cd.MAC(), cd.IP(), cd.ARUUID())
 	}
-	// The diff of the Connect only reports the pending ApplicationReady.
-	if diff := cd.ModuleDiff(); diff == nil || len(diff.APIs) != 1 || len(diff.APIs[0].Modules) != 4 {
+	// A matching configuration has no ModuleDiffBlock.
+	if diff := cd.ModuleDiff(); diff != nil {
 		t.Fatalf("diff %+v", diff)
-	} else {
-		for _, m := range diff.APIs[0].Modules {
-			if m.State != pnio.ModuleStateProper {
-				t.Fatalf("module %+v", m)
-			}
-		}
 	}
 	ars := dev.ARs()
 	if len(ars) != 1 || ars[0].UUID != cd.ARUUID() || ars[0].InputFrameID < pnio.FrameIDRTC1Min {

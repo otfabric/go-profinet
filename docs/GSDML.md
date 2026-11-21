@@ -39,6 +39,22 @@ device access point with more than 1440 submodules (more than a C_SDU
 carries) and a Const ByteOffset or Ref BitOffset that is no number fail
 with `ErrMalformed`.
 
+An absent Ref `BitOffset` is 0 and an absent `BitLength` (of a
+`DataType="BitArea"` Ref) is 1. Both defaults are those of ISO
+15745-4:2003/Amd 1:2006 (PROFINET profiles), Annex D, Table D.31
+"Attributes of element Ref", which declares BitLength optional, of type
+Unsigned8, default 1 (range 1 to 15 in that edition) and BitOffset default
+0; the catalog records them (`BitOffset:Unsigned8=0`,
+`BitLength:Unsigned8=1`) and `gengsdml -xsd DIR` compares them with a
+licensed copy of the XSDs. The declarations in the PI XSDs of the versions
+in use (for example V2.35 and V2.42, which published files without a
+BitLength carry) have not been checked: the XSDs are members-only and no
+licensed copy was at hand. A BitLength that is present but no Unsigned8,
+or 0, fails with `ErrMalformed`; so does a bit area that leaves its octet
+(see LIMITATIONS.md). An attribute written as `BitLength=""` cannot be told
+from an absent one (the generated types hold attributes as strings) and
+takes the default.
+
 `Parse` refuses a document of more than 64 MiB or more than 1 048 576
 elements (`ErrResourceExhausted`).
 

@@ -85,7 +85,22 @@ func TestReparameterize(t *testing.T) {
 	})
 	_ = dev.SetInput(1, 1, []byte{1, 2, 3, 4, 5, 6, 7, 8}, pnio.IOxSGood)
 	waitInput(t, cd, 1, []byte{1, 2, 3, 4, 5, 6, 7, 8})
-	before, _ := h.snapshot()
+	before, w0 := h.snapshot()
+	// A matching configuration: no ModuleDiffBlock, and the parameter was
+	// written before PrmEnd (issue #72).
+	if diff := cd.ModuleDiff(); diff != nil {
+		t.Fatalf("ModuleDiff %+v", diff)
+	}
+	if string(w0[0x10]) != string([]byte{0, 1}) {
+		t.Fatalf("startup parameter %v", w0[0x10])
+	}
+	// The device sees the output IOCR's timing the controller asked for
+	// (issue #73).
+	cai, _ := cd.AR()
+	if ars := dev.ARs(); len(ars) != 1 || ars[0].SendClockFactor != cai.Output.SendClockFactor || ars[0].ReductionRatio != cai.Output.ReductionRatio ||
+		ars[0].WatchdogFactor != cai.Output.WatchdogFactor || ars[0].DataHoldFactor != cai.Output.DataHoldFactor || ars[0].DataHoldFactor == 0 {
+		t.Fatalf("device ARInfo %+v, controller output IOCR %+v", ars, cai.Output)
+	}
 
 	start := time.Now()
 	if err := cd.Reparameterize(ctx, []controller.Parameter{{Slot: 2, Subslot: 1, Index: 0x10, Data: []byte{0, 9}}}); err != nil {

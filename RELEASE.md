@@ -26,6 +26,53 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.11.0
+
+**Date:** 2026-11-21
+**Previous release:** v0.10.0
+
+Fixes for three reports by @mprotogerakis. API: four fields added to
+`device.ARInfo`; the device's ModuleDiffBlock changes behaviour.
+
+### Changed
+
+- device: the ModuleDiffBlock of the Connect response and of the ModuleDiff
+  record (0xE002) no longer lists every matching submodule as
+  ApplicationReadyPending. A matching submodule the AR owns is Own and is
+  listed only when it has a diagnosis, with the Fault, MaintenanceRequired
+  or MaintenanceDemanded bit of its SubmoduleState, as p-net reports it
+  (`pf_cmdev_generate_module_diff`); a matching configuration has no
+  ModuleDiffBlock. A soft-PLC IO controller skipped every parameter write
+  between Connect and PrmEnd on the ApplicationReadyPending submodules, so
+  the parameters of its project never reached `Handler.WriteRecord`
+  ([#72](https://github.com/otfabric/go-profinet/issues/72)). Wrong,
+  missing and locked submodules are reported as before.
+
+### Added
+
+- device: `ARInfo.SendClockFactor`, `ReductionRatio`, `WatchdogFactor` and
+  `DataHoldFactor`, from the output IOCR of the Connect (zero for an
+  IOSAR), so an application can say how long a gap the controller asked
+  the device to accept when an AR ends with "consumer data hold timer
+  expired" ([#73](https://github.com/otfabric/go-profinet/issues/73)).
+  `CycleNanos` is documented as the input IOCR's cycle.
+- gsdml: optional attributes can carry a default in the catalog
+  (`name:type=value`); the generated reference (SCHEMA.md) shows it and
+  `gengsdml -xsd DIR` compares it with the XSDs' `default`.
+
+### Fixed
+
+- gsdml: a `DataType="BitArea"` Ref without `BitLength` made `ToModel`
+  fail for every submodule with such a record ("malformed: bit Ref at
+  5.0"), so no module of the file could be used. An absent BitLength is
+  now 1 and an absent BitOffset 0, the defaults of ISO 15745-4:2003/Amd
+  1:2006, Annex D, Table D.31 (not yet compared with the V2.3x/V2.4x PI
+  XSDs). A BitLength that is present but no Unsigned8, or 0, is refused
+  with `ErrMalformed` and named in the error; before, its parse error was
+  discarded ([#74](https://github.com/otfabric/go-profinet/issues/74)).
+
+---
+
 ## v0.10.0
 
 **Date:** 2026-11-15

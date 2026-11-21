@@ -99,16 +99,9 @@ func TestFixtureDevices(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitState(t, cd, controller.StateRunning, 10*time.Second)
-			// The ModuleDiff, when the device sends one, has every module
-			// proper.
+			// The model matches: no ModuleDiffBlock.
 			if diff := cd.ModuleDiff(); diff != nil {
-				for _, api := range diff.APIs {
-					for _, mod := range api.Modules {
-						if mod.State != pnio.ModuleStateProper {
-							t.Fatalf("module diff %+v", diff)
-						}
-					}
-				}
+				t.Fatalf("module diff %+v", diff)
 			}
 			exerciseFixture(t, cd, m, func(slot, subslot uint16, data []byte) { _ = dev.SetInput(slot, subslot, data, pnio.IOxSGood) })
 			for _, p := range params {

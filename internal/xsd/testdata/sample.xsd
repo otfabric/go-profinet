@@ -31,6 +31,7 @@
           </xs:choice>
         </xs:sequence>
         <xs:attribute name="Kind" type="xs:token"/>
+        <xs:attribute name="Width" type="xs:unsignedByte" default="1"/>
       </xs:extension>
     </xs:complexContent>
   </xs:complexType>

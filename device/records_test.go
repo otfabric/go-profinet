@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -251,6 +252,9 @@ func TestRecordsWithIOCAR(t *testing.T) {
 	// Slot 3 is expected with another module.
 	req.Expected[3].Modules[0].IdentNumber = 0x99
 	hold := make(chan struct{})
+	var release sync.Once
+	// A failure below must not leave the application blocked.
+	t.Cleanup(func() { release.Do(func() { close(hold) }) })
 	p.setOnReady(func(pnio.ControlBlock) []byte {
 		<-hold
 		return nil
@@ -275,18 +279,22 @@ func TestRecordsWithIOCAR(t *testing.T) {
 		}
 		return m
 	}
-	// While waiting for ApplicationReady every submodule is listed.
+	// Only the wrong module is listed, while waiting for ApplicationReady
+	// and in Data: the matching submodules are the AR's own and are not
+	// ApplicationReadyPending.
+	onlyWrong := func(m pnio.ModuleDiffBlock) bool {
+		return len(m.APIs) == 1 && len(m.APIs[0].Modules) == 1 && m.APIs[0].Modules[0].Slot == 3 && m.APIs[0].Modules[0].State == pnio.ModuleStateWrong
+	}
 	if err := p.prmEnd(req); err != nil {
 		t.Fatal(err)
 	}
 	waitAR(t, d, ar, ARStateAppReadyPending)
-	if m := diff(); len(m.APIs) != 1 || len(m.APIs[0].Modules) != 5 {
+	if m := diff(); !onlyWrong(m) {
 		t.Fatalf("diff while pending %+v", m)
 	}
-	close(hold)
+	release.Do(func() { close(hold) })
 	waitAR(t, d, ar, ARStateData)
-	// In Data only the wrong module.
-	if m := diff(); len(m.APIs) != 1 || len(m.APIs[0].Modules) != 1 || m.APIs[0].Modules[0].Slot != 3 || m.APIs[0].Modules[0].State != pnio.ModuleStateWrong {
+	if m := diff(); !onlyWrong(m) {
 		t.Fatalf("diff in Data %+v", m)
 	}
 	// Expected identification of the AR, explicitly and with

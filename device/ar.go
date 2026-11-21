@@ -52,6 +52,7 @@ type ar struct {
 	consumer            *rt.Consumer
 	provTask, wdTask    *rt.Task
 	cycle               time.Duration
+	outTiming           outTiming
 
 	alarmHigh, alarmLow *alarm.Endpoint
 	alarmRef            uint16
@@ -96,6 +97,11 @@ type ar struct {
 	sr *srFields
 }
 
+// outTiming is the timing of the output IOCR from the Connect.
+type outTiming struct {
+	SendClockFactor, ReductionRatio, WatchdogFactor, DataHoldFactor uint16
+}
+
 // abortRequest is an abort kept for the Connect that builds the AR.
 type abortRequest struct {
 	reason pnio.AbortReason
@@ -113,6 +119,8 @@ func (a *ar) infoLocked() ARInfo {
 		UUID: a.uuid, Type: a.typ, SessionKey: a.sessionKey, State: a.state,
 		ControllerMAC: a.ctrlMAC, ControllerAddr: a.ctrlAddr, ControllerName: a.ctrlName,
 		CycleNanos: int64(a.cycle), CloseReason: a.reason,
+		SendClockFactor: a.outTiming.SendClockFactor, ReductionRatio: a.outTiming.ReductionRatio,
+		WatchdogFactor: a.outTiming.WatchdogFactor, DataHoldFactor: a.outTiming.DataHoldFactor,
 	}
 	if a.provider != nil {
 		i.InputFrameID = a.provider.FrameID()
@@ -278,7 +286,24 @@ func shapes(exp []pnio.ExpectedSubmoduleBlockReq) []rt.SubmoduleIO {
 // returns the ModuleDiffBlock (nil when everything matches) and the
 // submodules that match. The submodules in locked match but are owned by
 // another IO controller's AR: they are reported as locked.
-func (d *Device) moduleDiff(exp []pnio.ExpectedSubmoduleBlockReq, appReadyPending bool, locked map[key]bool) (*pnio.ModuleDiffBlock, map[key]bool) {
+//
+// A matching submodule the AR owns is Own (ARInfo 0) and is left out of the
+// block unless it has a diagnosis, which sets Fault, MaintenanceRequired or
+// MaintenanceDemanded in its SubmoduleState. This is p-net's
+// pf_cmdev_generate_module_diff (pf_cmdev.c, rtlabs-com/p-net 1c3b0b4),
+// which never reports ApplicationReadyPending. Reporting every submodule
+// ApplicationReadyPending ("owned, but parameter checking is pending",
+// p-net pf_types.h) made a soft-PLC IO controller skip all parameter
+// writes between Connect and PrmEnd (go-profinet issue #72).
+func (d *Device) moduleDiff(exp []pnio.ExpectedSubmoduleBlockReq, locked map[key]bool) (*pnio.ModuleDiffBlock, map[key]bool) {
+	d.mu.Lock()
+	diag := make(map[key]uint16, len(d.diags))
+	for k, items := range d.diags {
+		if st := diagState(items); st != 0 {
+			diag[k] = st
+		}
+	}
+	d.mu.Unlock()
 	proper := map[key]bool{}
 	var apis []pnio.DiffAPI
 	addModule := func(api uint32, m pnio.DiffModule) {
@@ -324,10 +349,9 @@ func (d *Device) moduleDiff(exp []pnio.ExpectedSubmoduleBlockReq, appReadyPendin
 					dm.Submodules = append(dm.Submodules, pnio.DiffSubmodule{Subslot: es.Subslot, IdentNumber: rs.IdentNumber, State: st})
 					continue
 				}
-				if appReadyPending {
-					// Every submodule of the AR waits for ApplicationReady.
-					st |= pnio.SubmStateARInfoAppReady
-					dm.Submodules = append(dm.Submodules, pnio.DiffSubmodule{Subslot: es.Subslot, IdentNumber: rs.IdentNumber, State: st})
+				if ds := diag[key{em.Slot, es.Subslot}]; ds != 0 {
+					// Own and OK, listed for its diagnosis (as p-net).
+					dm.Submodules = append(dm.Submodules, pnio.DiffSubmodule{Subslot: es.Subslot, IdentNumber: rs.IdentNumber, State: st | ds})
 				}
 			}
 			if dm.State != pnio.ModuleStateProper || len(dm.Submodules) > 0 {
@@ -340,6 +364,27 @@ func (d *Device) moduleDiff(exp []pnio.ExpectedSubmoduleBlockReq, appReadyPendin
 	}
 	sort.Slice(apis, func(i, j int) bool { return apis[i].API < apis[j].API })
 	return &pnio.ModuleDiffBlock{APIs: apis}, proper
+}
+
+// diagState returns the SubmoduleState bits of a submodule's diagnoses:
+// Fault for a diagnosis, MaintenanceRequired or MaintenanceDemanded by the
+// Maintenance field of the ChannelProperties (IEC 61158-6-10 coding as
+// Wireshark's packet-dcerpc-pn-io.c dissects it). A qualified diagnosis
+// sets none of them.
+func diagState(items []pnio.DiagnosisItem) uint16 {
+	var st uint16
+	for _, it := range items {
+		switch it.ChannelProperties & pnio.ChanMaintQualified {
+		case 0:
+			st |= pnio.SubmStateDiagInfo
+		case pnio.ChanMaintRequired:
+			st |= pnio.SubmStateMaintRequired
+		case pnio.ChanMaintDemanded:
+			st |= pnio.SubmStateMaintDemanded
+		default:
+		}
+	}
+	return st
 }
 
 // connect handles a Connect request.
@@ -518,7 +563,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	if req.ARRPC != nil && req.ARRPC.InitiatorRPCServerPort != 0 {
 		a.ctrlPort = int(req.ARRPC.InitiatorRPCServerPort)
 	}
-	_, a.match = d.moduleDiff(req.Expected, false, nil)
+	_, a.match = d.moduleDiff(req.Expected, nil)
 	if rerun != nil {
 		// The submodules of the replaced AR go to the new one, not to
 		// another controller's.
@@ -534,7 +579,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	if !iosar {
 		locked = d.claimOwnership(a)
 	}
-	diff, _ := d.moduleDiff(req.Expected, !iosar, locked)
+	diff, _ := d.moduleDiff(req.Expected, locked)
 	// A Connect that fails from here on gives its submodules back.
 	established := false
 	defer func() {
@@ -559,6 +604,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 			return fail(pnio.Code1CMRPC, pnio.CMRPCOutOfMemory)
 		}
 		a.cycle = time.Duration(rt.CycleNanos(in.SendClockFactor, in.ReductionRatio))
+		a.outTiming = outTiming{out.SendClockFactor, out.ReductionRatio, out.WatchdogFactor, out.DataHoldFactor}
 		resp.IOCRs = []pnio.IOCRBlockRes{
 			{Type: in.Type, Reference: in.Reference, FrameID: in.FrameID},
 			{Type: out.Type, Reference: out.Reference, FrameID: outID},

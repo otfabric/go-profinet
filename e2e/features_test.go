@@ -261,6 +261,10 @@ func TestModuleDiff(t *testing.T) {
 	if states[1] != pnio.ModuleStateWrong || states[7] != pnio.ModuleStateNoModule || states[2] != pnio.ModuleStateProper {
 		t.Fatalf("module states %v", states)
 	}
+	// The matching modules are not listed (issue #72).
+	if _, ok := states[3]; ok || len(states) != 3 {
+		t.Fatalf("module states %v: a matching module is listed", states)
+	}
 	// The matching submodule in slot 3 still exchanges data; slot 1 does
 	// not.
 	_ = dev.SetInput(3, 1, []byte{5, 5}, pnio.IOxSGood)

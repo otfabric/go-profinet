@@ -342,32 +342,15 @@ func replayStartup(t *testing.T) replayed {
 			t.Errorf("IOCRBlockRes %d: %+v, recorded %+v", i, gres.IOCRs[i], wres.IOCRs[i])
 		}
 	}
-	// Intentional difference: p-net sends no ModuleDiffBlock when every
-	// submodule matches; this device reports every submodule of an IOCAR
-	// as ApplicationReadyPending until ApplicationReady (IEC 61158-6-10
-	// ARInfo). The recording shows only that the CPU accepts the former;
-	// what matters here is that nothing is wrong, missing or locked.
+	// p-net sends no ModuleDiffBlock when every submodule matches, nor
+	// does this device: a matching submodule the AR owns is Own and not
+	// listed (issue #72; ApplicationReadyPending made a controller skip
+	// its parameter writes).
 	if wres.ModuleDiff != nil {
 		t.Errorf("recorded ModuleDiffBlock %+v; the fixture expects none", wres.ModuleDiff)
 	}
 	if gres.ModuleDiff != nil {
-		n := 0
-		for _, a := range gres.ModuleDiff.APIs {
-			for _, m := range a.Modules {
-				if m.State != pnio.ModuleStateProper {
-					t.Errorf("ModuleDiff slot %d state %#x, want proper: the model differs from the CPU's configuration", m.Slot, m.State)
-				}
-				for _, s := range m.Submodules {
-					n++
-					if s.State != pnio.SubmStateFormat|pnio.SubmStateARInfoAppReady {
-						t.Errorf("ModuleDiff %d/%#x state %#x, want only ApplicationReadyPending", m.Slot, s.Subslot, s.State)
-					}
-				}
-			}
-		}
-		if n != 7 {
-			t.Errorf("ModuleDiff lists %d submodules, the CPU expects 7", n)
-		}
+		t.Errorf("ModuleDiffBlock %+v; p-net sent none: the model differs from the CPU's configuration", gres.ModuleDiff)
 	}
 	if gres.AlarmCR == nil || gres.AlarmCR.Type != wres.AlarmCR.Type {
 		t.Fatalf("AlarmCRBlockRes %+v, recorded %+v", gres.AlarmCR, wres.AlarmCR)

@@ -95,7 +95,7 @@ func (d *Device) readRecordData(ctx context.Context, a *ar, q pnio.ReadReq) ([]b
 		if a.typ != pnio.ARTypeIOSAR {
 			locked = d.lockedFor(a)
 		}
-		diff, _ := d.moduleDiff(a.expected, a.currentState() != ARStateData && a.typ != pnio.ARTypeIOSAR, locked)
+		diff, _ := d.moduleDiff(a.expected, locked)
 		if diff == nil {
 			diff = &pnio.ModuleDiffBlock{}
 		}

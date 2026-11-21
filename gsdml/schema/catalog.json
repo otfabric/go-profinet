@@ -1,5 +1,5 @@
 {
-  "comment": "Catalog of the GSDML elements and attributes go-profinet models. Written independently from public descriptions of GSDML (it contains no text of the PI schemas). Generator input for gsdml/zz_generated.go and gsdml/SCHEMA.md: go generate ./gsdml. Attributes are name:type, a trailing ! marks a required one, a trailing ~ one that is always written but may be empty. Children are element names; ? marks optional, * repeated, + one or more. Unknown elements and attributes of a document are preserved by the generated types.",
+  "comment": "Catalog of the GSDML elements and attributes go-profinet models. Written independently from public descriptions of GSDML (it contains no text of the PI schemas). Generator input for gsdml/zz_generated.go and gsdml/SCHEMA.md: go generate ./gsdml. Attributes are name:type, a trailing ! marks a required one, a trailing ~ one that is always written but may be empty, a trailing =value the value of an optional one when it is absent (Ref BitOffset 0 and BitLength 1: ISO 15745-4:2003/Amd 1:2006 Annex D, Table D.31; see docs/GSDML.md). Children are element names; ? marks optional, * repeated, + one or more. Unknown elements and attributes of a document are preserved by the generated types.",
   "namespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
   "root": "ISO15745Profile",
   "versions": ["2.25", "2.3", "2.31", "2.32", "2.33", "2.34", "2.35", "2.4", "2.41", "2.42", "2.43", "2.44", "2.45"],
@@ -93,7 +93,7 @@
     {"name": "RecordDataList", "children": ["ParameterRecordDataItem*", "F_ParameterRecordDataItem?"]},
     {"name": "ParameterRecordDataItem", "doc": "A parameter record the controller writes before PrmEnd.", "attrs": ["Index:Unsigned16!", "Length:Unsigned32!", "TransferSequence:Unsigned16", "ChangeableWithBump:Boolean"], "children": ["Name", "Const*", "Ref*", "MenuList?"]},
     {"name": "Const", "attrs": ["ByteOffset:Unsigned32", "Data:string!"]},
-    {"name": "Ref", "attrs": ["ValueItemTarget:IDRef", "ByteOffset:Unsigned32!", "BitOffset:Unsigned8", "BitLength:Unsigned8", "DataType:DataType!", "DefaultValue:string", "AllowedValues:string", "Changeable:Boolean", "Visible:Boolean", "TextId:IDRef!", "Length:Unsigned32", "ID:ID"]},
+    {"name": "Ref", "attrs": ["ValueItemTarget:IDRef", "ByteOffset:Unsigned32!", "BitOffset:Unsigned8=0", "BitLength:Unsigned8=1", "DataType:DataType!", "DefaultValue:string", "AllowedValues:string", "Changeable:Boolean", "Visible:Boolean", "TextId:IDRef!", "Length:Unsigned32", "ID:ID"]},
     {"name": "MenuList", "children": ["MenuItem+"]},
     {"name": "MenuItem", "attrs": ["ID:ID!"], "children": ["Name", "MenuRef*", "ParameterRef*"]},
     {"name": "MenuRef", "attrs": ["MenuTarget:IDRef!"]},

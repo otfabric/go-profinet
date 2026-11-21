@@ -233,8 +233,8 @@ func TestConnectAcceptedVariants(t *testing.T) {
 			if resp.AlarmCR == nil || resp.AlarmCR.MaxAlarmDataLength != 200 || resp.ARServer == nil || resp.ARServer.StationName != "dut" {
 				t.Fatalf("response %+v", resp)
 			}
-			if resp.ModuleDiff == nil {
-				t.Fatal("no ModuleDiff while waiting for ApplicationReady")
+			if resp.ModuleDiff != nil {
+				t.Fatalf("ModuleDiff %+v for a matching configuration", resp.ModuleDiff)
 			}
 			ars := d.ARs()
 			if len(ars) != 1 || ars[0].InputFrameID != c.inID || ars[0].OutputFrameID != resp.IOCRs[1].FrameID || ars[0].ControllerName != "plc" {
@@ -293,14 +293,22 @@ func TestConnectARLimits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if resp.ModuleDiff == nil {
+		t.Fatal("no ModuleDiff for a submodule another AR owns")
+	}
+	locked := 0
 	for _, api := range resp.ModuleDiff.APIs {
 		for _, m := range api.Modules {
 			for _, sm := range m.Submodules {
-				if sm.State&(0xF<<7) != pnio.SubmStateARInfoCtrlLock {
+				locked++
+				if sm.State != pnio.SubmStateFormat|pnio.SubmStateARInfoCtrlLock|pnio.SubmStateIdentOK {
 					t.Fatalf("slot %d subslot %d state %#x, want locked by IO controller", m.Slot, sm.Subslot, sm.State)
 				}
 			}
 		}
+	}
+	if locked != 7 {
+		t.Fatalf("%d locked submodules, want 7", locked)
 	}
 	c3 := p.ioCAR()
 	c3.AR.InitiatorObject[11] ^= 0x0F
@@ -385,14 +393,15 @@ func TestConnectStateSequence(t *testing.T) {
 	p := n.peer(d, "192.168.0.2", true)
 	req := p.ioCAR()
 	resp := p.establish(req)
-	if resp.ModuleDiff == nil {
-		t.Fatal("no ModuleDiff")
+	if resp.ModuleDiff != nil {
+		t.Fatalf("ModuleDiff %+v for a matching configuration", resp.ModuleDiff)
 	}
 	if p.readyCnt.Load() != 1 {
 		t.Fatalf("%d ApplicationReady calls", p.readyCnt.Load())
 	}
 	ars := d.ARs()
-	if len(ars) != 1 || ars[0].Type != pnio.ARTypeIOCARSingle || ars[0].SessionKey != 7 || ars[0].ControllerMAC != p.mux.HardwareAddr() || ars[0].CycleNanos != int64(128*time.Millisecond) {
+	if len(ars) != 1 || ars[0].Type != pnio.ARTypeIOCARSingle || ars[0].SessionKey != 7 || ars[0].ControllerMAC != p.mux.HardwareAddr() || ars[0].CycleNanos != int64(128*time.Millisecond) ||
+		ars[0].SendClockFactor != 32 || ars[0].ReductionRatio != 128 || ars[0].WatchdogFactor != 3 || ars[0].DataHoldFactor != 0x1E00 {
 		t.Fatalf("ARs %+v", ars)
 	}
 	// PrmEnd twice is a state conflict.
@@ -456,6 +465,106 @@ func TestPrmBeginIOSAR(t *testing.T) {
 	// Alarms do not go to IOSARs.
 	if err := d.SendAlarm(context.Background(), Alarm{Type: pnio.AlarmProcess, Slot: 1, Subslot: 1}); !errors.Is(err, profinet.ErrInvalidState) {
 		t.Fatalf("err %v", err)
+	}
+	// An IOSAR has no IOCRs: no output timing.
+	for _, i := range d.ARs() {
+		if i.UUID == req.AR.ARUUID && (i.CycleNanos != 0 || i.SendClockFactor != 0 || i.ReductionRatio != 0 || i.WatchdogFactor != 0 || i.DataHoldFactor != 0) {
+			t.Fatalf("IOSAR timing %+v", i)
+		}
+	}
+}
+
+// TestModuleDiffDiagnosis: a matching submodule the AR owns is listed in
+// the ModuleDiffBlock only for a diagnosis, as Own with the Fault or
+// Maintenance bit of the diagnosis (p-net's pf_cmdev_generate_module_diff),
+// never as ApplicationReadyPending (issue #72).
+func TestModuleDiffDiagnosis(t *testing.T) {
+	n := newNet(t)
+	d, _ := n.device(nil)
+	p := n.peer(d, "192.168.0.2", true)
+	ctx := context.Background()
+	// No AR yet: the diagnoses are recorded, the alarms have no receiver.
+	_ = d.AddDiagnosis(ctx, 1, 1, pnio.DiagnosisItem{ChannelNumber: 1, ErrorType: pnio.ChannelErrShortCircuit})
+	_ = d.AddDiagnosis(ctx, 2, 1, pnio.DiagnosisItem{ChannelNumber: 2, ChannelProperties: pnio.ChanMaintRequired, ErrorType: 0x100})
+	_ = d.AddDiagnosis(ctx, 3, 1, pnio.DiagnosisItem{ChannelNumber: 3, ChannelProperties: pnio.ChanMaintQualified, ErrorType: 0x101})
+	req := p.ioCAR()
+	resp := p.establish(req)
+	if resp.ModuleDiff == nil {
+		t.Fatal("no ModuleDiff for submodules with a diagnosis")
+	}
+	got := func(m *pnio.ModuleDiffBlock) map[key]uint16 {
+		out := map[key]uint16{}
+		for _, api := range m.APIs {
+			for _, mod := range api.Modules {
+				if mod.State != pnio.ModuleStateProper {
+					t.Fatalf("module %+v", mod)
+				}
+				for _, sm := range mod.Submodules {
+					out[key{mod.Slot, sm.Subslot}] = sm.State
+				}
+			}
+		}
+		return out
+	}
+	want := map[key]uint16{
+		{1, 1}: pnio.SubmStateFormat | pnio.SubmStateDiagInfo,
+		{2, 1}: pnio.SubmStateFormat | pnio.SubmStateMaintRequired,
+	}
+	check := func(what string, g map[key]uint16) {
+		t.Helper()
+		if len(g) != len(want) {
+			t.Fatalf("%s: %v, want %v (a qualified diagnosis sets no bit)", what, g, want)
+		}
+		for k, v := range want {
+			if g[k] != v {
+				t.Fatalf("%s: %v state %#x, want %#x", what, k, g[k], v)
+			}
+		}
+	}
+	check("Connect", got(resp.ModuleDiff))
+	// The record read agrees.
+	b, err := p.rc.Read(ctx, req.AR.ARUUID, controller.Record{Slot: 0, Subslot: 1, Index: pnio.IndexModuleDiffAR}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blk, _, err := pnio.ReadBlock(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := pnio.DecodeModuleDiffBlock(blk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check("record", got(&m))
+	// Once the diagnoses are gone a matching configuration has no diff.
+	_ = d.RemoveDiagnosis(ctx, 1, 1, 1, pnio.ChannelErrShortCircuit)
+	_ = d.RemoveDiagnosis(ctx, 2, 1, 2, 0x100)
+	if diff, _ := d.moduleDiff(req.Expected, nil); diff != nil {
+		t.Fatalf("diff %+v without a diagnosis", diff)
+	}
+}
+
+func TestDiagState(t *testing.T) {
+	cases := []struct {
+		props []uint16
+		want  uint16
+	}{
+		{nil, 0},
+		{[]uint16{0}, pnio.SubmStateDiagInfo},
+		{[]uint16{pnio.ChanMaintRequired}, pnio.SubmStateMaintRequired},
+		{[]uint16{pnio.ChanMaintDemanded}, pnio.SubmStateMaintDemanded},
+		{[]uint16{pnio.ChanMaintQualified}, 0},
+		{[]uint16{pnio.ChanSpecAppears | pnio.ChanAccumulative | 0x05}, pnio.SubmStateDiagInfo},
+		{[]uint16{0, pnio.ChanMaintRequired, pnio.ChanMaintDemanded}, pnio.SubmStateDiagInfo | pnio.SubmStateMaintRequired | pnio.SubmStateMaintDemanded},
+	}
+	for _, c := range cases {
+		items := make([]pnio.DiagnosisItem, len(c.props))
+		for i, p := range c.props {
+			items[i].ChannelProperties = p
+		}
+		if got := diagState(items); got != c.want {
+			t.Errorf("diagState(%#x) = %#x, want %#x", c.props, got, c.want)
+		}
 	}
 }
 
@@ -716,6 +825,10 @@ func TestTimeouts(t *testing.T) {
 	}
 	p.establish(req)
 	h.waitReason(t, req.AR.ARUUID, pnio.AbortConsumerDHT)
+	// The handler can tell why: the output IOCR's timing (issue #73).
+	if i := h.closedInfo(req.AR.ARUUID); i.SendClockFactor != 32 || i.ReductionRatio != 32 || i.WatchdogFactor != 3 || i.DataHoldFactor != 10 || i.CloseReason != pnio.AbortConsumerDHT {
+		t.Fatalf("ARInfo at the DHT abort %+v", i)
+	}
 	// A released IOSAR stops its idle watch.
 	s := p.ioSAR()
 	s.AR.ActivityTimeoutFactor = 4
@@ -883,14 +996,10 @@ func TestConnectSameControllerReplaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, api := range resp.ModuleDiff.APIs {
-		for _, m := range api.Modules {
-			for _, sm := range m.Submodules {
-				if sm.State&(0xF<<7) == pnio.SubmStateARInfoCtrlLock {
-					t.Fatalf("slot %d subslot %d locked", m.Slot, sm.Subslot)
-				}
-			}
-		}
+	// No submodule is locked: the replacing AR owns them all, so the
+	// configuration matches and there is no ModuleDiffBlock.
+	if resp.ModuleDiff != nil {
+		t.Fatalf("ModuleDiff %+v", resp.ModuleDiff)
 	}
 	h.waitReason(t, c1.AR.ARUUID, pnio.AbortRerun)
 	if _, ok := arState(d, c1.AR.ARUUID); ok {

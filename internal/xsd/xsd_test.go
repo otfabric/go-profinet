@@ -25,6 +25,9 @@ func TestLoadDir(t *testing.T) {
 	if !reflect.DeepEqual(item.Children, want) {
 		t.Fatalf("Item children %v", item.Children)
 	}
+	if a := item.Attributes["Width"]; a.Required || a.Default != "1" || item.Attributes["Kind"].Default != "" {
+		t.Fatalf("Item Width %+v, Kind %+v", a, item.Attributes["Kind"])
+	}
 	if !s.Elements["Nested"].Attributes["Depth"].Required {
 		t.Fatal("Nested Depth")
 	}

@@ -53,7 +53,7 @@ v1.0.0 the API may change between minor versions; changes are listed in
 | `(*Device).SetInput(slot, subslot, data, iops)`, `Output(slot, subslot)` | process data |
 | `(*Device).SendAlarm(ctx, Alarm)` | a process (or other) alarm to every AR that owns the submodule; waits for the AlarmAck |
 | `(*Device).AddDiagnosis`, `RemoveDiagnosis`, `Diagnoses` | diagnosis records with diagnosis alarms (appears/disappears) |
-| `(*Device).ARs() []ARInfo`, `StationName()`, `IP()`, `DHCP()`, `ObjectUUID()`, `RPCAddr()`, `StoreError()`, `Close()` | |
+| `(*Device).ARs() []ARInfo` (UUID, type, state, controller, FrameIDs, input cycle, the output IOCR's SendClockFactor, ReductionRatio, WatchdogFactor and DataHoldFactor, close reason), `StationName()`, `IP()`, `DHCP()`, `ObjectUUID()`, `RPCAddr()`, `StoreError()`, `Close()` | |
 | `Handler`, `NopHandler` | what the application decides: user records (`ReadRecord`, `WriteRecord`), `PrmEnd`, `StateChanged`, `AlarmAck`, `Signal`, `ResetToFactory`, `NameChanged`, `IPChanged` |
 | `RecordError(code1, code2) error` | a PNIORW error for a Handler to return |
 | `ARState`, `CanTransition`, `RecordRequest`, `IMData`, `Alarm` | |

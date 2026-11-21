@@ -24,13 +24,16 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"go/format"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/otfabric/go-profinet/internal/xsd"
@@ -66,6 +69,10 @@ type attr struct {
 	// present marks an attribute that must be written even when empty
 	// (a trailing ~): required by the schema, but empty is a valid value.
 	present bool
+	// def is the value an optional attribute has when it is absent
+	// (=value after the type), "" for none.
+	def    string
+	hasDef bool
 }
 
 type child struct {
@@ -79,6 +86,9 @@ func parseAttr(s string) (attr, error) {
 		return attr{}, fmt.Errorf("attribute %q: want name:type", s)
 	}
 	a := attr{name: s[:i], typ: s[i+1:]}
+	if t, def, ok := strings.Cut(a.typ, "="); ok {
+		a.typ, a.def, a.hasDef = t, def, true
+	}
 	switch {
 	case strings.HasSuffix(a.typ, "!"):
 		a.required = true
@@ -88,6 +98,25 @@ func parseAttr(s string) (attr, error) {
 		a.typ = strings.TrimSuffix(a.typ, "~")
 	}
 	return a, nil
+}
+
+// checkValue reports whether v is a value of the simple type t.
+func checkValue(t simpleType, v string) error {
+	if v == "" {
+		return errors.New("empty")
+	}
+	if len(t.Enum) > 0 && !slices.Contains(t.Enum, v) {
+		return fmt.Errorf("%q is not in the enumeration", v)
+	}
+	if t.Pattern != "" && !regexp.MustCompile(t.Pattern).MatchString(v) {
+		return fmt.Errorf("%q does not match %s", v, t.Pattern)
+	}
+	if t.Uint > 0 {
+		if _, err := strconv.ParseUint(v, 10, t.Uint); err != nil {
+			return fmt.Errorf("%q is not an unsigned %d-bit decimal", v, t.Uint)
+		}
+	}
+	return nil
 }
 
 func parseChild(s string) child {
@@ -171,6 +200,14 @@ func (c *catalog) check() error {
 			}
 			if seen[a.name] {
 				return fmt.Errorf("element %s: attribute %s twice", e.Name, a.name)
+			}
+			if a.hasDef {
+				if a.required || a.present {
+					return fmt.Errorf("element %s attribute %s: a default for an attribute that is always present", e.Name, a.name)
+				}
+				if err := checkValue(c.SimpleTypes[a.typ], a.def); err != nil {
+					return fmt.Errorf("element %s attribute %s: default: %w", e.Name, a.name, err)
+				}
 			}
 			seen[a.name] = true
 		}
@@ -287,6 +324,8 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 				req = ", required"
 			case a.present:
 				req = ", always written, may be empty"
+			case a.hasDef:
+				req = ", default " + a.def + " when absent"
 			}
 			p("\t// %s is the attribute %s (%s%s).\n", goName(a.name), a.name, a.typ, req)
 			p("\t%s string `xml:\"%s,attr%s\"`\n", goName(a.name), tag, omit)
@@ -310,6 +349,16 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 			p("\tUnknown []*Node `xml:\",any\"`\n")
 		}
 		p("}\n\n")
+
+		for _, s := range e.Attrs {
+			a, _ := parseAttr(s)
+			if !a.hasDef {
+				continue
+			}
+			fn := lowerFirst(goName(a.name)) + "OrDefault"
+			p("// %s returns %s, or its default %q when it is absent.\n", fn, goName(a.name), a.def)
+			p("func (x *%s) %s() string {\n\tif x.%s == \"\" {\n\t\treturn %q\n\t}\n\treturn x.%s\n}\n\n", gn, fn, goName(a.name), a.def, goName(a.name))
+		}
 
 		// validate
 		p("func (x *%s) validate(v *validator) {\n", gn)
@@ -376,7 +425,8 @@ func generateDoc(c *catalog) []byte {
 	p("The GSDML elements and attributes package `gsdml` models, generated from\n")
 	p("[schema/catalog.json](schema/catalog.json). Namespace `%s`; written for\n", c.Namespace)
 	p("schema versions %s. Attributes marked **required** must be present and\n", strings.Join(c.Versions, ", "))
-	p("not empty, \"required, may be empty\" ones are always written;\n")
+	p("not empty, \"required, may be empty\" ones are always written; an\n")
+	p("optional attribute with a default has that value when it is absent;\n")
 	p("children marked `?` are optional, `*` repeated, `+` one or more. Elements\n")
 	p("and attributes a document has beyond these are kept and written back.\n\n")
 	p("## Attribute types\n\n| Type | Rule |\n|------|------|\n")
@@ -409,10 +459,13 @@ func generateDoc(c *catalog) []byte {
 			for _, s := range e.Attrs {
 				a, _ := parseAttr(s)
 				r := ""
-				if a.required {
+				switch {
+				case a.required:
 					r = "**required**"
-				} else if a.present {
+				case a.present:
 					r = "required, may be empty"
+				case a.hasDef:
+					r = "default `" + a.def + "`"
 				}
 				p("| `%s` | `%s` | %s |\n", a.name, a.typ, r)
 			}
@@ -504,6 +557,10 @@ func compareXSD(c *catalog, dir string) error {
 			}
 			if info.Required != (a.required || a.present) {
 				fmt.Printf("element %s attribute %s: required %v in the catalog, %v in the schema\n", e.Name, a.name, a.required || a.present, info.Required)
+				diffs++
+			}
+			if info.Default != a.def {
+				fmt.Printf("element %s attribute %s: default %q in the catalog, %q in the schema\n", e.Name, a.name, a.def, info.Default)
 				diffs++
 			}
 		}
