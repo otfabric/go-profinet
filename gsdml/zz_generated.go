@@ -533,9 +533,22 @@ type Family struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedFamily lists the attributes of Family whose emptiness parsing records.
+var trackedFamily = []trackedAttr{{"ProductFamily", "token"}}
+
+// UnmarshalXML decodes a Family and records which of its typed optional
+// attributes are present but empty.
+func (x *Family) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain Family
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedFamily)
 }
 
 func (x *Family) validate(v *validator) {
@@ -546,6 +559,7 @@ func (x *Family) validate(v *validator) {
 	defer v.pop()
 	v.attr("MainFamily", x.MainFamily, "MainFamily", true)
 	v.attr("ProductFamily", x.ProductFamily, "token", false)
+	v.emptyAttrs(x.empty, trackedFamily)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -686,9 +700,22 @@ type DeviceAccessPointItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedDeviceAccessPointItem lists the attributes of DeviceAccessPointItem whose emptiness parsing records.
+var trackedDeviceAccessPointItem = []trackedAttr{{"RequiredSchemaVersion", "Version"}, {"ImplementationType", "token"}, {"MultipleWriteSupported", "Boolean"}, {"LLDP_NoD_Supported", "Boolean"}, {"ResetToFactoryModes", "ValueList"}, {"SharedDeviceSupported", "Boolean"}, {"SharedInputSupported", "Boolean"}, {"NumberOfDeviceAccessAR", "Unsigned16"}, {"PrmBeginPrmEndSequenceSupported", "Boolean"}, {"AddressAssignment", "TokenList"}, {"PowerOnToCommReady", "Unsigned32"}, {"MaxSupportedRecordSize", "Unsigned32"}, {"AutoConfigurationSupported", "Boolean"}}
+
+// UnmarshalXML decodes a DeviceAccessPointItem and records which of its typed optional
+// attributes are present but empty.
+func (x *DeviceAccessPointItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain DeviceAccessPointItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedDeviceAccessPointItem)
 }
 
 func (x *DeviceAccessPointItem) validate(v *validator) {
@@ -722,6 +749,7 @@ func (x *DeviceAccessPointItem) validate(v *validator) {
 	v.attr("MaxSupportedRecordSize", x.MaxSupportedRecordSize, "Unsigned32", false)
 	v.attr("WebServer", x.WebServer, "string", false)
 	v.attr("AutoConfigurationSupported", x.AutoConfigurationSupported, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedDeviceAccessPointItem)
 	if x.ModuleInfo == nil {
 		v.missing("ModuleInfo")
 	}
@@ -760,9 +788,22 @@ type ModuleInfo struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedModuleInfo lists the attributes of ModuleInfo whose emptiness parsing records.
+var trackedModuleInfo = []trackedAttr{{"CategoryRef", "IDRef"}, {"SubCategory1Ref", "IDRef"}}
+
+// UnmarshalXML decodes a ModuleInfo and records which of its typed optional
+// attributes are present but empty.
+func (x *ModuleInfo) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain ModuleInfo
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedModuleInfo)
 }
 
 func (x *ModuleInfo) validate(v *validator) {
@@ -773,6 +814,7 @@ func (x *ModuleInfo) validate(v *validator) {
 	defer v.pop()
 	v.attr("CategoryRef", x.CategoryRef, "IDRef", false)
 	v.attr("SubCategory1Ref", x.SubCategory1Ref, "IDRef", false)
+	v.emptyAttrs(x.empty, trackedModuleInfo)
 	if x.Name == nil {
 		v.missing("Name")
 	}
@@ -897,9 +939,22 @@ type CertificationInfo struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedCertificationInfo lists the attributes of CertificationInfo whose emptiness parsing records.
+var trackedCertificationInfo = []trackedAttr{{"NetloadClass", "NetloadClass"}}
+
+// UnmarshalXML decodes a CertificationInfo and records which of its typed optional
+// attributes are present but empty.
+func (x *CertificationInfo) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain CertificationInfo
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedCertificationInfo)
 }
 
 func (x *CertificationInfo) validate(v *validator) {
@@ -911,6 +966,7 @@ func (x *CertificationInfo) validate(v *validator) {
 	v.attr("ConformanceClass", x.ConformanceClass, "ConformanceClass", true)
 	v.attr("ApplicationClass", x.ApplicationClass, "TokenList", false)
 	v.attr("NetloadClass", x.NetloadClass, "NetloadClass", false)
+	v.emptyAttrs(x.empty, trackedCertificationInfo)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -984,9 +1040,22 @@ type IOConfigData struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedIOConfigData lists the attributes of IOConfigData whose emptiness parsing records.
+var trackedIOConfigData = []trackedAttr{{"MaxDataLength", "Unsigned16"}, {"ApplicationLengthIncludesIOxS", "Boolean"}}
+
+// UnmarshalXML decodes a IOConfigData and records which of its typed optional
+// attributes are present but empty.
+func (x *IOConfigData) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain IOConfigData
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedIOConfigData)
 }
 
 func (x *IOConfigData) validate(v *validator) {
@@ -999,6 +1068,7 @@ func (x *IOConfigData) validate(v *validator) {
 	v.attr("MaxOutputLength", x.MaxOutputLength, "Unsigned16", true)
 	v.attr("MaxDataLength", x.MaxDataLength, "Unsigned16", false)
 	v.attr("ApplicationLengthIncludesIOxS", x.ApplicationLengthIncludesIOxS, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedIOConfigData)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1045,9 +1115,22 @@ type ModuleItemRef struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedModuleItemRef lists the attributes of ModuleItemRef whose emptiness parsing records.
+var trackedModuleItemRef = []trackedAttr{{"AllowedInSlots", "ValueList"}, {"UsedInSlots", "ValueList"}, {"FixedInSlots", "ValueList"}}
+
+// UnmarshalXML decodes a ModuleItemRef and records which of its typed optional
+// attributes are present but empty.
+func (x *ModuleItemRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain ModuleItemRef
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedModuleItemRef)
 }
 
 func (x *ModuleItemRef) validate(v *validator) {
@@ -1060,6 +1143,7 @@ func (x *ModuleItemRef) validate(v *validator) {
 	v.attr("AllowedInSlots", x.AllowedInSlots, "ValueList", false)
 	v.attr("UsedInSlots", x.UsedInSlots, "ValueList", false)
 	v.attr("FixedInSlots", x.FixedInSlots, "ValueList", false)
+	v.emptyAttrs(x.empty, trackedModuleItemRef)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1106,9 +1190,22 @@ type SubmoduleItemRef struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedSubmoduleItemRef lists the attributes of SubmoduleItemRef whose emptiness parsing records.
+var trackedSubmoduleItemRef = []trackedAttr{{"AllowedInSubslots", "ValueList"}, {"UsedInSubslots", "ValueList"}, {"FixedInSubslots", "ValueList"}}
+
+// UnmarshalXML decodes a SubmoduleItemRef and records which of its typed optional
+// attributes are present but empty.
+func (x *SubmoduleItemRef) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain SubmoduleItemRef
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedSubmoduleItemRef)
 }
 
 func (x *SubmoduleItemRef) validate(v *validator) {
@@ -1121,6 +1218,7 @@ func (x *SubmoduleItemRef) validate(v *validator) {
 	v.attr("AllowedInSubslots", x.AllowedInSubslots, "ValueList", false)
 	v.attr("UsedInSubslots", x.UsedInSubslots, "ValueList", false)
 	v.attr("FixedInSubslots", x.FixedInSubslots, "ValueList", false)
+	v.emptyAttrs(x.empty, trackedSubmoduleItemRef)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1179,9 +1277,22 @@ type VirtualSubmoduleItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedVirtualSubmoduleItem lists the attributes of VirtualSubmoduleItem whose emptiness parsing records.
+var trackedVirtualSubmoduleItem = []trackedAttr{{"API", "Unsigned32"}, {"FixedInSubslots", "ValueList"}, {"Writeable_IM_Records", "ValueList"}, {"Max_iParameterSize", "Unsigned32"}, {"PROFIsafeSupported", "Boolean"}}
+
+// UnmarshalXML decodes a VirtualSubmoduleItem and records which of its typed optional
+// attributes are present but empty.
+func (x *VirtualSubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain VirtualSubmoduleItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedVirtualSubmoduleItem)
 }
 
 func (x *VirtualSubmoduleItem) validate(v *validator) {
@@ -1198,6 +1309,7 @@ func (x *VirtualSubmoduleItem) validate(v *validator) {
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
 	v.attr("Max_iParameterSize", x.MaxIParameterSize, "Unsigned32", false)
 	v.attr("PROFIsafeSupported", x.PROFIsafeSupported, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedVirtualSubmoduleItem)
 	if x.IOData == nil {
 		v.missing("IOData")
 	}
@@ -1260,9 +1372,22 @@ type SubmoduleItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedSubmoduleItem lists the attributes of SubmoduleItem whose emptiness parsing records.
+var trackedSubmoduleItem = []trackedAttr{{"API", "Unsigned32"}, {"Writeable_IM_Records", "ValueList"}}
+
+// UnmarshalXML decodes a SubmoduleItem and records which of its typed optional
+// attributes are present but empty.
+func (x *SubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain SubmoduleItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedSubmoduleItem)
 }
 
 func (x *SubmoduleItem) validate(v *validator) {
@@ -1276,6 +1401,7 @@ func (x *SubmoduleItem) validate(v *validator) {
 	v.attr("API", x.API, "Unsigned32", false)
 	v.attr("MayIssueProcessAlarm", x.MayIssueProcessAlarm, "Boolean", true)
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
+	v.emptyAttrs(x.empty, trackedSubmoduleItem)
 	if x.IOData == nil {
 		v.missing("IOData")
 	}
@@ -1302,9 +1428,22 @@ type IOData struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedIOData lists the attributes of IOData whose emptiness parsing records.
+var trackedIOData = []trackedAttr{{"F_IO_StructureDescVersion", "Unsigned8"}, {"F_IO_StructureDescCRC", "Unsigned32"}}
+
+// UnmarshalXML decodes a IOData and records which of its typed optional
+// attributes are present but empty.
+func (x *IOData) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain IOData
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedIOData)
 }
 
 func (x *IOData) validate(v *validator) {
@@ -1315,6 +1454,7 @@ func (x *IOData) validate(v *validator) {
 	defer v.pop()
 	v.attr("F_IO_StructureDescVersion", x.FIOStructureDescVersion, "Unsigned8", false)
 	v.attr("F_IO_StructureDescCRC", x.FIOStructureDescCRC, "Unsigned32", false)
+	v.emptyAttrs(x.empty, trackedIOData)
 	x.Input.validate(v)
 	x.Output.validate(v)
 	v.unknownAttrs(x.Attrs)
@@ -1330,9 +1470,22 @@ type Input struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedInput lists the attributes of Input whose emptiness parsing records.
+var trackedInput = []trackedAttr{{"Consistency", "Consistency"}}
+
+// UnmarshalXML decodes a Input and records which of its typed optional
+// attributes are present but empty.
+func (x *Input) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain Input
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedInput)
 }
 
 func (x *Input) validate(v *validator) {
@@ -1342,6 +1495,7 @@ func (x *Input) validate(v *validator) {
 	v.push("Input")
 	defer v.pop()
 	v.attr("Consistency", x.Consistency, "Consistency", false)
+	v.emptyAttrs(x.empty, trackedInput)
 	if len(x.DataItems) == 0 {
 		v.missing("DataItem")
 	}
@@ -1361,9 +1515,22 @@ type Output struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedOutput lists the attributes of Output whose emptiness parsing records.
+var trackedOutput = []trackedAttr{{"Consistency", "Consistency"}}
+
+// UnmarshalXML decodes a Output and records which of its typed optional
+// attributes are present but empty.
+func (x *Output) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain Output
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedOutput)
 }
 
 func (x *Output) validate(v *validator) {
@@ -1373,6 +1540,7 @@ func (x *Output) validate(v *validator) {
 	v.push("Output")
 	defer v.pop()
 	v.attr("Consistency", x.Consistency, "Consistency", false)
+	v.emptyAttrs(x.empty, trackedOutput)
 	if len(x.DataItems) == 0 {
 		v.missing("DataItem")
 	}
@@ -1400,9 +1568,22 @@ type DataItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedDataItem lists the attributes of DataItem whose emptiness parsing records.
+var trackedDataItem = []trackedAttr{{"Length", "Unsigned16"}, {"UseAsBits", "Boolean"}, {"Subordinate", "Boolean"}}
+
+// UnmarshalXML decodes a DataItem and records which of its typed optional
+// attributes are present but empty.
+func (x *DataItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain DataItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedDataItem)
 }
 
 func (x *DataItem) validate(v *validator) {
@@ -1416,6 +1597,7 @@ func (x *DataItem) validate(v *validator) {
 	v.attr("Length", x.Length, "Unsigned16", false)
 	v.attr("UseAsBits", x.UseAsBits, "Boolean", false)
 	v.attr("Subordinate", x.Subordinate, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedDataItem)
 	for _, c := range x.BitDataItems {
 		c.validate(v)
 	}
@@ -1495,9 +1677,22 @@ type ParameterRecordDataItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedParameterRecordDataItem lists the attributes of ParameterRecordDataItem whose emptiness parsing records.
+var trackedParameterRecordDataItem = []trackedAttr{{"TransferSequence", "Unsigned16"}, {"ChangeableWithBump", "Boolean"}}
+
+// UnmarshalXML decodes a ParameterRecordDataItem and records which of its typed optional
+// attributes are present but empty.
+func (x *ParameterRecordDataItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain ParameterRecordDataItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedParameterRecordDataItem)
 }
 
 func (x *ParameterRecordDataItem) validate(v *validator) {
@@ -1510,6 +1705,7 @@ func (x *ParameterRecordDataItem) validate(v *validator) {
 	v.attr("Length", x.Length, "Unsigned32", true)
 	v.attr("TransferSequence", x.TransferSequence, "Unsigned16", false)
 	v.attr("ChangeableWithBump", x.ChangeableWithBump, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedParameterRecordDataItem)
 	if x.Name == nil {
 		v.missing("Name")
 	}
@@ -1535,9 +1731,22 @@ type Const struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedConst lists the attributes of Const whose emptiness parsing records.
+var trackedConst = []trackedAttr{{"ByteOffset", "Unsigned32"}}
+
+// UnmarshalXML decodes a Const and records which of its typed optional
+// attributes are present but empty.
+func (x *Const) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain Const
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedConst)
 }
 
 func (x *Const) validate(v *validator) {
@@ -1548,6 +1757,7 @@ func (x *Const) validate(v *validator) {
 	defer v.pop()
 	v.attr("ByteOffset", x.ByteOffset, "Unsigned32", false)
 	v.attr("Data", x.Data, "string", true)
+	v.emptyAttrs(x.empty, trackedConst)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1582,25 +1792,40 @@ type Ref struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
 }
 
-// bitOffsetOrDefault returns BitOffset, or its default "0" when it is absent.
+// bitOffsetOrDefault returns BitOffset, or its default "0" when it is absent; "" when
+// the document gave it empty.
 func (x *Ref) bitOffsetOrDefault() string {
-	if x.BitOffset == "" {
+	if x.BitOffset == "" && !emptyIn(x.empty, "BitOffset") {
 		return "0"
 	}
 	return x.BitOffset
 }
 
-// bitLengthOrDefault returns BitLength, or its default "1" when it is absent.
+// bitLengthOrDefault returns BitLength, or its default "1" when it is absent; "" when
+// the document gave it empty.
 func (x *Ref) bitLengthOrDefault() string {
-	if x.BitLength == "" {
+	if x.BitLength == "" && !emptyIn(x.empty, "BitLength") {
 		return "1"
 	}
 	return x.BitLength
+}
+
+// trackedRef lists the attributes of Ref whose emptiness parsing records.
+var trackedRef = []trackedAttr{{"ValueItemTarget", "IDRef"}, {"BitOffset", "Unsigned8"}, {"BitLength", "Unsigned8"}, {"Changeable", "Boolean"}, {"Visible", "Boolean"}, {"Length", "Unsigned32"}, {"ID", "ID"}}
+
+// UnmarshalXML decodes a Ref and records which of its typed optional
+// attributes are present but empty.
+func (x *Ref) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain Ref
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedRef)
 }
 
 func (x *Ref) validate(v *validator) {
@@ -1621,6 +1846,7 @@ func (x *Ref) validate(v *validator) {
 	v.attr("TextId", x.TextID, "IDRef", true)
 	v.attr("Length", x.Length, "Unsigned32", false)
 	v.attr("ID", x.ID, "ID", false)
+	v.emptyAttrs(x.empty, trackedRef)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1750,9 +1976,22 @@ type FParameterRecordDataItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedFParameterRecordDataItem lists the attributes of F_ParameterRecordDataItem whose emptiness parsing records.
+var trackedFParameterRecordDataItem = []trackedAttr{{"TransferSequence", "Unsigned16"}}
+
+// UnmarshalXML decodes a F_ParameterRecordDataItem and records which of its typed optional
+// attributes are present but empty.
+func (x *FParameterRecordDataItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain FParameterRecordDataItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedFParameterRecordDataItem)
 }
 
 func (x *FParameterRecordDataItem) validate(v *validator) {
@@ -1764,6 +2003,7 @@ func (x *FParameterRecordDataItem) validate(v *validator) {
 	v.attr("F_ParamDescCRC", x.FParamDescCRC, "Unsigned16", true)
 	v.attr("Index", x.Index, "Unsigned16", true)
 	v.attr("TransferSequence", x.TransferSequence, "Unsigned16", false)
+	v.emptyAttrs(x.empty, trackedFParameterRecordDataItem)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1838,9 +2078,22 @@ type InterfaceSubmoduleItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedInterfaceSubmoduleItem lists the attributes of InterfaceSubmoduleItem whose emptiness parsing records.
+var trackedInterfaceSubmoduleItem = []trackedAttr{{"SubslotNumber", "Unsigned16"}, {"SupportedRT_Classes", "RTClasses"}, {"DCP_HelloSupported", "Boolean"}, {"PTP_BoundarySupported", "Boolean"}, {"DCP_BoundarySupported", "Boolean"}, {"DelayMeasurementSupported", "Boolean"}, {"IsochroneModeSupported", "Boolean"}, {"Writeable_IM_Records", "ValueList"}, {"NetworkComponentDiagnosisSupported", "Boolean"}, {"MulticastBoundarySupported", "Boolean"}}
+
+// UnmarshalXML decodes a InterfaceSubmoduleItem and records which of its typed optional
+// attributes are present but empty.
+func (x *InterfaceSubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain InterfaceSubmoduleItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedInterfaceSubmoduleItem)
 }
 
 func (x *InterfaceSubmoduleItem) validate(v *validator) {
@@ -1863,6 +2116,7 @@ func (x *InterfaceSubmoduleItem) validate(v *validator) {
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
 	v.attr("NetworkComponentDiagnosisSupported", x.NetworkComponentDiagnosisSupported, "Boolean", false)
 	v.attr("MulticastBoundarySupported", x.MulticastBoundarySupported, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedInterfaceSubmoduleItem)
 	x.RTClass3Properties.validate(v)
 	x.SynchronisationMode.validate(v)
 	x.ApplicationRelations.validate(v)
@@ -1893,9 +2147,22 @@ type ApplicationRelations struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedApplicationRelations lists the attributes of ApplicationRelations whose emptiness parsing records.
+var trackedApplicationRelations = []trackedAttr{{"StartupMode", "StartupMode"}, {"NumberOfAdditionalInputCR", "Unsigned16"}, {"NumberOfAdditionalOutputCR", "Unsigned16"}, {"NumberOfAdditionalMulticastProviderCR", "Unsigned16"}, {"NumberOfMulticastConsumerCR", "Unsigned16"}, {"PullModuleAlarmSupported", "Boolean"}, {"NumberOfAR", "Unsigned16"}}
+
+// UnmarshalXML decodes a ApplicationRelations and records which of its typed optional
+// attributes are present but empty.
+func (x *ApplicationRelations) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain ApplicationRelations
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedApplicationRelations)
 }
 
 func (x *ApplicationRelations) validate(v *validator) {
@@ -1911,6 +2178,7 @@ func (x *ApplicationRelations) validate(v *validator) {
 	v.attr("NumberOfMulticastConsumerCR", x.NumberOfMulticastConsumerCR, "Unsigned16", false)
 	v.attr("PullModuleAlarmSupported", x.PullModuleAlarmSupported, "Boolean", false)
 	v.attr("NumberOfAR", x.NumberOfAR, "Unsigned16", false)
+	v.emptyAttrs(x.empty, trackedApplicationRelations)
 	x.TimingProperties.validate(v)
 	x.RTClass3TimingProperties.validate(v)
 	v.unknownAttrs(x.Attrs)
@@ -1929,9 +2197,22 @@ type TimingProperties struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedTimingProperties lists the attributes of TimingProperties whose emptiness parsing records.
+var trackedTimingProperties = []trackedAttr{{"SendClock", "ValueList"}, {"ReductionRatio", "ValueList"}, {"ReductionRatioPow2", "ValueList"}}
+
+// UnmarshalXML decodes a TimingProperties and records which of its typed optional
+// attributes are present but empty.
+func (x *TimingProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain TimingProperties
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedTimingProperties)
 }
 
 func (x *TimingProperties) validate(v *validator) {
@@ -1943,6 +2224,7 @@ func (x *TimingProperties) validate(v *validator) {
 	v.attr("SendClock", x.SendClock, "ValueList", false)
 	v.attr("ReductionRatio", x.ReductionRatio, "ValueList", false)
 	v.attr("ReductionRatioPow2", x.ReductionRatioPow2, "ValueList", false)
+	v.emptyAttrs(x.empty, trackedTimingProperties)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1959,9 +2241,22 @@ type RTClass3TimingProperties struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedRTClass3TimingProperties lists the attributes of RT_Class3TimingProperties whose emptiness parsing records.
+var trackedRTClass3TimingProperties = []trackedAttr{{"SendClock", "ValueList"}, {"ReductionRatio", "ValueList"}, {"ReductionRatioPow2", "ValueList"}}
+
+// UnmarshalXML decodes a RT_Class3TimingProperties and records which of its typed optional
+// attributes are present but empty.
+func (x *RTClass3TimingProperties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain RTClass3TimingProperties
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedRTClass3TimingProperties)
 }
 
 func (x *RTClass3TimingProperties) validate(v *validator) {
@@ -1973,6 +2268,7 @@ func (x *RTClass3TimingProperties) validate(v *validator) {
 	v.attr("SendClock", x.SendClock, "ValueList", false)
 	v.attr("ReductionRatio", x.ReductionRatio, "ValueList", false)
 	v.attr("ReductionRatioPow2", x.ReductionRatioPow2, "ValueList", false)
+	v.emptyAttrs(x.empty, trackedRTClass3TimingProperties)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -1991,9 +2287,22 @@ type RTClass3Properties struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedRTClass3Properties lists the attributes of RT_Class3Properties whose emptiness parsing records.
+var trackedRTClass3Properties = []trackedAttr{{"StartupMode", "StartupMode"}, {"ForwardingMode", "TokenList"}}
+
+// UnmarshalXML decodes a RT_Class3Properties and records which of its typed optional
+// attributes are present but empty.
+func (x *RTClass3Properties) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain RTClass3Properties
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedRTClass3Properties)
 }
 
 func (x *RTClass3Properties) validate(v *validator) {
@@ -2006,6 +2315,7 @@ func (x *RTClass3Properties) validate(v *validator) {
 	v.attr("MaxNumberIR_FrameData", x.MaxNumberIRFrameData, "Unsigned32", true)
 	v.attr("StartupMode", x.StartupMode, "StartupMode", false)
 	v.attr("ForwardingMode", x.ForwardingMode, "TokenList", false)
+	v.emptyAttrs(x.empty, trackedRTClass3Properties)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2024,9 +2334,22 @@ type SynchronisationMode struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedSynchronisationMode lists the attributes of SynchronisationMode whose emptiness parsing records.
+var trackedSynchronisationMode = []trackedAttr{{"SupportedRole", "TokenList"}, {"MaxLocalJitter", "Unsigned32"}, {"T_PLL_MAX", "Unsigned32"}, {"SupportedSyncProtocols", "TokenList"}}
+
+// UnmarshalXML decodes a SynchronisationMode and records which of its typed optional
+// attributes are present but empty.
+func (x *SynchronisationMode) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain SynchronisationMode
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedSynchronisationMode)
 }
 
 func (x *SynchronisationMode) validate(v *validator) {
@@ -2039,6 +2362,7 @@ func (x *SynchronisationMode) validate(v *validator) {
 	v.attr("MaxLocalJitter", x.MaxLocalJitter, "Unsigned32", false)
 	v.attr("T_PLL_MAX", x.TPLLMAX, "Unsigned32", false)
 	v.attr("SupportedSyncProtocols", x.SupportedSyncProtocols, "TokenList", false)
+	v.emptyAttrs(x.empty, trackedSynchronisationMode)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2055,9 +2379,22 @@ type MediaRedundancy struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedMediaRedundancy lists the attributes of MediaRedundancy whose emptiness parsing records.
+var trackedMediaRedundancy = []trackedAttr{{"SupportedRole", "TokenList"}, {"MaxMRP_Instances", "Unsigned8"}, {"AdditionalProtocolsSupported", "Boolean"}}
+
+// UnmarshalXML decodes a MediaRedundancy and records which of its typed optional
+// attributes are present but empty.
+func (x *MediaRedundancy) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain MediaRedundancy
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedMediaRedundancy)
 }
 
 func (x *MediaRedundancy) validate(v *validator) {
@@ -2069,6 +2406,7 @@ func (x *MediaRedundancy) validate(v *validator) {
 	v.attr("SupportedRole", x.SupportedRole, "TokenList", false)
 	v.attr("MaxMRP_Instances", x.MaxMRPInstances, "Unsigned8", false)
 	v.attr("AdditionalProtocolsSupported", x.AdditionalProtocolsSupported, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedMediaRedundancy)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2106,9 +2444,22 @@ type PortSubmoduleItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedPortSubmoduleItem lists the attributes of PortSubmoduleItem whose emptiness parsing records.
+var trackedPortSubmoduleItem = []trackedAttr{{"MaxPortTxDelay", "Unsigned16"}, {"MaxPortRxDelay", "Unsigned16"}, {"PortDeactivationSupported", "Boolean"}, {"LinkStateDiagnosisCapability", "TokenList"}, {"IsDefaultRingport", "Boolean"}, {"SupportsRingportConfig", "Boolean"}, {"CheckMAUTypeSupported", "Boolean"}, {"Writeable_IM_Records", "ValueList"}, {"ShortPreamble100MBitSupported", "Boolean"}}
+
+// UnmarshalXML decodes a PortSubmoduleItem and records which of its typed optional
+// attributes are present but empty.
+func (x *PortSubmoduleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain PortSubmoduleItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedPortSubmoduleItem)
 }
 
 func (x *PortSubmoduleItem) validate(v *validator) {
@@ -2130,6 +2481,7 @@ func (x *PortSubmoduleItem) validate(v *validator) {
 	v.attr("CheckMAUTypeSupported", x.CheckMAUTypeSupported, "Boolean", false)
 	v.attr("Writeable_IM_Records", x.WriteableIMRecords, "ValueList", false)
 	v.attr("ShortPreamble100MBitSupported", x.ShortPreamble100MBitSupported, "Boolean", false)
+	v.emptyAttrs(x.empty, trackedPortSubmoduleItem)
 	x.MAUTypeList.validate(v)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
@@ -2175,9 +2527,22 @@ type MAUTypeItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedMAUTypeItem lists the attributes of MAUTypeItem whose emptiness parsing records.
+var trackedMAUTypeItem = []trackedAttr{{"AdjustSupported", "Boolean"}, {"Extension", "Unsigned16"}}
+
+// UnmarshalXML decodes a MAUTypeItem and records which of its typed optional
+// attributes are present but empty.
+func (x *MAUTypeItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain MAUTypeItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedMAUTypeItem)
 }
 
 func (x *MAUTypeItem) validate(v *validator) {
@@ -2189,6 +2554,7 @@ func (x *MAUTypeItem) validate(v *validator) {
 	v.attr("Value", x.Value, "Unsigned16", true)
 	v.attr("AdjustSupported", x.AdjustSupported, "Boolean", false)
 	v.attr("Extension", x.Extension, "Unsigned16", false)
+	v.emptyAttrs(x.empty, trackedMAUTypeItem)
 	v.unknownAttrs(x.Attrs)
 	v.unknown(x.Unknown)
 }
@@ -2295,9 +2661,22 @@ type ModuleItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedModuleItem lists the attributes of ModuleItem whose emptiness parsing records.
+var trackedModuleItem = []trackedAttr{{"RequiredSchemaVersion", "Version"}, {"PhysicalSubslots", "ValueList"}}
+
+// UnmarshalXML decodes a ModuleItem and records which of its typed optional
+// attributes are present but empty.
+func (x *ModuleItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain ModuleItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedModuleItem)
 }
 
 func (x *ModuleItem) validate(v *validator) {
@@ -2310,6 +2689,7 @@ func (x *ModuleItem) validate(v *validator) {
 	v.attr("ModuleIdentNumber", x.ModuleIdentNumber, "Unsigned32Hex", true)
 	v.attr("RequiredSchemaVersion", x.RequiredSchemaVersion, "Version", false)
 	v.attr("PhysicalSubslots", x.PhysicalSubslots, "ValueList", false)
+	v.emptyAttrs(x.empty, trackedModuleItem)
 	if x.ModuleInfo == nil {
 		v.missing("ModuleInfo")
 	}
@@ -2498,9 +2878,22 @@ type ChannelDiagItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedChannelDiagItem lists the attributes of ChannelDiagItem whose emptiness parsing records.
+var trackedChannelDiagItem = []trackedAttr{{"MaintenanceAlarmState", "TokenList"}}
+
+// UnmarshalXML decodes a ChannelDiagItem and records which of its typed optional
+// attributes are present but empty.
+func (x *ChannelDiagItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain ChannelDiagItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedChannelDiagItem)
 }
 
 func (x *ChannelDiagItem) validate(v *validator) {
@@ -2511,6 +2904,7 @@ func (x *ChannelDiagItem) validate(v *validator) {
 	defer v.pop()
 	v.attr("ErrorType", x.ErrorType, "Unsigned16", true)
 	v.attr("MaintenanceAlarmState", x.MaintenanceAlarmState, "TokenList", false)
+	v.emptyAttrs(x.empty, trackedChannelDiagItem)
 	if x.Name == nil {
 		v.missing("Name")
 	}
@@ -2561,9 +2955,22 @@ type ExtChannelDiagItem struct {
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
+	// empty lists the attributes of trackedAttrs a parsed document gave
+	// as "" (present but empty, not absent).
+	empty []string
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// trackedExtChannelDiagItem lists the attributes of ExtChannelDiagItem whose emptiness parsing records.
+var trackedExtChannelDiagItem = []trackedAttr{{"MaintenanceAlarmState", "TokenList"}}
+
+// UnmarshalXML decodes a ExtChannelDiagItem and records which of its typed optional
+// attributes are present but empty.
+func (x *ExtChannelDiagItem) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	type plain ExtChannelDiagItem
+	return decodeTracked(d, start, (*plain)(x), &x.empty, trackedExtChannelDiagItem)
 }
 
 func (x *ExtChannelDiagItem) validate(v *validator) {
@@ -2574,6 +2981,7 @@ func (x *ExtChannelDiagItem) validate(v *validator) {
 	defer v.pop()
 	v.attr("ErrorType", x.ErrorType, "Unsigned16", true)
 	v.attr("MaintenanceAlarmState", x.MaintenanceAlarmState, "TokenList", false)
+	v.emptyAttrs(x.empty, trackedExtChannelDiagItem)
 	if x.Name == nil {
 		v.missing("Name")
 	}

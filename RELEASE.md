@@ -33,8 +33,10 @@ section ending with a `---` line and no `---` line inside a section.
 
 GSDML: integer record defaults are read as decimal or 0x hexadecimal, and
 `ToModel` refuses a Boolean capability attribute that is no Boolean.
-System redundancy: an AR leaves its AR set together with the AR table. No
-API change.
+System redundancy: an AR leaves its AR set together with the AR table.
+GSDML: a typed optional attribute a document gives as "" is no longer
+taken for an absent one. API: the generated element types with such
+attributes gain an `UnmarshalXML` method.
 
 ### Breaking
 
@@ -62,8 +64,26 @@ API change.
   GSDML file it is given, and the repository ships none; a caller giving
   it a document with such a value now gets an error.
 
+- Behaviour: `gsdml.Parse` records which optional attributes of a type
+  other than string a document gives as `""`. `Validate` reports one whose
+  type does not admit the empty string (`attribute BitLength: empty, not
+  a Unsigned8`), and `ToModel` no longer gives a `BitLength=""` or
+  `BitOffset=""` of a Ref its default, nor takes an empty
+  `LLDP_NoD_Supported` or `DCP_HelloSupported` for false: each fails with
+  `ErrMalformed`. API (additive): the generated types of elements with
+  such attributes have an `UnmarshalXML` method, and so satisfy
+  `xml.Unmarshaler`. Consumer assessment: profinetctl's `gsdml validate`
+  and `check` may now report issues for a vendor file with empty typed
+  attributes, and its `--gsdml` loading refuses one with an empty Ref
+  BitLength or BitOffset or Boolean capability; profinet-interop ships no
+  GSDML. Documents built in Go are unaffected (an empty field there is
+  absent), as is code that only reads the struct fields.
+
 ### Fixed
 
+- gsdml: an attribute given as `""` took the default of an absent one
+  (Ref `BitLength=""` became 1, an empty Boolean capability false) and
+  passed `Validate`, which skipped every empty attribute.
 - gsdml: `ToModel` turned an invalid `LLDP_NoD_Supported` or
   `DCP_HelloSupported` (for example `"yes"` or `"TRUE"`) into false, so a
   caller that skipped `Validate` got a device model without LLDP or DCP

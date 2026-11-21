@@ -344,6 +344,9 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 		}
 		p("\t// Attrs holds the attributes the catalog does not define, preserved\n\t// as they were read.\n")
 		p("\tAttrs []xml.Attr `xml:\",any,attr\"`\n")
+		if len(trackedAttrs(e)) > 0 {
+			p("\t// empty lists the attributes of trackedAttrs a parsed document gave\n\t// as \"\" (present but empty, not absent).\n\tempty []string\n")
+		}
 		if e.Text == "" {
 			p("\t// Unknown holds the child elements the catalog does not define,\n\t// preserved (and written after the known ones).\n")
 			p("\tUnknown []*Node `xml:\",any\"`\n")
@@ -356,8 +359,24 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 				continue
 			}
 			fn := lowerFirst(goName(a.name)) + "OrDefault"
-			p("// %s returns %s, or its default %q when it is absent.\n", fn, goName(a.name), a.def)
-			p("func (x *%s) %s() string {\n\tif x.%s == \"\" {\n\t\treturn %q\n\t}\n\treturn x.%s\n}\n\n", gn, fn, goName(a.name), a.def, goName(a.name))
+			p("// %s returns %s, or its default %q when it is absent; \"\" when\n// the document gave it empty.\n", fn, goName(a.name), a.def)
+			p("func (x *%s) %s() string {\n\tif x.%s == \"\" && !emptyIn(x.empty, %q) {\n\t\treturn %q\n\t}\n\treturn x.%s\n}\n\n", gn, fn, goName(a.name), a.name, a.def, goName(a.name))
+		}
+
+		if tr := trackedAttrs(e); len(tr) > 0 {
+			tv := "tracked" + gn
+			p("// %s lists the attributes of %s whose emptiness parsing records.\n", tv, e.Name)
+			p("var %s = []trackedAttr{", tv)
+			for i, a := range tr {
+				if i > 0 {
+					p(", ")
+				}
+				p("{%q, %q}", a.name, a.typ)
+			}
+			p("}\n\n")
+			p("// UnmarshalXML decodes a %s and records which of its typed optional\n// attributes are present but empty.\n", e.Name)
+			p("func (x *%s) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {\n", gn)
+			p("\ttype plain %s\n\treturn decodeTracked(d, start, (*plain)(x), &x.empty, %s)\n}\n\n", gn, tv)
 		}
 
 		// validate
@@ -367,6 +386,9 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 		for _, s := range e.Attrs {
 			a, _ := parseAttr(s)
 			p("\tv.attr(%q, x.%s, %q, %v)\n", a.name, goName(a.name), a.typ, a.required)
+		}
+		if len(trackedAttrs(e)) > 0 {
+			p("\tv.emptyAttrs(x.empty, tracked%s)\n", gn)
 		}
 		for _, s := range e.Children {
 			ch := parseChild(s)
@@ -394,6 +416,22 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 		return b.Bytes(), fmt.Errorf("format: %w", err)
 	}
 	return src, nil
+}
+
+// trackedAttrs returns the attributes of e whose presence matters when
+// they are empty: optional ones that are neither always written (~) nor
+// of type string nor namespaced. Parsing records which of them a document
+// gave as "", so that an empty one is not taken for an absent one.
+func trackedAttrs(e element) []attr {
+	var out []attr
+	for _, s := range e.Attrs {
+		a, _ := parseAttr(s)
+		if a.required || a.present || a.typ == "string" || strings.HasPrefix(a.name, "xml:") {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 func lowerFirst(s string) string {

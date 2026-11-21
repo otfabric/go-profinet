@@ -43,7 +43,11 @@ For each element it generates a struct with `encoding/xml` tags (attributes
 as strings, so that a document round-trips exactly as written, children as
 pointers or slices), a `validate` method (required attributes and children,
 lexical types, ID uniqueness, ID and text references) and its section in
-SCHEMA.md. `gsdml.CatalogSHA256` records the hash of the catalog the code was
+SCHEMA.md. An attribute with a default (`=value`) gets an unexported
+`<name>OrDefault` accessor. An element with optional typed attributes
+(not `!`, not `~`, not string, not `xml:`) gets an `UnmarshalXML` that
+records which of them the document gave as `""`, so that the accessors
+and `validate` tell an empty attribute from an absent one. `gsdml.CatalogSHA256` records the hash of the catalog the code was
 generated from; CI fails when they differ (`make generate-check`).
 
 `-xsd DIR` reads the XSDs of a licensed local copy with the small XSD reader

@@ -29,6 +29,7 @@ import (
 	"math"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -179,7 +180,10 @@ func walk(v reflect.Value, fn func(attrs *[]xml.Attr, n *Node)) {
 			walk(v.Index(i), fn)
 		}
 	case reflect.Struct:
-		for _, f := range v.Fields() {
+		for sf, f := range v.Fields() {
+			if !sf.IsExported() {
+				continue // the empty attribute lists of the generated types
+			}
 			if a, ok := f.Addr().Interface().(*[]xml.Attr); ok {
 				fn(a, nil)
 				continue
@@ -362,6 +366,60 @@ func (v *validator) report(format string, a ...any) {
 
 func (v *validator) missing(child string) { v.report("missing required element %s", child) }
 
+// trackedAttr is an attribute whose emptiness parsing records: optional,
+// typed, unqualified (internal/cmd/gengsdml, trackedAttrs).
+type trackedAttr struct{ name, typ string }
+
+// decodeTracked decodes the element start into v (the element's type
+// without its UnmarshalXML) and sets *empty to the attributes of tracked
+// the element gives as "".
+func decodeTracked(d *xml.Decoder, start xml.StartElement, v any, empty *[]string, tracked []trackedAttr) error {
+	if err := d.DecodeElement(v, &start); err != nil {
+		return err
+	}
+	*empty = emptyAttrs(start.Attr, tracked)
+	return nil
+}
+
+// emptyAttrs returns the names among tracked of the unqualified attributes
+// in attrs whose value is "", or nil.
+func emptyAttrs(attrs []xml.Attr, tracked []trackedAttr) []string {
+	var out []string
+	for _, a := range attrs {
+		if a.Value != "" || a.Name.Space != "" {
+			continue
+		}
+		for _, t := range tracked {
+			if t.name == a.Name.Local {
+				out = append(out, t.name)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// emptyIn reports whether name is in empty, the attributes a parsed
+// element gave as "".
+func emptyIn(empty []string, name string) bool {
+	return slices.Contains(empty, name)
+}
+
+// emptyAttrs reports each attribute of tracked the document gave as ""
+// (listed in empty) whose type does not allow the empty string; a typed
+// optional attribute that is empty is not absent.
+func (v *validator) emptyAttrs(empty []string, tracked []trackedAttr) {
+	for _, a := range tracked {
+		if !emptyIn(empty, a.name) {
+			continue
+		}
+		t := simpleTypes[a.typ]
+		if (t.enum != nil && !t.enum[""]) || (t.pattern != nil && !t.pattern.MatchString("")) || (t.pattern == nil && t.enum == nil && t.uintBits > 0) {
+			v.report("attribute %s: empty, not a %s", a.name, a.typ)
+		}
+	}
+}
+
 func (v *validator) attr(name, value, typ string, required bool) {
 	if value == "" {
 		if required {
@@ -491,11 +549,11 @@ func ParseBool(s string, def bool) bool {
 }
 
 // parseBool parses a Boolean attribute value of the xsd:boolean lexical
-// space (true, false, 1, 0, with surrounding white space): an empty value
-// (absent, as the generated types cannot tell the two apart) is def; any
-// other value is an error.
-func parseBool(s string, def bool) (bool, error) {
-	if s == "" {
+// space (true, false, 1, 0, with surrounding white space): an absent value
+// is def; an empty one (empty: the document gave the attribute as "") and
+// any other value is an error.
+func parseBool(s string, empty, def bool) (bool, error) {
+	if s == "" && !empty {
 		return def, nil
 	}
 	switch strings.TrimSpace(s) {
