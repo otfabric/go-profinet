@@ -536,7 +536,7 @@ func applyRef(rec []byte, r *Ref) error {
 			}
 			width = uint16(w)
 		}
-		v, err := strconv.ParseUint(strings.TrimSpace(r.DefaultValue), 0, 64)
+		v, err := parseUint(r.DefaultValue, 64)
 		if err != nil || !within(off, 1, len(rec)) || bit >= 8 || bit+width > 8 {
 			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d", profinet.ErrMalformed, off, bit)
 		}
@@ -579,7 +579,7 @@ func applyRef(rec []byte, r *Ref) error {
 		}
 		copy(dst, b)
 	case DataTypeInteger8, DataTypeInteger16, DataTypeInteger32, DataTypeInteger64:
-		v, err := strconv.ParseInt(dv, 0, size*8)
+		v, err := parseInt(dv, size*8)
 		if err != nil {
 			return fmt.Errorf("gsdml: %w: %s default %q", profinet.ErrMalformed, t, dv)
 		}
@@ -589,7 +589,7 @@ func applyRef(rec []byte, r *Ref) error {
 			dst[size-1-i] = byte((v >> (8 * i)) & 0xFF)
 		}
 	default:
-		v, err := strconv.ParseUint(dv, 0, min(size*8, 64))
+		v, err := parseUint(dv, min(size*8, 64))
 		if err != nil {
 			return fmt.Errorf("gsdml: %w: %s default %q", profinet.ErrMalformed, t, dv)
 		}
