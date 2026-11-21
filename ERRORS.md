@@ -120,7 +120,10 @@ more than 1 048 576 elements (`gsdml.Parse`); parameter records of more than
 16 MiB in the modules as plugged (`gsdml.ToModel`); a `[Content_Types].xml`
 with more elements than the package model may have (`gsdx.Open`); a DCP
 Identify without `Max` that more than 4096 stations answer (the 4096 are
-returned with the error). As `ErrInvalidConfig`: a model with more than
+returned with the error); an OctetString_S of more than 65535 octets
+(`pnio.DecodeOctetStringS`; one that is no multiple of three is
+`ErrMalformed`). As `ErrInvalidConfig`: a value or status out of range for
+the embedded-status encoders of `pnio` (`EncodeUnsigned8S`, …); a model with more than
 1440 plugged submodules or more than 16 MiB of parameter records in them
 (`model.Validate`, and so `device.New` and `Controller.AddDevice`); an MRP
 profile with a negative `TestInterval`. As `ErrMalformed`: a GSDML module
