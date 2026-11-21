@@ -243,7 +243,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 				return nil, bad("DAP %s interface DCP_HelloSupported: %v", clip(dap.ID), err)
 			}
 			if ar := it.ApplicationRelations; ar != nil {
-				if ar.NumberOfAR != "" || ar.emptyAttr("NumberOfAR") {
+				if ar.NumberOfAR != "" || emptyIn(ar.empty, "NumberOfAR") {
 					n, err := ParseUint16(ar.NumberOfAR)
 					if err != nil {
 						return nil, bad("DAP %s NumberOfAR %q", clip(dap.ID), clip(ar.NumberOfAR))
@@ -252,7 +252,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 						m.Capabilities.MaxARs = int(n)
 					}
 				}
-				if tp := ar.TimingProperties; tp != nil && (tp.ReductionRatio != "" || tp.emptyAttr("ReductionRatio")) {
+				if tp := ar.TimingProperties; tp != nil && (tp.ReductionRatio != "" || emptyIn(tp.empty, "ReductionRatio")) {
 					rr, err := ParseValueList(tp.ReductionRatio, maxReductionRatios)
 					if err == nil && len(rr) == 0 {
 						err = bad("DAP %s ReductionRatio %q", clip(dap.ID), clip(tp.ReductionRatio))
@@ -311,7 +311,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			// The configuration: the slots the module is fixed in, else
 			// the slots it is used in, else its only allowed slot.
 			for _, a := range []string{"FixedInSlots", "UsedInSlots", "AllowedInSlots"} {
-				if r.emptyAttr(a) {
+				if emptyIn(r.empty, a) {
 					return nil, bad("module %s %s is empty", clip(r.ModuleItemTarget), a)
 				}
 			}
@@ -435,7 +435,7 @@ func (c *conv) toSubmodule(vs *VirtualSubmoduleItem, defSubslot uint16) (model.S
 		return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s SubmoduleIdentNumber %q", profinet.ErrMalformed, vs.ID, vs.SubmoduleIdentNumber)
 	}
 	s := model.Submodule{Name: c.textOf(vs.ModuleInfo), IdentNumber: id, Subslot: defSubslot}
-	if vs.FixedInSubslots != "" || vs.emptyAttr("FixedInSubslots") {
+	if vs.FixedInSubslots != "" || emptyIn(vs.empty, "FixedInSubslots") {
 		l, err := ParseValueList(vs.FixedInSubslots, 64)
 		if err != nil {
 			return model.Submodule{}, fmt.Errorf("gsdml: submodule %s FixedInSubslots: %w", clip(vs.ID), err)
