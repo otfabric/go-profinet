@@ -384,8 +384,17 @@ func TestSRPrimaryLeaves(t *testing.T) {
 	if len(st) != 1 || len(st[0].ARs) != 1 || st[0].ARs[0] != 2 || st[0].Primary != 0 {
 		t.Fatalf("set after its primary left: %+v, want ARs [2] primary 0", st)
 	}
-	if st[0].NoPrimaryFor <= 0 {
-		t.Fatalf("no primary for %s, want the hold time running", st[0].NoPrimaryFor)
+	// The time without a primary runs from the moment the primary left.
+	// Read at once it may still be 0 on a coarse monotonic clock
+	// (Windows), so it is read until it has grown.
+	for deadline := time.Now().Add(2 * time.Second); st[0].NoPrimaryFor <= 0; {
+		if st[0].NoPrimaryFor < 0 || time.Now().After(deadline) {
+			t.Fatalf("no primary for %s, want the hold time running", st[0].NoPrimaryFor)
+		}
+		time.Sleep(time.Millisecond)
+		if st = d.SystemRedundancy(); len(st) != 1 || st[0].Primary != 0 {
+			t.Fatalf("set changed while the hold time ran: %+v", st)
+		}
 	}
 	s := a2.sr.set
 	s.mu.Lock()
