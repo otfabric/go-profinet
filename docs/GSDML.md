@@ -55,6 +55,14 @@ or 0, fails with `ErrMalformed`; so does a bit area that leaves its octet
 from an absent one (the generated types hold attributes as strings) and
 takes the default.
 
+The DefaultValue of an integer or bit Ref is decimal with an optional
+sign, where leading zeros are decimal (`"010"` is ten), as in the lexical
+space of xsd:integer, or 0x hexadecimal, as the package reads every other
+number. A value outside the DataType's range, or in any other form (Go's
+octal `0o`/`0` prefix, binary `0b`, digit separators `_`), fails with
+`ErrMalformed`. That hexadecimal is allowed in a DefaultValue has not been
+checked against the members-only GSDML specification (LIMITATIONS.md).
+
 `Parse` refuses a document of more than 64 MiB or more than 1 048 576
 elements (`ErrResourceExhausted`).
 

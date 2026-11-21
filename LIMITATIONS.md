@@ -52,7 +52,9 @@ XSDs: Ref BitOffset 0 and BitLength 1 from ISO 15745-4:2003/Amd 1:2006
 (docs/GSDML.md), not yet compared with the V2.3x/V2.4x XSDs. An empty
 attribute (`BitLength=""`) is treated as absent. A BitArea Ref must lie in
 one octet (BitOffset + BitLength ≤ 8), although the 2006 definition allows
-BitLength up to 15.
+BitLength up to 15. A Ref DefaultValue in 0x hexadecimal is accepted, as every
+number of the package is; whether the GSDML specification allows it there
+has not been checked (its text is members-only).
 
 ## GSDX containers
 
