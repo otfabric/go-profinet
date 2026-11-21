@@ -208,7 +208,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	if ci := dap.CertificationInfo; ci != nil {
 		m.Capabilities.ConformanceClass = ci.ConformanceClass
 	}
-	lldp, err := parseBool(dap.LLDPNoDSupported, dap.emptyAttr("LLDP_NoD_Supported"), false)
+	lldp, err := parseBool(dap.LLDPNoDSupported, emptyIn(dap.empty, "LLDP_NoD_Supported"), false)
 	if err != nil {
 		return nil, bad("DAP %s LLDP_NoD_Supported: %v", clip(dap.ID), err)
 	}
@@ -239,7 +239,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			}
 			m.DAP.Submodules = append(m.DAP.Submodules, s)
 			m.Capabilities.SupportedRTClasses = strings.FieldsFunc(it.SupportedRTClasses, func(r rune) bool { return r == ' ' || r == ';' })
-			if m.Capabilities.DCPHello, err = parseBool(it.DCPHelloSupported, it.emptyAttr("DCP_HelloSupported"), false); err != nil {
+			if m.Capabilities.DCPHello, err = parseBool(it.DCPHelloSupported, emptyIn(it.empty, "DCP_HelloSupported"), false); err != nil {
 				return nil, bad("DAP %s interface DCP_HelloSupported: %v", clip(dap.ID), err)
 			}
 			if ar := it.ApplicationRelations; ar != nil {
