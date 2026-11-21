@@ -35,7 +35,8 @@ GSDML: integer record defaults are read as decimal or 0x hexadecimal, and
 `ToModel` refuses a Boolean capability attribute that is no Boolean.
 System redundancy: an AR leaves its AR set together with the AR table.
 GSDML: a typed optional attribute a document gives as "" is no longer
-taken for an absent one. API: the generated element types with such
+taken for an absent one, and a malformed optional number or ValueList
+`ToModel` reads is refused. API: the generated element types with such
 attributes gain an `UnmarshalXML` method.
 
 ### Breaking
@@ -79,8 +80,27 @@ attributes gain an `UnmarshalXML` method.
   GSDML. Documents built in Go are unaffected (an empty field there is
   absent), as is code that only reads the struct fields.
 
+- Behaviour: `gsdml.ToModel` fails with `ErrMalformed` when
+  `ObjectUUID_LocalIndex`, `MinDeviceInterval`, `NumberOfAR`,
+  `ReductionRatio`, `FixedInSlots`, `UsedInSlots`, `AllowedInSlots` or
+  `FixedInSubslots` is present but no number or ValueList, or empty, and
+  with `ErrResourceExhausted` for more than 64 reduction ratios or fixed
+  subslots. It used to skip such a value: the model got a
+  MinDeviceInterval of 0, one AR, no reduction ratios, the default subslot
+  or an unplugged module, with no error. Absent attributes keep their
+  defaults. Consumer assessment: `Validate` reports each malformed or
+  empty value, so apart from a list of more than 64 values a document
+  profinetctl's `gsdml validate` accepts converts as before; its
+  `--gsdml` loading and `gsdml inspect` now report the error instead of a
+  model with these capabilities missing. profinet-interop ships no
+  GSDML.
+
 ### Fixed
 
+- gsdml: `ToModel` discarded the parse errors of the optional numbers
+  and value lists above, so a `MinDeviceInterval="32ms"` gave a device
+  model with a MinDeviceInterval of 0, and a `device` run from that model
+  applied no lower bound to the IOCR cycle.
 - gsdml: an attribute given as `""` took the default of an absent one
   (Ref `BitLength=""` became 1, an empty Boolean capability false) and
   passed `Validate`, which skipped every empty attribute.

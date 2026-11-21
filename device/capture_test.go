@@ -706,9 +706,10 @@ func TestCaptureReplayAlarms(t *testing.T) {
 		t.Errorf("ERR-RTA answer dst %d send/ack %#04x/%#04x status % x, want dst 0, FFFF/FFFF, % x", gp.Dst, gp.SendSeq, gp.AckSeq, gp.VarPart, cp.VarPart[:4])
 	}
 	deadline := time.Now().Add(5 * time.Second)
-	for len(r.d.ARs()) != 0 && r.d.ARs()[0].State != ARStateClosed {
+	// One read per round: the AR may leave the table between two.
+	for ars := r.d.ARs(); len(ars) != 0 && ars[0].State != ARStateClosed; ars = r.d.ARs() {
 		if time.Now().After(deadline) {
-			t.Fatalf("AR after the CPU's ERR-RTA: %+v", r.d.ARs())
+			t.Fatalf("AR after the CPU's ERR-RTA: %+v", ars)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
