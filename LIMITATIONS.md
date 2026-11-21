@@ -53,9 +53,12 @@ XSDs: Ref BitOffset 0 and BitLength 1 from ISO 15745-4:2003/Amd 1:2006
 optional attribute (`BitLength=""`) is told from an absent one only in a
 parsed document, and only until it is encoded: encoding omits it. A BitArea Ref must lie in
 one octet (BitOffset + BitLength ≤ 8), although the 2006 definition allows
-BitLength up to 15. A Ref DefaultValue in 0x hexadecimal is accepted, as every
-number of the package is; whether the GSDML specification allows it there
-has not been checked (its text is members-only). A string or OctetString
+BitLength up to 15. A Ref DefaultValue in 0x hexadecimal is accepted as a
+compatibility tolerance, as every number of the package is, although the
+2006 definition (ISO 15745-4:2003/Amd 1:2006, Table D.31, pattern
+`\-?[\d+]{1,20}`) allows decimal digits only; whether the current GSDML
+specification allows it is not known (its text is members-only), and how
+often vendor files use it has not been measured. A string or OctetString
 Ref default shorter than its Length is zero-padded: no public source states
 a padding rule (OPC 30144 v1.00 Table 58 does not), so this is the
 package's policy; the lexical form of an OctetString DefaultValue (read as
