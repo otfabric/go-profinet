@@ -612,13 +612,22 @@ func applyRef(rec []byte, r *Ref) error {
 		}
 		binary.BigEndian.PutUint64(dst, math.Float64bits(f))
 	case DataTypeVisibleString, DataTypeUTF8String:
-		copy(dst, dv)
+		// The value is taken as written: DefaultValue is an xsd:string,
+		// whose white space is preserved, so it is not trimmed. Length is
+		// in octets, so a UTF-8 value counts its encoded octets, not its
+		// characters. A longer value is refused rather than cut short; a
+		// shorter one is padded with zero octets (docs/GSDML.md).
+		if err := putPadded(dst, []byte(r.DefaultValue), t, off); err != nil {
+			return err
+		}
 	case DataTypeOctetString:
 		b, err := parseOctets(dv)
 		if err != nil {
 			return err
 		}
-		copy(dst, b)
+		if err := putPadded(dst, b, t, off); err != nil {
+			return err
+		}
 	case DataTypeInteger8, DataTypeInteger16, DataTypeInteger32, DataTypeInteger64:
 		v, err := parseInt(dv, size*8)
 		if err != nil {
@@ -636,6 +645,18 @@ func applyRef(rec []byte, r *Ref) error {
 		}
 		putUint(dst, v)
 	}
+	return nil
+}
+
+// putPadded writes v at the start of dst and zeroes the rest of it, also
+// over octets a Const wrote there; a v longer than dst is refused. The
+// zero padding is this package's policy, not taken from a specification
+// (LIMITATIONS.md).
+func putPadded(dst, v []byte, t DataType, off uint32) error {
+	if len(v) > len(dst) {
+		return fmt.Errorf("gsdml: %w: %s Ref at %d: default of %d octets exceeds its Length of %d", profinet.ErrMalformed, t, off, len(v), len(dst))
+	}
+	clear(dst[copy(dst, v):])
 	return nil
 }
 

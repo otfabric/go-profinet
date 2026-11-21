@@ -73,6 +73,19 @@ octal `0o`/`0` prefix, binary `0b`, digit separators `_`), fails with
 `ErrMalformed`. That hexadecimal is allowed in a DefaultValue has not been
 checked against the members-only GSDML specification (LIMITATIONS.md).
 
+The DefaultValue of a VisibleString, UTF8String or OctetString Ref fills
+the Length octets of its field: a longer value fails with `ErrMalformed`,
+naming the record, where it used to be cut short; a shorter one is padded
+with zero octets, also over octets a Const wrote there. Length is in
+octets, so a UTF-8 value counts its encoded octets (`"äö"` is four). A
+string value is written as given, white space included, since DefaultValue
+is an xsd:string in a third-party copy of the V2.35 XSD, whose white space
+is preserved; an OctetString value is octets as
+in a Const, `"0x01,0x02"`. OPC 30144 v1.00 Table 58 (the Ref DataTypes,
+after the GSDML specification's Table 18) gives no padding rule, and the
+padding is this package's policy; that the OctetString DefaultValue takes the
+Const form is inferred from Const.Data, as no public source states it.
+
 The Boolean attributes `ToModel` reads (`LLDP_NoD_Supported`,
 `DCP_HelloSupported`) are true, false, 1 or 0, with white space around
 them allowed (xsd:boolean); an absent one is false, and an empty one or any

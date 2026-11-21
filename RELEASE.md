@@ -31,7 +31,7 @@ section ending with a `---` line and no `---` line inside a section.
 **Date:** 2026-11-21
 **Previous release:** v0.11.0
 
-GSDML input hardening (work packages A1, A3, A4, A5 and A7 of
+GSDML input hardening (work packages A1, A2, A3, A4, A5 and A7 of
 docs/research/INTEROP-COMPLIANCE-PLAN.md) and a system-redundancy
 ordering fix. `gsdml.ToModel` no longer turns a malformed, empty or
 unsupported value into a default without an error. API: additive only
@@ -79,6 +79,12 @@ every lexically malformed value except where noted.
   read differently here. A declaration without one is still ignored, and
   no DTD is fetched. `Validate` cannot report this (the document does not
   parse).
+- A VisibleString, UTF8String or OctetString Ref DefaultValue longer than
+  its Length fails with `ErrMalformed` (A2); it was cut to Length. A
+  shorter one now zeroes the rest of its field, also over octets a Const
+  wrote there, which it used to leave; and a string default keeps its
+  leading and trailing white space, which was trimmed. A UTF-8 value
+  counts its encoded octets. `Validate` does not check DefaultValue.
 
 ### Added
 
@@ -91,6 +97,9 @@ every lexically malformed value except where noted.
 - gsdml: a leading-zero integer DefaultValue (`"010"`) wrote the octal
   value into the parameter record the controller writes to the device at
   start-up, without an error.
+- gsdml: an over-long string or octet Ref default was cut short without
+  an error, so the device started with a value other than the one the
+  document gives; a short one left a Const's octets after it.
 - gsdml: `ToModel` discarded the parse errors of the optional numbers and
   value lists above, so a `MinDeviceInterval="32ms"` gave a model with a
   MinDeviceInterval of 0, and a `device` run from it applied no lower

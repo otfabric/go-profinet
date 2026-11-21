@@ -55,7 +55,12 @@ parsed document, and only until it is encoded: encoding omits it. A BitArea Ref 
 one octet (BitOffset + BitLength ≤ 8), although the 2006 definition allows
 BitLength up to 15. A Ref DefaultValue in 0x hexadecimal is accepted, as every
 number of the package is; whether the GSDML specification allows it there
-has not been checked (its text is members-only).
+has not been checked (its text is members-only). A string or OctetString
+Ref default shorter than its Length is zero-padded: no public source states
+a padding rule (OPC 30144 v1.00 Table 58 does not), so this is the
+package's policy; the lexical form of an OctetString DefaultValue (read as
+Const data, `"0x01,0x02"`) is likewise unverified, and a VisibleString
+default is not checked for characters outside its character set.
 A document type declaration with an internal subset is refused
 (`ErrUnsupported`): its attribute defaults and entities are not applied, so
 the document is not read at all rather than read differently.
