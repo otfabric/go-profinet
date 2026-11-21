@@ -86,6 +86,32 @@ after the GSDML specification's Table 18) gives no padding rule, and the
 padding is this package's policy; that the OctetString DefaultValue takes the
 Const form is inferred from Const.Data, as no public source states it.
 
+`ToModel` writes the DefaultValue of a Ref only for the DataTypes whose
+encoding a source this package has establishes: Bit and BitArea, Boolean,
+Integer8–64, Unsigned8–64, Float32 and Float64, VisibleString, UTF8String
+and OctetString. A Boolean is one octet, 0x00 for false and 0x01 for true
+(IEC 61158-6-10 section 4.1.2: any nonzero octet reads as true, 0x01 is
+canonical), from the xsd:boolean forms true, false, 1 and 0; any other
+value fails with `ErrMalformed`. Every other DataType fails with
+`ErrUnsupported` (`no verified DefaultValue encoding for DataType Integer16_S`):
+
+- the `_S` types embed two status bits in the value (OPC 30144 v1.00
+  Table 17 gives the codes B, S, U, G and Table 58 the value ranges, such as
+  0–63 for Unsigned8_S, but neither the bit positions nor how the status is
+  written in a DefaultValue); Unsigned32_S and Integer32_S are not Ref
+  DataTypes in Table 58 at all;
+- the composite types (`Float32+Status8`, `Unsigned8+Unsigned8`, …), the
+  date and time types (`Date`, `TimeStamp`, …) and the PROFIdrive types
+  (`N2`, `V2`, `X4`, …) have no public lexical form for a DefaultValue;
+- the types of more than 8 octets were written as a 64-bit number with the
+  rest zero-filled.
+
+The DataType list of the catalog is one enumeration for every element; the
+V2.35 XSD has one per context (DataItem, Ref, unit and channel diagnosis
+items), which differ. Which DataType is legal where, by schema version, is
+a separate audit (LIMITATIONS.md); `ToModel` refuses by encoding, not by
+legality.
+
 The Boolean attributes `ToModel` reads (`LLDP_NoD_Supported`,
 `DCP_HelloSupported`) are true, false, 1 or 0, with white space around
 them allowed (xsd:boolean); an absent one is false, and an empty one or any
