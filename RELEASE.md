@@ -31,7 +31,8 @@ section ending with a `---` line and no `---` line inside a section.
 **Date:** unreleased
 **Previous release:** v0.11.0
 
-GSDML: integer record defaults are read as decimal or 0x hexadecimal. No
+GSDML: integer record defaults are read as decimal or 0x hexadecimal.
+System redundancy: an AR leaves its AR set together with the AR table. No
 API change.
 
 ### Breaking
@@ -53,6 +54,12 @@ API change.
 - gsdml: a leading-zero integer DefaultValue (`"010"`) wrote the octal
   value into the parameter record without an error. That record is what
   the controller writes to the device at start-up.
+- device: a closing IOCARSR left the AR table (`ARs`) before its AR set
+  (`SystemRedundancy`), in two separate steps. A caller could find the AR
+  gone from `ARs` and still listed in its set, or a set with no live AR.
+  Both now change in one step under the device lock. Seen as a rare
+  `TestSRRDHTExpires` failure under `make check`; `TestSRSetLeavesWithAR`
+  checks the ordering.
 
 ---
 

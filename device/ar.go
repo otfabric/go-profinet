@@ -956,16 +956,22 @@ func (d *Device) abort(a *ar, reason pnio.AbortReason, notify bool) {
 		a.alarmLow.Close()
 	}
 	_ = a.transition(ARStateClosed)
+	// The AR leaves d.ars and its AR set together: an AR gone from ARs is
+	// gone from SystemRedundancy.
+	srAfter := func() {}
 	d.mu.Lock()
 	if d.ars[a.uuid] == a {
 		delete(d.ars, a.uuid)
 	}
+	if a.typ != pnio.ARTypeIOSAR {
+		srAfter = d.srLeaveLocked(a)
+	}
 	d.mu.Unlock()
+	srAfter()
 	// The outputs of a closed IOCAR are no longer valid; its submodules
 	// go to the next AR that expects them.
 	if a.typ != pnio.ARTypeIOSAR {
 		d.releaseOwnership(a)
-		d.srLeave(a)
 	}
 	if reason == 0 {
 		d.log.Infof("device: AR %s released", a.uuid)
