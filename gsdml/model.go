@@ -5,6 +5,7 @@ package gsdml
 import (
 	"encoding/binary"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -190,11 +191,17 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			m.Identity.SoftwareRevision = parseSoftwareRelease(mi.SoftwareRelease.Value)
 		}
 	}
-	if idx, err := ParseUint16(dap.ObjectUUIDLocalIndex); err == nil {
-		m.Identity.Instance = idx
+	// ObjectUUID_LocalIndex and MinDeviceInterval are required; an absent
+	// one (Validate reports it) leaves 0, a malformed one is refused.
+	if dap.ObjectUUIDLocalIndex != "" {
+		if m.Identity.Instance, err = ParseUint16(dap.ObjectUUIDLocalIndex); err != nil {
+			return nil, bad("DAP %s ObjectUUID_LocalIndex %q", clip(dap.ID), clip(dap.ObjectUUIDLocalIndex))
+		}
 	}
-	if v, err := ParseUint16(dap.MinDeviceInterval); err == nil {
-		m.Capabilities.MinDeviceInterval = v
+	if dap.MinDeviceInterval != "" {
+		if m.Capabilities.MinDeviceInterval, err = ParseUint16(dap.MinDeviceInterval); err != nil {
+			return nil, bad("DAP %s MinDeviceInterval %q", clip(dap.ID), clip(dap.MinDeviceInterval))
+		}
 	}
 	m.Capabilities.MaxARs = 1
 	m.Capabilities.ConformanceClass = "A"
@@ -236,17 +243,28 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 				return nil, bad("DAP %s interface DCP_HelloSupported: %v", clip(dap.ID), err)
 			}
 			if ar := it.ApplicationRelations; ar != nil {
-				if n, err := ParseUint16(ar.NumberOfAR); err == nil && n > 0 {
-					m.Capabilities.MaxARs = int(n)
+				if ar.NumberOfAR != "" || ar.emptyAttr("NumberOfAR") {
+					n, err := ParseUint16(ar.NumberOfAR)
+					if err != nil {
+						return nil, bad("DAP %s NumberOfAR %q", clip(dap.ID), clip(ar.NumberOfAR))
+					}
+					if n > 0 { // 0 ARs leaves the one every device has
+						m.Capabilities.MaxARs = int(n)
+					}
 				}
-				if tp := ar.TimingProperties; tp != nil && tp.ReductionRatio != "" {
-					if rr, err := ParseValueList(tp.ReductionRatio, maxReductionRatios); err == nil {
-						for _, v := range rr {
-							if v > math.MaxUint16 {
-								continue // not a reduction ratio; Check reports it
-							}
-							m.Capabilities.ReductionRatios = append(m.Capabilities.ReductionRatios, uint16(v))
+				if tp := ar.TimingProperties; tp != nil && (tp.ReductionRatio != "" || tp.emptyAttr("ReductionRatio")) {
+					rr, err := ParseValueList(tp.ReductionRatio, maxReductionRatios)
+					if err == nil && len(rr) == 0 {
+						err = bad("DAP %s ReductionRatio %q", clip(dap.ID), clip(tp.ReductionRatio))
+					}
+					if err != nil {
+						return nil, fmt.Errorf("gsdml: DAP %s ReductionRatio: %w", clip(dap.ID), err)
+					}
+					for _, v := range rr {
+						if v > math.MaxUint16 {
+							continue // not a reduction ratio; Check reports it
 						}
+						m.Capabilities.ReductionRatios = append(m.Capabilities.ReductionRatios, uint16(v))
 					}
 				}
 			}
@@ -292,12 +310,24 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 			}
 			// The configuration: the slots the module is fixed in, else
 			// the slots it is used in, else its only allowed slot.
+			for _, a := range []string{"FixedInSlots", "UsedInSlots", "AllowedInSlots"} {
+				if r.emptyAttr(a) {
+					return nil, bad("module %s %s is empty", clip(r.ModuleItemTarget), a)
+				}
+			}
 			slots := r.FixedInSlots
 			if slots == "" {
 				slots = r.UsedInSlots
 			}
-			if slots == "" {
-				if allowed, err := ParseValueList(r.AllowedInSlots, 2); err == nil && len(allowed) == 1 {
+			if slots == "" && r.AllowedInSlots != "" {
+				// More than one allowed slot leaves the module unplugged;
+				// a list that is no ValueList is refused.
+				allowed, err := ParseValueList(r.AllowedInSlots, 2)
+				switch {
+				case errors.Is(err, profinet.ErrResourceExhausted):
+				case err != nil:
+					return nil, fmt.Errorf("gsdml: module %s AllowedInSlots: %w", clip(r.ModuleItemTarget), err)
+				case len(allowed) == 1:
 					slots = r.AllowedInSlots
 				}
 			}
@@ -405,14 +435,19 @@ func (c *conv) toSubmodule(vs *VirtualSubmoduleItem, defSubslot uint16) (model.S
 		return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s SubmoduleIdentNumber %q", profinet.ErrMalformed, vs.ID, vs.SubmoduleIdentNumber)
 	}
 	s := model.Submodule{Name: c.textOf(vs.ModuleInfo), IdentNumber: id, Subslot: defSubslot}
-	if vs.FixedInSubslots != "" {
-		if l, err := ParseValueList(vs.FixedInSubslots, 64); err == nil && len(l) > 0 {
-			first := l[0]
-			if first > math.MaxUint16 {
-				return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s FixedInSubslots %q beyond the subslot range", profinet.ErrMalformed, vs.ID, vs.FixedInSubslots)
-			}
-			s.Subslot = uint16(first)
+	if vs.FixedInSubslots != "" || vs.emptyAttr("FixedInSubslots") {
+		l, err := ParseValueList(vs.FixedInSubslots, 64)
+		if err != nil {
+			return model.Submodule{}, fmt.Errorf("gsdml: submodule %s FixedInSubslots: %w", clip(vs.ID), err)
 		}
+		if len(l) == 0 {
+			return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s FixedInSubslots %q", profinet.ErrMalformed, clip(vs.ID), clip(vs.FixedInSubslots))
+		}
+		first := l[0]
+		if first > math.MaxUint16 {
+			return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s FixedInSubslots %q beyond the subslot range", profinet.ErrMalformed, vs.ID, vs.FixedInSubslots)
+		}
+		s.Subslot = uint16(first)
 	}
 	if io := vs.IOData; io != nil {
 		if io.Input != nil {

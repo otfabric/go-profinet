@@ -79,6 +79,20 @@ them allowed (xsd:boolean); an absent one is false, and an empty one or any
 other value fails with `ErrMalformed`. `ParseBool`, the exported helper, still
 returns its default for a value that is no Boolean.
 
+The DAP's `ObjectUUID_LocalIndex`, `MinDeviceInterval` and the
+interface's `NumberOfAR` and `ReductionRatio`, a module reference's
+`FixedInSlots`, `UsedInSlots` and `AllowedInSlots` and a submodule's
+`FixedInSubslots` fail with `ErrMalformed` when they are present but no
+Unsigned16 or ValueList (or empty); a list of more values than `ToModel`
+expands (64 reduction ratios or fixed subslots) fails with
+`ErrResourceExhausted`. An absent one keeps its default: 0 for the two
+required DAP attributes (`Validate` reports them missing), one AR, no
+reduction ratios, the default subslot. `NumberOfAR="0"` keeps the one AR.
+More than one allowed slot, with no fixed or used slot, leaves a module
+unplugged, as before. `HardwareRelease` and `SoftwareRelease` are text
+(token): `ToModel` reads a number from them where there is one (`"3"`,
+`"V2.1.0"`) and leaves 0 otherwise, which is not an error.
+
 `Parse` refuses a document of more than 64 MiB or more than 1 048 576
 elements (`ErrResourceExhausted`).
 
