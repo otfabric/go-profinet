@@ -65,9 +65,13 @@ const (
 	// whose Length or bits do not agree with its DataType, or a Default
 	// not of the record's Length (an error).
 	RuleParameterLayout = "parameter-layout"
-	// RuleParameterOverlap: two fields, or a field and a Const, share bits
-	// (a warning: no source this package has states whether the GSDML
-	// specification allows it; the field written last decides the bits).
+	// RuleParameterOverlap: two fields, or two Consts, share bits (a
+	// warning: no source this package has states whether the GSDML
+	// specification allows it; the one written last decides the bits). A
+	// field over a Const is not reported: ISO 15745-4:2003/Amd 1:2006,
+	// Annex D, D.4.7.4 allows it, and the Ref takes precedence, as ToModel
+	// and Encode write the Consts first (the maintainer's reading of the
+	// amendment, which this repository does not have).
 	RuleParameterOverlap = "parameter-overlap"
 	// RuleParameterDefault: a DefaultValue that does not encode (an error),
 	// or is outside the field's AllowedValues (a warning: consistency of
@@ -84,6 +88,23 @@ const (
 ```
 
 Rules of the issues ParameterRecord.Check reports.
+
+```go
+const (
+	// RuleTransferSequence: the TransferSequence values of a submodule's
+	// records that are not 1 to N without gaps or repeats (an error;
+	// ISO 15745-4:2003/Amd 1:2006, Annex D, D.4.7.1, Table D.28), or that
+	// mix 0, an undefined order, with sequenced records (a warning: where
+	// the records of 0 go is a policy of this package).
+	RuleTransferSequence = "transfer-sequence"
+	// RuleParameterPlan: a record Defaults would write that cannot be
+	// built, a field without a verified encoding (unvalidated: it is not
+	// written, and the device keeps its own state of it).
+	RuleParameterPlan = "parameter-plan"
+)
+```
+
+Rules of the issues PlanParameters adds to those of ParameterRecord.Check.
 
 ```go
 const MaxDocumentSize = 64 << 20
@@ -463,6 +484,37 @@ A field is plain data: Set writes it where its exported fields say, so a Paramet
 
 BitOffset, BitLength, Changeable and Visible take the defaults of PI's GSDML schemas when the file does not give them: BitOffset 0, BitLength 1, Changeable and Visible true. These are the defaults of the Ref of a ParameterRecordDataItem in every schema V1.0 to V2.46 (ValueItemReferenceT in V1.0 to V2.1, ParameterRecordDataT/Ref in V2.2 and V2.25, RecordDataRefT from V2.3).
 
+### type ParameterPlan
+
+```go
+type ParameterPlan struct {
+	Writes []PlannedWrite `json:"writes"`
+	// Issues are the records' Check issues and the plan's own, with
+	// paths "Slot[s]/Subslot[0xSSSS]/ParameterRecordDataItem[i]/...".
+	// Warnings and unvalidated issues do not stop a plan; the caller
+	// decides whether the plan may be written. An unvalidated issue is
+	// not evidence that a record is right.
+	Issues []Issue `json:"issues"`
+}
+```
+
+ParameterPlan is the parameter records to write to a device, in the order to write them, and what PlanParameters found on the way.
+
+#### func PlanParameters
+
+```go
+func PlanParameters(doc *Document, m *model.Device, opts PlanOptions) (*ParameterPlan, error)
+```
+
+PlanParameters builds the parameter records to write to a device whose plugged modules m describes, from the file doc m was built from. It writes nothing: the plan is for controller.DeviceConfig.Parameters (converted with controller.Parameter(w.Write)) or for review.
+
+  - Every plugged module must be one the DAP can use, in a slot of the DAP's PhysicalSlots and of the module's AllowedInSlots, and every plugged submodule must be in the file. The DAP's interface and port submodules have no parameter records here: their PDev records are the controller's (PeerChecks, MRP).
+  - A record is written when PlanOptions.Values sets a field of it, or, with PlanOptions.Defaults, always. A record with values must build (ParameterRecord.Encode); a record written with its defaults only that cannot be built for a field without a verified encoding is left out and reported.
+  - A written record with an error of ParameterRecord.Check refuses the plan; its warnings and unvalidated issues are reported.
+  - The records of a submodule are written in ascending TransferSequence (1, 2, …, scoped to the submodule: Table D.28), then those of 0, an undefined order, in file order. Submodules are written in slot and subslot order, the DAP first: a policy of this package, not of Table D.28.
+
+It returns an error matching profinet.ErrInvalidConfig for a model or values that do not match the file, a record that does not build or has a Check error, or TransferSequence values that are not 1 to N (unless AllowSequenceErrors); profinet.ErrNotFound for a DAP the file does not have; and profinet.ErrUnsupported for values in a record with a field without a verified encoding. With an error, the plan holds the issues found and no writes.
+
 ### type ParameterRecord
 
 ```go
@@ -596,6 +648,80 @@ type ParameterValue struct {
 ```
 
 ParameterValue is an Assign of a ValueItem: a value and its text.
+
+### type ParameterValues
+
+```go
+type ParameterValues struct {
+	Slot    uint16     `json:"slot"`
+	Subslot uint16     `json:"subslot"`
+	Index   pnio.Index `json:"index"`
+	// Values are the fields' values by ParameterRecord.Field key (ID, or
+	// a name only one field of the record has), in the lexical form of
+	// ParameterRecord.Set.
+	Values map[string]string `json:"values"`
+}
+```
+
+ParameterValues sets fields of a record of a plugged submodule.
+
+### type PlanOptions
+
+```go
+type PlanOptions struct {
+	// DAP is the ID of the device access point the model was built from
+	// (ToModel's dapID); empty means the first.
+	DAP string
+	// Defaults writes every record of every plugged submodule, with its
+	// defaults where no value is given. Without it, only the records of
+	// Values are written: a device keeps its own state of the others.
+	Defaults bool
+	// Values are the field values to write.
+	Values []ParameterValues
+	// AllowSequenceErrors writes the records of a submodule whose
+	// TransferSequence values are not 1 to N (gaps, repeats) in ascending
+	// order instead of refusing the plan. The issues are reported either
+	// way.
+	AllowSequenceErrors bool
+}
+```
+
+PlanOptions configures PlanParameters.
+
+### type PlannedWrite
+
+```go
+type PlannedWrite struct {
+	Write RecordWrite `json:"write"`
+	// Name is the record's name in the primary language.
+	Name           string `json:"name,omitempty"`
+	ModuleIdent    uint32 `json:"module_ident"`
+	SubmoduleIdent uint32 `json:"submodule_ident"`
+	// TransferSequence is the record's, 0 when the file gives none.
+	TransferSequence uint16 `json:"transfer_sequence"`
+	// FilePosition is the record's position in the submodule's
+	// RecordDataList, from 0.
+	FilePosition int `json:"file_position"`
+	// Values is the number of field values the plan's options set in the
+	// record; 0 for a record written with its defaults only.
+	Values int `json:"values"`
+}
+```
+
+PlannedWrite is a write of a ParameterPlan, with where it comes from.
+
+### type RecordWrite
+
+```go
+type RecordWrite struct {
+	Slot    uint16     `json:"slot"`
+	Subslot uint16     `json:"subslot"`
+	Index   pnio.Index `json:"index"`
+	Data    []byte     `json:"data"`
+}
+```
+
+RecordWrite is a parameter record to write to a plugged submodule. Its fields are those of controller.Parameter, so controller.Parameter(w) converts it; gsdml does not import the controller.
 
 ### type Report
 

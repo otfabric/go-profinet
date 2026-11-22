@@ -278,10 +278,13 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
   - `parameter-layout` (error): a field or a Const outside the record, a
     field whose Length or bits do not agree with its DataType, a Default
     not of the record's length, an ID two fields have;
-  - `parameter-overlap` (warning): two fields, or a field and a Const,
-    that share bits. No source this package has says whether the GSDML
-    specification allows that, so it is not refused; the field written last
-    decides the bits;
+  - `parameter-overlap` (warning): two fields, or two Consts, that share
+    bits. No source this package has says whether the GSDML specification
+    allows that, so it is not refused; the one written last decides the
+    bits. A field over a Const is not reported: ISO 15745-4:2003/Amd
+    1:2006, Annex D, D.4.7.4 allows it and gives the Ref precedence, as
+    `ToModel` and `Encode` write the Consts first (the maintainer's reading
+    of the amendment, which this repository does not have);
   - `parameter-default`: a DefaultValue that does not encode, or a
     `Default` snapshot that is not the record `Encode` builds (errors); a
     DefaultValue outside the field's own AllowedValues (warning);
@@ -300,6 +303,60 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
 
 Nothing writes these records on its own: a controller writes the records of
 `controller.DeviceConfig.Parameters`, as before.
+
+### Parameterization plan
+
+`PlanParameters` turns a model of the plugged modules, the file it was
+built from and chosen values into the records to write, in the order to
+write them. It writes nothing:
+
+```go
+m, err := gsdml.ToModel(doc, "DAP_1")        // or a model plugged by hand
+plan, err := gsdml.PlanParameters(doc, m, gsdml.PlanOptions{
+	DAP:      "DAP_1",
+	Defaults: false, // true writes every record, with its defaults where no value is given
+	Values: []gsdml.ParameterValues{
+		{Slot: 1, Subslot: 1, Index: 2, Values: map[string]string{"R_Interval": "500"}},
+	},
+})
+for _, is := range plan.Issues {
+	fmt.Println(is.Severity, is.Rule, is.Path, is.Message) // review before writing
+}
+for _, w := range plan.Writes {
+	cfg.Parameters = append(cfg.Parameters, controller.Parameter(w.Write))
+}
+```
+
+- The topology is checked against the file: every plugged module must be
+  one the DAP can use (`UseableModules`), in a slot of the DAP's
+  `PhysicalSlots` and of the module's `AllowedInSlots`, and every plugged
+  submodule must be in it. The DAP's interface and port submodules have no
+  parameter records in the file; their PDev records are the controller's
+  (`PeerChecks`, `MRP`).
+- A record is written when `Values` sets a field of it; with `Defaults`,
+  every record is, so nothing the device already has is written unless
+  asked. A record with values must build; one written with its defaults
+  only that has a field without a verified encoding is left out and
+  reported (`parameter-plan`, unvalidated): the device keeps its own state
+  of it.
+- Every written record is checked (`ParameterRecord.Check`): an error
+  refuses the plan, warnings and unvalidated issues are reported. Which of
+  them allow the plan to be written is the caller's decision; an
+  unvalidated issue is not evidence that a record is right.
+- **Order.** TransferSequence orders the records of one submodule:
+  positive values must be 1 to N, each once, and are written in ascending
+  order; 0, the default, is an undefined order (ISO 15745-4:2003/Amd
+  1:2006, Annex D, D.4.7.1, Table D.28, as the maintainer read it: the
+  amendment is not in this repository). Values that are not 1 to N refuse
+  the plan (`transfer-sequence`, an error) unless `AllowSequenceErrors`.
+  The records of 0 among sequenced ones are written after them, in file
+  order, with a warning: where they go is a policy of this package, not of
+  Table D.28. Submodules are written in slot and subslot order, the DAP
+  first, also a policy of this package. Each write keeps its
+  `TransferSequence` and `FilePosition` for review.
+- `RecordWrite` has the fields of `controller.Parameter`, so
+  `controller.Parameter(w.Write)` converts it; `gsdml` does not import the
+  controller.
 
 ## Writing
 

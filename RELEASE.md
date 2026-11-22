@@ -26,6 +26,50 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.17.0
+
+**Date:** 2026-11-22
+**Previous release:** v0.16.0
+
+## Summary
+
+A parameterization plan: given a GSDML file, a model of the plugged
+modules and chosen values, `gsdml.PlanParameters` builds the parameter
+records to write, checked against the file's slot rules and ordered by
+TransferSequence, without writing anything.
+
+## Changes
+
+### Added
+
+- **`gsdml.PlanParameters(doc, m, opts)`** returns a `ParameterPlan`:
+  `Writes` in write order and `Issues`.
+  - Checks the model against the file: the DAP, `UseableModules`,
+    `PhysicalSlots`, `AllowedInSlots`, and every plugged submodule.
+  - Writes the records `PlanOptions.Values` sets (fields by ID or name),
+    or with `Defaults` every record; a defaults-only record with a field
+    without a verified encoding is left out and reported.
+  - Refuses a written record with a `Check` error; reports warnings and
+    unvalidated issues for the caller to decide on.
+  - Orders a submodule's records by ascending TransferSequence, which
+    must be 1 to N (ISO 15745-4:2003/Amd 1:2006, Table D.28, as the
+    maintainer read it), then those of 0 in file order; submodules in
+    slot and subslot order. `AllowSequenceErrors` writes a sequence with
+    gaps or repeats instead of refusing it.
+- **`gsdml.RecordWrite`** has the fields of `controller.Parameter`:
+  `controller.Parameter(w.Write)` converts a planned write.
+- Rules `transfer-sequence` and `parameter-plan`
+  (`RuleTransferSequence`, `RuleParameterPlan`).
+
+### Changed
+
+- `ParameterRecord.Check` no longer warns about a field over a Const:
+  ISO 15745-4:2003/Amd 1:2006, Annex D, D.4.7.4 allows it and gives the
+  Ref precedence, as `ToModel` and `Encode` already write it. Two fields,
+  or two Consts, that share bits are still a warning.
+
+---
+
 ## v0.16.0
 
 **Date:** 2026-11-22

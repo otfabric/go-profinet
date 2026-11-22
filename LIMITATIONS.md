@@ -139,10 +139,13 @@ the same DataTypes are refused and the same policies apply (zero padding,
 the OctetString form, hexadecimal integers). `Changeable` and `Visible` are
 reported, not enforced: the schemas declare them without saying what a
 device or a tool does with them. `AllowedValues` is compared for numeric,
-Bit, BitArea and Boolean fields only. Fields that share bits, with each
-other or with a Const, are reported by `ParameterRecord.Check` as a
-warning, not refused: no source this package has says whether the GSDML
-specification allows it. `Encode` refuses two given values for such
+Bit, BitArea and Boolean fields only. Fields that share bits with each
+other, or Consts with each other, are reported by `ParameterRecord.Check`
+as a warning, not refused: no source this package has says whether the
+GSDML specification allows it. A field over a Const is allowed, the Ref
+taking precedence, per ISO 15745-4:2003/Amd 1:2006, Annex D, D.4.7.4 as
+the maintainer read it; the amendment is not in this repository, and its
+meaning of `Changeable` and `Visible` (D.4.7.4) is not yet applied. `Encode` refuses two given values for such
 fields; `Set` of one changes the bits of the other. A default outside its
 own `AllowedValues` is a warning of `Check`; `ToModel` and `Encode` keep
 it. `Field` falls back to a field's name, which is the text of the primary
@@ -151,6 +154,16 @@ compared with AllowedValues at the precision of its DataType, value and
 bounds rounded alike: a package policy, not taken from a source. The golden octets of
 the tests are derived by hand from the encodings; no engineering tool or
 captured parameter write has confirmed them.
+**Parameterization plan** (`PlanParameters`): the TransferSequence rule
+(1 to N within a submodule, ascending, 0 undefined) is ISO 15745-4:2003/Amd
+1:2006, Table D.28, as the maintainer read it, not checked against PI's
+current GSDML specification. Where records of 0 go among sequenced ones,
+and the slot and subslot order across submodules, are policies of this
+package. A model must match the file: `ToModel` refuses a file with a
+record field without a verified encoding, so such a device's model is
+plugged by hand. Only `PhysicalSlots` and `AllowedInSlots` are checked,
+not `FixedInSlots`, `UsedInSlots` or module counts. A plan has been
+written only to go-profinet's own device (e2e), not to an independent one.
 DataType legality by context is known for the 18 versions from V1.0 to
 V2.46. The evidence is the schemas as TIA Portal V21 installs them, a
 reserialised copy without XML comments rather than PI's specification
