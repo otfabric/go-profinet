@@ -1,9 +1,17 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.8.1 (2026-11-12) with profinet-interop v0.8.0
-and profinetctl v0.10.1; the interop matrix below is that of the
-profinet-interop v0.8.0 run of 2026-11-12. How go-profinet compares with other PROFINET stacks is
+what. Status: go-profinet v0.12.0 (2026-11-21) and profinetctl v0.14.0.
+v0.12.0 pins profinet-interop v0.8.0; main pins v0.9.0 (contract 1.3, no
+adapter change), from the next release. The interop matrix below is still
+that of the profinet-interop v0.8.0 run of 2026-11-12 against go-profinet
+v0.8.1. The Interop workflow has since passed on v0.12.0 (commit f9a5d82,
+2026-11-21, profinet-interop v0.8.0), but the matrix was not regenerated
+from that run. v0.9.1 (DCP responder) and v0.11.0 (ModuleDiffBlock) changed
+wire behaviour after the matrix run, so the matrix's counts for those parts
+are evidence for v0.8.1 only.
+
+How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
 what is out of scope in [LIMITATIONS.md](../LIMITATIONS.md).
 
@@ -15,7 +23,12 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.8.1** | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.10.1 | **yes** |
+| **v0.12.0** | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.14.0 | **yes** |
+| v0.11.0 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | none | no: v0.12.0 refuses GSDML input it used to turn into defaults |
+| v0.10.0 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.13.1 | no: v0.11.0 changes the ModuleDiffBlock of the device |
+| v0.9.1 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.11.1–v0.13.0 | no: v0.10.0 bounds work and memory and fixes lifecycles |
+| v0.9.0 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.11.0 | no: v0.9.1 fixes the DCP responder |
+| v0.8.1 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.10.1 | no: v0.9.0 bounds peers and files |
 | v0.8.0 | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.10.0 | no: v0.8.1 moves the interop pin to profinet-interop v0.8.0 (no code change) |
 | v0.7.0 | 1.26 or later (CI: 1.26–1.27) | v0.7.1 (1.2) | v0.8.0, v0.9.0 | no: v0.8.0 fixes the alarm sequence numbers and ERR-RTA answers the recorded traffic showed |
 | v0.6.0 | 1.23 or later (CI: 1.23–1.26) | v0.6.0 (1.2) | v0.6.0 | no: v0.7.0 raises the Go floor and refuses out-of-range values |
