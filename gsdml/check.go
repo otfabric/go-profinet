@@ -321,7 +321,42 @@ func (v *validator) checkSubmodules(path func() string, items []*VirtualSubmodul
 					}, DataTypeContextParameter, ref.DataType)
 				}
 			}
+			v.checkRecords(p, sm.RecordDataList.ParameterRecordDataItems)
 		}
+	}
+}
+
+// checkRecords applies the record rules to the parameter records of a
+// submodule (checkSubmodules runs after semantic made v.conv), described as
+// SubmoduleParameters describes them: a record SubmoduleParameters refuses
+// (RuleParameterRecord), the issues of
+// ParameterRecord.Check, and the TransferSequence rule of PlanParameters.
+// Each record gets the whole MaxModelRecordOctets: the budget is that of
+// one model, and a document describes the records of every module type.
+func (v *validator) checkRecords(path func() string, items []*ParameterRecordDataItem) {
+	base := path() + "/RecordDataList/"
+	recs := make([]ParameterRecord, 0, len(items))
+	for _, r := range items {
+		if idx, err := parseUint(r.Index, 16); err != nil || idx > 0x7FFF {
+			continue // the record-index rule and the structure report it
+		}
+		v.conv.budget = MaxModelRecordOctets
+		pr, err := v.conv.parameterRecord(r)
+		if err != nil {
+			// parameterRecord returns malformed content only: a field
+			// without a verified encoding is a parameter-encoding issue.
+			v.add(base+"ParameterRecordDataItem["+clip(r.Index)+"]", SeverityError, RuleParameterRecord, "%s", err.Error())
+			continue
+		}
+		for _, i := range pr.Check() {
+			v.add(base+i.Path, i.Severity, i.Rule, "%s", i.Message)
+		}
+		recs = append(recs, pr)
+	}
+	var seq []Issue
+	_ = sequenceIssues(path(), recs, &seq) // the error repeats its issue
+	for _, i := range seq {
+		v.add(i.Path, i.Severity, i.Rule, "%s", i.Message)
 	}
 }
 
@@ -397,6 +432,7 @@ func semantic(doc *Document, v *validator) {
 		return
 	}
 	ap := doc.ProfileBody.ApplicationProcess
+	v.conv = newConv(doc)
 	const root = "ISO15745Profile/ProfileBody/ApplicationProcess"
 	if ml := ap.ModuleList; ml != nil {
 		idents := map[string]string{}

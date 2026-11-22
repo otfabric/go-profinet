@@ -26,6 +26,44 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.18.0
+
+**Date:** 2026-11-22
+**Previous release:** v0.17.0
+
+## Summary
+
+`gsdml.Check` of a document runs the parameter record rules on every
+record of every device access point and module, so `Check`, `Validate`
+and `CheckBytes` report what `ParameterRecord.Check` and `PlanParameters`
+already found per record.
+
+## Changes
+
+### Added
+
+- **`gsdml.RuleParameterRecord`** (`parameter-record`): a record of the
+  document that `SubmoduleParameters`, and so `ToModel`, refuses: a
+  DefaultValue that does not encode, a field or Const outside the record,
+  a malformed attribute. An error; a field without a verified encoding is
+  the unvalidated `parameter-encoding` issue instead.
+
+### Changed
+
+- `gsdml.Check` (and `Validate`, `CheckBytes`) reports, for every record,
+  the issues of `ParameterRecord.Check` (`parameter-layout`,
+  `parameter-overlap`, `parameter-default`, `parameter-allowed-values`,
+  `parameter-encoding`) and the `transfer-sequence` rule of
+  `PlanParameters`, at the record's path in the document. **`Validate` now
+  fails** on their errors: Consts that share octets, a ValueItemTarget that
+  names no ValueItem, a DefaultValue that does not encode, TransferSequence
+  values that are not 1 to N. Before, such a file was valid and failed only
+  in `ToModel`, `SubmoduleParameters` or a plan. Loading a file
+  (`Parse`, `ToModel`) is unchanged. A record outside the user index range
+  stays a `record-index` warning only.
+
+---
+
 ## v0.17.0
 
 **Date:** 2026-11-22

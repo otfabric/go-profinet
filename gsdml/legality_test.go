@@ -156,7 +156,8 @@ func TestCheckDataTypeContext(t *testing.T) {
 	}
 	rep := Check(doc)
 	w := issuesOf(rep, RuleDataTypeContext, SeverityWarning)
-	if len(w) != 3 || len(rep.Issues) != 3 {
+	// and the Float32+Status8 field has no verified encoding
+	if len(w) != 3 || len(rep.Issues) != 4 || len(issuesOf(rep, RuleParameterEncoding, SeverityUnvalidated)) != 1 {
 		t.Fatalf("%+v", rep.Issues)
 	}
 	if !strings.Contains(w[0].Path, "/IOData/Input/DataItem[1]") || !strings.Contains(w[0].Message, "DataType Bit is not allowed in the io context by the audited GSDML V2.35 schema") {

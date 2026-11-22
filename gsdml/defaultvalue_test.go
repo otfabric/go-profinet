@@ -151,10 +151,8 @@ func TestIntegerDefaultDocument(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Validate does not check DefaultValue (an xsd:string).
-		if err := Validate(doc); err != nil {
-			t.Fatalf("Validate: %v", err)
-		}
+		// Check reports a DefaultValue ToModel refuses, and nothing else.
+		onlyRecordErrors(t, doc)
 		m, err := ToModel(doc, "DAP_2P")
 		if err != nil {
 			return nil, err

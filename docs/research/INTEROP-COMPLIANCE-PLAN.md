@@ -198,11 +198,14 @@ package in §14.
 ### D6 — record structure checks missing (robustness, P3)
 
 - **Problems:**
-  - Overlapping areas: `ParameterRecord.Check` reports two Refs or two
-    Consts that share bits (a warning), and `Encode` refuses values for two
-    overlapping fields. A Ref over a Const is allowed, the Ref taking
-    precedence (ISO 15745-4 Amd 1, D.4.7.4, as the maintainer read it).
-    `gsdml.Check` of a document does not report them yet.
+  - Overlapping areas: `ParameterRecord.Check` reports two Consts that
+    share octets (an error, D.4.7.3) and two Refs that share bits (a
+    warning), and `Encode` refuses values for two overlapping fields. A
+    Ref over a Const is allowed, the Ref taking precedence (ISO 15745-4
+    Amd 1, D.4.7.4, as the maintainer read it). **Done in v0.18.0:**
+    `gsdml.Check` of a document runs the record rules on every record,
+    with `parameter-record` for a record ToModel refuses and the
+    TransferSequence rule.
   - AllowedValues and ValueItem are not used by ToModel, so a default
     outside AllowedValues is accepted. `SubmoduleParameters` reports
     both, `ParameterRecord.Set` refuses a value outside AllowedValues, and

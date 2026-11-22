@@ -114,7 +114,9 @@ func TestSubmoduleParametersFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := rep.Count(SeverityError); n != 0 {
+	// Its one error: record 2's TransferSequence 2, the only sequenced
+	// record of SM_IO (Table D.28), which the plan tests rely on.
+	if n := rep.Count(SeverityError); n != 1 || len(issuesOf(rep, RuleTransferSequence, SeverityError)) != 1 {
 		t.Fatalf("the fixture has %d errors: %v", n, rep.Issues)
 	}
 	recs := fixtureParameters(t)
