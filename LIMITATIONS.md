@@ -70,12 +70,14 @@ Automation, PNO 3.132 V1.0 (2003); they encode the four status codes
 without judging the context (IEC marks the output-channel codes reserved).
 Integer32_S and Unsigned32_S have no codec: no source defines them.
 A Ref DefaultValue of a `_S`, composite, date and time, PROFIdrive (`N2`,
-`V2`, …) or F_MessageTrailer DataType is refused (`ErrUnsupported`): the
-status bit positions of the `_S` types and the lexical forms of the others
-are not in a public source (OPC 30144 v1.00 Tables 17 and 58 give the
-status codes and ranges only), so a record with such a Ref does not
-convert. That a Boolean DefaultValue is written true, false, 1 or 0 is
-the xsd:boolean form, not verified against the GSDML specification. DataType legality by context is known only for V1.0, V2.0, V2.1, V2.2 and
+`V2`, …) or F_MessageTrailer DataType is refused (`ErrUnsupported`): how a
+DefaultValue writes the value and status of a `_S` type, and the lexical
+forms of the others, are not in a public source (OPC 30144 v1.00 Table 58
+says "plus status" without a grammar, and no corpus file uses one), so a
+record with such a Ref does not convert. That a Boolean DefaultValue is
+written true, false, 1 or 0 is the xsd:boolean form, not verified against
+the GSDML specification.
+DataType legality by context is known only for V1.0, V2.0, V2.1, V2.2 and
 V2.35. The evidence is third-party copies of those schemas, not PI's files
 (docs/research/GSDML-XSD-AUDIT.md), so `Check` warns about a forbidden
 value and `Validate` does not fail on it. Every other version is unverified,

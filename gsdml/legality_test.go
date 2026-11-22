@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -121,6 +122,7 @@ func TestCheckDataTypeContext(t *testing.T) {
 	for _, r := range [][2]string{
 		{`<DataItem DataType="Unsigned32" TextId="T_Count"/>`, `<DataItem DataType="Bit" TextId="T_Count"/>`},
 		{`DataType="Unsigned16" DefaultValue="100"`, `DataType="Float32+Status8" DefaultValue="100"`},
+		{`<DataItem DataType="Unsigned8" UseAsBits="true" TextId="T_Outputs">`, `<DataItem DataType="Integer32_S" UseAsBits="true" TextId="T_Outputs">`},
 	} {
 		if !bytes.Contains(b, []byte(r[0])) {
 			t.Fatalf("the fixture no longer holds %s", r[0])
@@ -133,12 +135,20 @@ func TestCheckDataTypeContext(t *testing.T) {
 	}
 	rep := Check(doc)
 	w := issuesOf(rep, RuleDataTypeContext, SeverityWarning)
-	if len(w) != 2 || len(rep.Issues) != 2 {
+	if len(w) != 3 || len(rep.Issues) != 3 {
 		t.Fatalf("%+v", rep.Issues)
 	}
 	if !strings.Contains(w[0].Path, "/IOData/Input/DataItem[1]") || !strings.Contains(w[0].Message, "DataType Bit is not allowed in the io context by the audited GSDML V2.35 schema") {
 		t.Errorf("%+v", w[0])
 	}
+	var out bool
+	for _, i := range w {
+		out = out || strings.Contains(i.Path, "/IOData/Output/DataItem[1]") && strings.Contains(i.Message, "Integer32_S")
+	}
+	if !out {
+		t.Errorf("no output warning: %+v", w)
+	}
+	w = slices.DeleteFunc(w, func(i Issue) bool { return strings.Contains(i.Path, "/IOData/Output/") })
 	if !strings.Contains(w[1].Path, "/ParameterRecordDataItem[") || !strings.Contains(w[1].Path, "/Ref[1]") || !strings.Contains(w[1].Message, "Float32+Status8") {
 		t.Errorf("%+v", w[1])
 	}
