@@ -91,13 +91,13 @@ func TestPlanParametersValues(t *testing.T) {
 	t.Parallel()
 	doc, m := planFixture(t, sequenced...)
 	plan, err := PlanParameters(doc, m, PlanOptions{Values: []ParameterValues{
-		{Slot: 1, Subslot: 1, Index: 2, Values: map[string]string{"R_FIXED": "1", "Unsigned8": "20"}},
+		{Slot: 1, Subslot: 1, Index: 2, Values: map[string]string{"Integer16": "-3", "Unsigned8": "20"}},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := append([]byte(nil), fixtureDefault...)
-	want[0], want[20], want[21] = 20, 0, 1
+	want[0], want[1], want[2] = 20, 0xFF, 0xFD
 	if len(plan.Writes) != 1 || plan.Writes[0].Values != 2 || !bytes.Equal(plan.Writes[0].Write.Data, want) {
 		t.Fatalf("%+v", plan.Writes)
 	}
@@ -106,6 +106,68 @@ func TestPlanParametersValues(t *testing.T) {
 		if is.Rule != RuleTransferSequence {
 			t.Errorf("issue %v", is)
 		}
+	}
+}
+
+// Values may not set a field that is not Changeable, nor one field twice
+// by its ID and its name; the record's own default stays writable.
+func TestPlanParametersAuthorization(t *testing.T) {
+	t.Parallel()
+	doc, m := planFixture(t, append(sequenced, `TextId="T_I16"`, `ID="R_I16" TextId="T_I16"`)...)
+	for name, values := range map[string]map[string]string{
+		"not changeable":   {"R_FIXED": "513"},
+		"by name":          {"Not changeable": "513"},
+		"ID and name":      {"R_I16": "1", "Integer16": "2"},
+		"ID and same name": {"R_I16": "1", "Integer16": "1"},
+	} {
+		for range 8 { // map order: refused every time
+			_, err := PlanParameters(doc, m, PlanOptions{Values: []ParameterValues{{Slot: 1, Subslot: 1, Index: 2, Values: values}}})
+			if !errors.Is(err, profinet.ErrInvalidConfig) {
+				t.Fatalf("%s: %v", name, err)
+			}
+		}
+	}
+	plan, err := PlanParameters(doc, m, PlanOptions{Values: []ParameterValues{{Slot: 1, Subslot: 1, Index: 2, Values: map[string]string{}}}})
+	if err != nil || len(plan.Writes) != 1 || !bytes.Equal(plan.Writes[0].Write.Data[20:22], []byte{0x02, 0x01}) {
+		t.Fatalf("default of R_FIXED: %v %+v", err, plan)
+	}
+	// A value the field's ValueItem does not assign (no AllowedValues).
+	_, err = PlanParameters(doc, m, PlanOptions{Values: []ParameterValues{{Slot: 1, Subslot: 1, Index: 1, Values: map[string]string{"Mode": "3"}}}})
+	if !errors.Is(err, profinet.ErrInvalidConfig) {
+		t.Fatalf("ValueItem: %v", err)
+	}
+}
+
+// The model must be of the file's device, not only of its module ident
+// numbers.
+func TestPlanParametersIdentity(t *testing.T) {
+	t.Parallel()
+	doc, m := planFixture(t, sequenced...)
+	for name, edit := range map[string]func(m *model.Device){
+		"vendor": func(m *model.Device) { m.Identity.VendorID++ },
+		"device": func(m *model.Device) { m.Identity.DeviceID++ },
+	} {
+		mm := cloneModel(t, m)
+		edit(mm)
+		if _, err := PlanParameters(doc, mm, PlanOptions{Defaults: true}); !errors.Is(err, profinet.ErrInvalidConfig) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	id := *doc.ProfileBody.DeviceIdentity
+	for name, edit := range map[string]func(d *DeviceIdentity){
+		"no vendor": func(d *DeviceIdentity) { d.VendorID = "x" },
+		"no device": func(d *DeviceIdentity) { d.DeviceID = "x" },
+	} {
+		d := id
+		edit(&d)
+		doc.ProfileBody.DeviceIdentity = &d
+		if _, err := PlanParameters(doc, m, PlanOptions{}); !errors.Is(err, profinet.ErrMalformed) {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	doc.ProfileBody.DeviceIdentity = nil
+	if _, err := PlanParameters(doc, m, PlanOptions{}); !errors.Is(err, profinet.ErrMalformed) {
+		t.Errorf("no identity: %v", err)
 	}
 }
 

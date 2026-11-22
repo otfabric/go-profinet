@@ -38,6 +38,9 @@ modules and chosen values, `gsdml.PlanParameters` builds the parameter
 records to write, checked against the file's slot rules and ordered by
 TransferSequence, without writing anything.
 
+The rules from ISO 15745-4:2003/Amd 1:2006, Annex D are as the
+maintainer's review states them; the amendment is not in this repository.
+
 ## Changes
 
 ### Added
@@ -52,8 +55,7 @@ TransferSequence, without writing anything.
   - Refuses a written record with a `Check` error; reports warnings and
     unvalidated issues for the caller to decide on.
   - Orders a submodule's records by ascending TransferSequence, which
-    must be 1 to N (ISO 15745-4:2003/Amd 1:2006, Table D.28, as the
-    maintainer read it), then those of 0 in file order; submodules in
+    must be 1 to N (ISO 15745-4:2003/Amd 1:2006, Annex D, Table D.28), then those of 0 in file order; submodules in
     slot and subslot order. `AllowSequenceErrors` writes a sequence with
     gaps or repeats instead of refusing it.
 - **`gsdml.RecordWrite`** has the fields of `controller.Parameter`:
@@ -61,8 +63,21 @@ TransferSequence, without writing anything.
 - Rules `transfer-sequence` and `parameter-plan`
   (`RuleTransferSequence`, `RuleParameterPlan`).
 
+- **The plan writes only what the file authorizes:** the model must be of
+  the file's device (VendorID, DeviceID), values may set only fields that
+  are `Changeable` (Table D.31), and a field set twice, by its ID and its
+  name, is refused instead of one value winning by map order.
+
 ### Changed
 
+- Without `AllowedValues`, a field's ValueItem gives its permitted
+  values: `Set` refuses another one with `ErrInvalidConfig` (Table D.31).
+  `Check` reports an `AllowedValues` that is not a subset of the
+  ValueItem's values, and a ValueItem value that is no value of the
+  field's DataType, as errors; a default outside the ValueItem's values as
+  a warning.
+- Two Consts that share octets are an error of `Check` (D.4.7.3), no
+  longer a warning.
 - `ParameterRecord.Check` no longer warns about a field over a Const:
   ISO 15745-4:2003/Amd 1:2006, Annex D, D.4.7.4 allows it and gives the
   Ref precedence, as `ToModel` and `Encode` already write it. Two fields,

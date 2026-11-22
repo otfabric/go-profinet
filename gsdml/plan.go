@@ -101,11 +101,16 @@ const (
 // writes nothing: the plan is for controller.DeviceConfig.Parameters
 // (converted with controller.Parameter(w.Write)) or for review.
 //
+//   - The model must be of the file's device (VendorID and DeviceID) and
+//     DAP (ModuleIdentNumber).
 //   - Every plugged module must be one the DAP can use, in a slot of the
 //     DAP's PhysicalSlots and of the module's AllowedInSlots, and every
 //     plugged submodule must be in the file. The DAP's interface and port
 //     submodules have no parameter records here: their PDev records are
 //     the controller's (PeerChecks, MRP).
+//   - Values may set only fields that are Changeable (Table D.31), each
+//     once: an ID and a name of one field are refused, rather than one of
+//     them winning by map order.
 //   - A record is written when PlanOptions.Values sets a field of it, or,
 //     with PlanOptions.Defaults, always. A record with values must build
 //     (ParameterRecord.Encode); a record written with its defaults only
@@ -132,6 +137,9 @@ func PlanParameters(doc *Document, m *model.Device, opts PlanOptions) (*Paramete
 	}
 	dap, ap, err := findDAP(doc, opts.DAP)
 	if err != nil {
+		return nil, err
+	}
+	if err := sameDevice(doc, m); err != nil {
 		return nil, err
 	}
 	if id, err := ParseUint32(dap.ModuleIdentNumber); err != nil || id != m.DAP.IdentNumber {
@@ -199,6 +207,28 @@ func PlanParameters(doc *Document, m *model.Device, opts PlanOptions) (*Paramete
 	}
 	plan.Writes = append(plan.Writes, writes...)
 	return plan, nil
+}
+
+// sameDevice checks that the model is of the file's device: the same
+// VendorID and DeviceID. Module ident numbers alone do not tell two
+// devices apart.
+func sameDevice(doc *Document, m *model.Device) error {
+	id := doc.ProfileBody.DeviceIdentity
+	if id == nil {
+		return fmt.Errorf("gsdml: %w: no DeviceIdentity", profinet.ErrMalformed)
+	}
+	vid, err := ParseUint16(id.VendorID)
+	if err != nil {
+		return fmt.Errorf("gsdml: %w: VendorID %q", profinet.ErrMalformed, clip(id.VendorID))
+	}
+	did, err := ParseUint16(id.DeviceID)
+	if err != nil {
+		return fmt.Errorf("gsdml: %w: DeviceID %q", profinet.ErrMalformed, clip(id.DeviceID))
+	}
+	if vid != m.Identity.VendorID || did != m.Identity.DeviceID {
+		return fmt.Errorf("gsdml: %w: model of device 0x%04X/0x%04X, the file is of 0x%04X/0x%04X", profinet.ErrInvalidConfig, m.Identity.VendorID, m.Identity.DeviceID, vid, did)
+	}
+	return nil
 }
 
 // findDAP returns the device access point with ID id, the first when id is
@@ -300,6 +330,7 @@ func planSubmodule(p model.PluggedSubmodule, pos string, recs []ParameterRecord,
 		set := map[int]string{}
 		if v != nil {
 			v.used = true
+			keys := map[int]string{}
 			for key, val := range v.values {
 				f, err := r.Field(key)
 				if errors.Is(err, profinet.ErrNotFound) {
@@ -308,6 +339,16 @@ func planSubmodule(p model.PluggedSubmodule, pos string, recs []ParameterRecord,
 				if err != nil {
 					return nil, issues, fmt.Errorf("%s: %w", pos, err)
 				}
+				if other, dup := keys[f]; dup {
+					// An ID and a name of one field: which value wins
+					// would depend on the map's order.
+					a, b := min(key, other), max(key, other)
+					return nil, issues, fmt.Errorf("gsdml: %w: %s: record %d: %q and %q are the same field", profinet.ErrInvalidConfig, pos, r.Index, clip(a), clip(b))
+				}
+				if !r.Fields[f].Changeable {
+					return nil, issues, fmt.Errorf("gsdml: %w: %s: record %d field %q is not Changeable", profinet.ErrInvalidConfig, pos, r.Index, clip(r.Fields[f].Name))
+				}
+				keys[f] = key
 				set[f] = val
 			}
 		}

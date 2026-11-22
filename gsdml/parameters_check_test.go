@@ -340,6 +340,9 @@ func TestParameterCheck(t *testing.T) {
 	}}
 	got := map[string]Severity{}
 	for _, is := range r.Check() {
+		if is.Rule == RuleParameterOverlap {
+			continue // below
+		}
 		got[is.Path+" "+is.Rule] = is.Severity
 		if strings.Contains(is.Message, "%!") {
 			t.Errorf("message %q", is.Message)
@@ -357,7 +360,6 @@ func TestParameterCheck(t *testing.T) {
 		p + "/Ref[8] parameter-allowed-values": SeverityUnvalidated,
 		p + "/Ref[9] parameter-allowed-values": SeverityUnvalidated,
 		p + "/Ref[10] parameter-encoding":      SeverityUnvalidated,
-		p + " parameter-overlap":               SeverityWarning,
 	}
 	for k, s := range want {
 		if got[k] != s || (s == SeverityError && got[k] != SeverityError) {
@@ -375,8 +377,17 @@ func TestParameterCheck(t *testing.T) {
 	}
 	var overlaps []string
 	for _, is := range r.Check() {
-		if is.Rule == RuleParameterOverlap {
-			overlaps = append(overlaps, is.Message)
+		if is.Rule != RuleParameterOverlap {
+			continue
+		}
+		overlaps = append(overlaps, is.Message)
+		// Consts may not overlap (D.4.7.3); fields may, with a warning.
+		want := SeverityWarning
+		if strings.HasPrefix(is.Message, "Const") {
+			want = SeverityError
+		}
+		if is.Severity != want {
+			t.Errorf("overlap %v", is)
 		}
 	}
 	// Word and Bit; Const[0] and Const[2]; not Const[0] and Over, a Ref
@@ -444,4 +455,73 @@ func FuzzParameterAllowedValues(f *testing.F) {
 			_ = (&ParameterField{DataType: d, AllowedValues: list}).allowed(value)
 		}
 	})
+}
+
+// Without AllowedValues, a field's ValueItem gives its permitted values;
+// with both, AllowedValues must be a subset of them (Table D.31).
+func TestParameterValueItem(t *testing.T) {
+	t.Parallel()
+	vals := func(cs ...string) []ParameterValue {
+		var out []ParameterValue
+		for _, c := range cs {
+			out = append(out, ParameterValue{Content: c})
+		}
+		return out
+	}
+	for _, c := range []struct {
+		f     ParameterField
+		value string
+		err   error
+	}{
+		{ParameterField{DataType: DataTypeUnsigned8, Values: vals("1", "2")}, "2", nil},
+		{ParameterField{DataType: DataTypeUnsigned8, Values: vals("1", "2")}, "0x02", nil},
+		{ParameterField{DataType: DataTypeUnsigned8, Values: vals("1", "2")}, "3", profinet.ErrInvalidConfig},
+		{ParameterField{DataType: DataTypeUnsigned8, Values: vals("x")}, "1", profinet.ErrInvalidConfig},
+		{ParameterField{DataType: DataTypeUnsigned8, Values: vals("1", "2"), AllowedValues: "3"}, "3", nil}, // AllowedValues decides; Check reports
+		{ParameterField{DataType: DataTypeVisibleString, Length: 2, Values: vals("ab")}, "ab", nil},
+		{ParameterField{DataType: DataTypeVisibleString, Length: 2, Values: vals("ab")}, "ba", profinet.ErrInvalidConfig},
+		{ParameterField{DataType: DataTypeUnsigned8}, "3", nil},
+	} {
+		if err := c.f.allowed(c.value); (c.err == nil) != (err == nil) || (c.err != nil && !errors.Is(err, c.err)) {
+			t.Errorf("%+v %q: %v, want %v", c.f, c.value, err, c.err)
+		}
+	}
+	for _, c := range []struct {
+		t       DataType
+		allowed string
+		values  []ParameterValue
+		issues  int
+	}{
+		{DataTypeUnsigned8, "1..3", vals("1", "2", "3", "4"), 0},
+		{DataTypeUnsigned8, "1..3", vals("1", "3"), 1},
+		{DataTypeUnsigned8, "1.5..3", vals("2", "3"), 0}, // the integers 2 and 3
+		{DataTypeUnsigned8, "3..1", vals("1"), 0},        // empty
+		{DataTypeUnsigned8, "0..100000", vals("1"), 1},
+		{DataTypeInteger8, "-2..-1", vals("-2", "-1"), 0},
+		{DataTypeFloat32, "1.5", vals("1.5"), 0},
+		{DataTypeFloat32, "1..2", vals("1", "2"), 1},
+		{DataTypeUnsigned8, "1", vals("1", "x"), 1},
+		{DataTypeVisibleString, "1", vals("a"), 0}, // not compared
+	} {
+		f := ParameterField{DataType: c.t, AllowedValues: c.allowed, Values: c.values}
+		ranges, err := parseAllowedValues(c.allowed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if is := f.valueItemIssues(ranges); len(is) != c.issues {
+			t.Errorf("%s %q %v: %v", c.t, c.allowed, c.values, is)
+		}
+	}
+	// Check reports both, and a default the ValueItem does not assign.
+	r := ParameterRecord{Index: 1, Length: 2, Fields: []ParameterField{
+		{Name: "A", DataType: DataTypeUnsigned8, Length: 1, Default: "1", AllowedValues: "1..2", Values: vals("1")},
+		{Name: "B", DataType: DataTypeUnsigned8, ByteOffset: 1, Length: 1, Default: "5", Values: vals("1", "2")},
+	}}
+	got := map[string]Severity{}
+	for _, is := range r.Check() {
+		got[is.Path+" "+is.Rule] = is.Severity
+	}
+	if got["ParameterRecordDataItem[1]/Ref[0] parameter-allowed-values"] != SeverityError || got["ParameterRecordDataItem[1]/Ref[1] parameter-default"] != SeverityWarning || len(got) != 2 {
+		t.Fatalf("%v", got)
+	}
 }
