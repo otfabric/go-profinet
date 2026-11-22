@@ -73,11 +73,32 @@ v1.0.0 the API may change between minor versions; changes are listed in
 | `Parse(io.Reader)`, `ParseBytes([]byte) (*Document, error)` | read a document (UTF-8 or ISO-8859-1, at most `MaxDocumentSize`) |
 | `Validate(*Document) error` | the errors of `Check`: structural, lexical, reference and IO data length; a `*ValidationError` lists the `Issue`s |
 | `Check(*Document) Report` | every issue with its `Severity` (`SeverityError`, `SeverityWarning`, `SeverityUnvalidated`) and `Rule` (`RuleStructure`, `RuleReference`, `RuleIODataLength`, `RuleSlots`, …), the declared `SchemaVersion`; `Report.Count`, `Report.Err` |
+| `CheckBytes([]byte) (Report, error)`, `ValidateBytes([]byte) error` | `Check` with the structure and references validated against the schema of the file's own version (`gsdml/typed`): issues with `RuleSchema` and `Issue.Line` |
 | `Encode(io.Writer, *Document)`, `Marshal(*Document)` | write; unknown elements and attributes are kept |
 | `ToModel(doc, dapID)`, `FromModel(model, GenerateOptions)` | conversion to and from `model.Device` |
 | `FileName(model, version, date)` | the conventional file name |
 | `(*Document).Text(id)`, `DataItemSize`, `ParseUint16/32`, `ParseBool`, `ParseValueList`, `FormatValueList` | helpers |
 | the generated element types (`ISO15745Profile`, `DeviceAccessPointItem`, `ModuleItem`, `VirtualSubmoduleItem`, …) | see [gsdml/SCHEMA.md](gsdml/SCHEMA.md) |
+
+## gsdml/typed — the GSDML schema model
+
+| Symbol | Purpose |
+|--------|---------|
+| `DetectVersion([]byte)`, `Versions()` | the schema version a document names; the versions there are types for (1.0 … 2.46) |
+| `Validate([]byte)`, `ValidateVersion([]byte, version)` | validate against the schema of the document's version, or of a given one; a `*SchemaError` (`Version`, `Issues` with `Line`, `Path`, `Message`, `Truncated`) |
+| `Parse`, `ParseVersion`, `Decode`, `DecodeVersion` | validate and decode, or decode only, into a `Versioned` (`*Document[T]`: `Version`, `Root`, `SchemaLocation`, `Marshal`, `Encode`, `Validate`) |
+| `ParseAs`, `DecodeAs` | the same for a known root type (used by the version packages) |
+| `ParseNode([]byte) (*Node, error)`, `Node` | the generic element tree, with the package's limits |
+| `Integer`, `Decimal` | values of unbounded integer and decimal types |
+| the generated types (`ISO15745Profile_V246`, `ModuleItemT_V231`, …) | one struct per complex type and variant: [docs/GSDML-TYPED.md](docs/GSDML-TYPED.md) |
+| `ErrUnknownVersion`, `MaxIssues`, `MaxDocumentSize`, `MaxElements`, `MaxDepth` | |
+
+## gsdml/versions/v100 … v246 — one schema version
+
+| Symbol | Purpose |
+|--------|---------|
+| `Version`, `Document`, `Parse`, `Decode`, `Validate` | the version's document type and functions |
+| the version's type names (`ISO15745Profile`, `ModuleItemT`, …) and enumeration constants | aliases of the `gsdml/typed` structs |
 
 ## gsdml/gsdx — GSDX (OPC) containers
 

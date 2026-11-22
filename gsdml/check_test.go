@@ -61,10 +61,9 @@ func TestCheckClean(t *testing.T) {
 	if len(r.Issues) != 0 || r.SchemaVersion != "2.35" || r.Err() != nil {
 		t.Fatalf("%+v", r)
 	}
-	// The fixtures: valid, their vendor extensions unvalidated, and the
-	// DataType legality of their versions (2.43, 2.4: not audited)
-	// unvalidated once.
-	for f, unvalidated := range map[string]int{"testdata/otf-fixture-latin1.xml": 3, "testdata/pnio-rs_sample-16real-32bool.xml": 1} {
+	// The fixtures: valid, their vendor extensions unvalidated, and their
+	// DataTypes legal by the audited schemas of their versions (2.43, 2.4).
+	for f, unvalidated := range map[string]int{"testdata/otf-fixture-latin1.xml": 2, "testdata/pnio-rs_sample-16real-32bool.xml": 0} {
 		b, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)

@@ -1,0 +1,71 @@
+# Called by pr.yml on every pull request that is not documentation only;
+# dispatch it to run it on a branch without a pull request.
+name: GSDML schemas
+run-name: "GSDML schemas (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+# Everything that needs the GSDML reference schemas, which are in the
+# private otfabric/profinet-gsdml-schema (their licence does not allow
+# redistributing them): verify the pinned checkout, check that the
+# generated gsdml/typed and gsdml/versions match what the schemas
+# generate, run the differential tests of gsdml.Validate and gsdml/typed
+# against xmllint, and check that the committed registry and DataType
+# audit still match the schemas (make gsdml-schemas-check). The checkout lives in the runner only.
+
+on:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: GSDML schemas
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # A pull request from a fork, and a Dependabot run, have no secrets:
+      # the job ends with a notice, so that "OT Fabric Required Checks"
+      # can pass; the next run with secrets checks the change.
+      - name: Can this run read the schemas?
+        id: token
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          HAS_TOKEN: ${{ secrets.OTFABRIC_READ_TOKEN != '' }}
+        run: |
+          run=true
+          if [ "$EVENT" = pull_request ] && [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::notice::GSDML schema checks skipped: a pull request from a fork has no secrets"
+            run=false
+          elif [ "$EVENT" = pull_request ] && [ "$AUTHOR" = 'dependabot[bot]' ]; then
+            echo "::notice::GSDML schema checks skipped: Dependabot runs have no Actions secrets"
+            run=false
+          elif [ "$HAS_TOKEN" != true ]; then
+            echo "::notice::GSDML schema checks skipped: OTFABRIC_READ_TOKEN is not available"
+            run=false
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        if: steps.token.outputs.run == 'true'
+      - uses: actions/setup-go@v7
+        if: steps.token.outputs.run == 'true'
+        with:
+          go-version: "1.26.x"
+      - name: xmllint
+        if: steps.token.outputs.run == 'true'
+        run: command -v xmllint || { sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils; }
+      - name: Read access to otfabric/profinet-gsdml-schema
+        if: steps.token.outputs.run == 'true'
+        env:
+          TOKEN: ${{ secrets.OTFABRIC_READ_TOKEN }}
+        run: git config --global url."https://x-access-token:${TOKEN}@github.com/otfabric/profinet-gsdml-schema".insteadOf "https://github.com/otfabric/profinet-gsdml-schema"
+      - name: make gsdml-schemas gsdml-schemas-check
+        if: steps.token.outputs.run == 'true'
+        env:
+          GOWORK: "off"
+        run: make gsdml-schemas gsdml-schemas-check

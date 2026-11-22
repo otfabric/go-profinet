@@ -302,13 +302,29 @@ type simpleType struct {
 	pattern  *regexp.Regexp
 	enum     map[string]bool
 	uintBits int
+	// collapse: an xsd:token type, whose value is collapseSpace of the
+	// attribute.
+	collapse bool
+}
+
+// collapseSpace applies the xsd:token white space rule: runs of the XML
+// white space characters (space, tab, CR, LF) become one space, and
+// leading and trailing ones are removed. Other Unicode spaces stay.
+func collapseSpace(s string) string {
+	if !strings.ContainsAny(s, " \t\r\n") {
+		return s
+	}
+	return strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == '\t' || r == '\r' || r == '\n' }), " ")
 }
 
 // Issue is a problem Validate found.
 type Issue struct {
 	// Path is the element path, for example
 	// "ISO15745Profile/ProfileBody/DeviceIdentity".
-	Path    string `json:"path"`
+	Path string `json:"path"`
+	// Line is the line of the element's start tag, for the issues of
+	// RuleSchema; 0 when not known.
+	Line    int    `json:"line,omitempty"`
 	Message string `json:"message"`
 	// Severity grades the issue; Validate reports only errors.
 	Severity Severity `json:"severity"`
@@ -367,6 +383,10 @@ type validator struct {
 	// unverified records that a DataType's legality was not decided.
 	version    string
 	unverified bool
+	// schema: the schema of the document's version decides structure
+	// (CheckBytes), so the catalog's structural and unknown-content
+	// issues are not listed.
+	schema bool
 }
 
 // room reports whether one more issue of severity s is listed, and
@@ -419,7 +439,7 @@ func (v *validator) where() string {
 }
 
 func (v *validator) report(format string, a ...any) {
-	if v.room(SeverityError) {
+	if !v.schema && v.room(SeverityError) {
 		v.issues = append(v.issues, Issue{Path: v.where(), Message: fmt.Sprintf(format, a...), Rule: RuleStructure})
 	}
 }
@@ -488,6 +508,9 @@ func (v *validator) attr(name, value, typ string, required bool) {
 		return
 	}
 	t := simpleTypes[typ]
+	if t.collapse {
+		value = collapseSpace(value)
+	}
 	switch {
 	case t.enum != nil && !t.enum[value]:
 		v.report("attribute %s: %q is not a %s", name, value, typ)
@@ -684,8 +707,9 @@ func (doc *Document) Text(id string) string {
 	if pl == nil {
 		return id
 	}
+	id = collapseSpace(id)
 	for i, t := range pl.Texts {
-		if t.TextID == id {
+		if collapseSpace(t.TextID) == id {
 			if textVisits != nil {
 				textVisits(i + 1)
 			}

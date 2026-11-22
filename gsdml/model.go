@@ -101,8 +101,8 @@ func (c *conv) text(id string) string {
 		if pl := c.doc.primaryLanguage(); pl != nil {
 			for _, t := range pl.Texts {
 				// As in Document.Text, the first text of an ID counts.
-				if _, dup := c.texts[t.TextID]; !dup {
-					c.texts[t.TextID] = t.Value
+				if k := collapseSpace(t.TextID); !hasKey(c.texts, k) {
+					c.texts[k] = t.Value
 				}
 			}
 			if textVisits != nil {
@@ -110,10 +110,15 @@ func (c *conv) text(id string) string {
 			}
 		}
 	}
-	if v, ok := c.texts[id]; ok {
+	if v, ok := c.texts[collapseSpace(id)]; ok {
 		return v
 	}
 	return id
+}
+
+func hasKey(m map[string]string, k string) bool {
+	_, ok := m[k]
+	return ok
 }
 
 // recordOctets returns the octets of the parameter records of the
@@ -233,7 +238,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	}
 	if sd := dap.SystemDefinedSubmoduleList; sd != nil {
 		for _, it := range sd.InterfaceSubmoduleItems {
-			s, err := c.systemSubmodule(it.TextID, it.SubslotNumber, it.SubmoduleIdentNumber)
+			s, err := c.systemSubmodule(it.TextID, it.subslotNumberOrDefault(), it.SubmoduleIdentNumber)
 			if err != nil {
 				return nil, err
 			}
@@ -282,7 +287,8 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	modules := map[string]*ModuleItem{}
 	if ap.ModuleList != nil {
 		for _, mi := range ap.ModuleList.ModuleItems {
-			modules[mi.ID] = mi
+			// IDs are xsd:token: compared after collapsing white space.
+			modules[collapseSpace(mi.ID)] = mi
 		}
 	}
 	// The records of the modules as they are plugged: a module in several
@@ -294,7 +300,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 		converted := map[string]model.Module{}
 		octets := map[string]int{}
 		for _, r := range dap.UseableModules.ModuleItemRefs {
-			mi := modules[r.ModuleItemTarget]
+			mi := modules[collapseSpace(r.ModuleItemTarget)]
 			if mi == nil {
 				return nil, bad("ModuleItemRef %q: no such module", r.ModuleItemTarget)
 			}

@@ -1,0 +1,3 @@
+line 22: /ISO15745Profile/ProfileBody/DeviceIdentity: attribute Unknown is not allowed
+line 22: /ISO15745Profile/ProfileBody/DeviceIdentity: attribute VendorID: "10xF000" does not match the pattern of Unsigned16hexT (0x[0-9a-fA-F]{1,4})
+line 26: /ISO15745Profile/ProfileBody/DeviceFunction: element {http://www.profibus.com/GSDML/2003/11/DeviceProfile}X is not expected here (expected: Family)

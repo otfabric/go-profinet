@@ -14,12 +14,18 @@
 //	                                        # report the DataType
 //	                                        # enumerations of each schema
 //	                                        # set as JSON
+//	go run ./internal/cmd/gengsdml -registry DIR
+//	                                        # report the GSDML versions
+//	                                        # and schema files of DIR as
+//	                                        # JSON
 //
 // The official GSDML schemas are published by PROFIBUS & PROFINET
 // International to its members under a licence that does not allow
 // redistributing them, so they are not in this repository and are not
-// read by default. Someone holding a licensed copy can check the catalog
-// against them with -xsd; the report names elements and attributes that
+// read by default. The maintainers keep a licensed copy in the private
+// repository otfabric/profinet-gsdml-schema (scripts/gsdml-schemas.sh
+// fetches it at a pinned commit); with it, or any licensed copy, -xsd
+// checks the catalog against them; the report names elements and attributes that
 // the catalog lacks or that the schema does not define. See
 // docs/CODEGEN.md.
 package main
@@ -48,6 +54,10 @@ type simpleType struct {
 	Pattern string   `json:"pattern"`
 	Enum    []string `json:"enum"`
 	Uint    int      `json:"uint"`
+	// WhiteSpace "collapse" is the xsd:token rule: runs of XML white space
+	// become one space and leading and trailing ones go, before the
+	// pattern and enumeration apply and before values are compared.
+	WhiteSpace string `json:"whiteSpace"`
 }
 
 type element struct {
@@ -225,6 +235,9 @@ func checkValue(t simpleType, v string) error {
 	if len(t.Enum) > 0 && !slices.Contains(t.Enum, v) {
 		return fmt.Errorf("%q is not in the enumeration", v)
 	}
+	if t.WhiteSpace == "collapse" {
+		v = strings.Join(strings.FieldsFunc(v, func(r rune) bool { return r == ' ' || r == '\t' || r == '\r' || r == '\n' }), " ")
+	}
 	if t.Pattern != "" && !regexp.MustCompile(t.Pattern).MatchString(v) {
 		return fmt.Errorf("%q does not match %s", v, t.Pattern)
 	}
@@ -299,6 +312,9 @@ func (c *catalog) check() error {
 		return fmt.Errorf("root %s is not defined", c.Root)
 	}
 	for n, t := range c.SimpleTypes {
+		if t.WhiteSpace != "" && t.WhiteSpace != "collapse" {
+			return fmt.Errorf("simple type %s: whiteSpace %q (only \"collapse\")", n, t.WhiteSpace)
+		}
 		if t.Pattern != "" {
 			if _, err := regexp.Compile(t.Pattern); err != nil {
 				return fmt.Errorf("type %s: %w", n, err)
@@ -396,6 +412,9 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 		}
 		if t.Uint > 0 {
 			p(", uintBits: %d", t.Uint)
+		}
+		if t.WhiteSpace == "collapse" {
+			p(", collapse: true")
 		}
 		p("},\n")
 	}
@@ -656,11 +675,18 @@ func main() {
 	root := flag.String("root", ".", "module root")
 	check := flag.Bool("check", false, "fail when the generated files are out of date")
 	xsdDir := flag.String("xsd", "", "compare the catalog with the GSDML XSDs in this directory")
+	registryDir := flag.String("registry", "", "report, as JSON, the GSDML versions and schema files of this directory of schemas")
 	auditRoots := flag.String("audit", "", "report, as JSON, the DataType enumerations of the schema sets with these root documents (comma-separated, oldest first)")
 	flag.Parse()
 	c, raw, err := load(filepath.Join(*root, "gsdml", "schema", "catalog.json"))
 	if err != nil {
 		fail(err)
+	}
+	if *registryDir != "" {
+		if err := writeRegistry(c, *registryDir, os.Stdout); err != nil {
+			fail(err)
+		}
+		return
 	}
 	if *auditRoots != "" {
 		if err := audit(c, strings.Split(*auditRoots, ","), os.Stdout); err != nil {

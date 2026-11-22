@@ -45,30 +45,51 @@ func TestDataTypeLegality(t *testing.T) {
 		{"2.35", DataTypeContextParameter, DataTypeOctetStringS, A},
 		{"2.35", DataTypeContextIO, DataTypeUnicodeString8, A},
 		{"2.35", DataTypeContextParameter, DataType61131WSTRING, A},
-		// In no audited schema.
+		// In no audited schema, V2.46 included.
 		{"2.35", DataTypeContextIO, DataTypeInteger32S, F},
 		{"2.35", DataTypeContextParameter, DataTypeUnsigned32S, F},
 		{"2.35", DataTypeContextIO, DataTypeFloat64PlusStatus8, F},
 		{"2.35", DataTypeContextIO, DataTypeUTF8String, F},
-		// Not monotonic: removed between V2.2 and V2.35.
+		{"2.46", DataTypeContextIO, DataTypeInteger32S, F},
+		{"2.46", DataTypeContextIO, DataTypeFloat64PlusStatus8, F},
+		{"2.46", DataTypeContextIO, DataTypeUTF8String, F},
+		// V2.46 adds four composites, in IO data only.
+		{"2.45", DataTypeContextIO, DataTypeInteger16PlusUnsigned8, F},
+		{"2.46", DataTypeContextIO, DataTypeInteger16PlusUnsigned8, A},
+		{"2.46", DataTypeContextIO, DataTypeUnsigned32PlusUnsigned8, A},
+		{"2.46", DataTypeContextParameter, DataTypeUnsigned32PlusUnsigned8, F},
+		// V2.32 opens the parameter Ref to the profile types.
+		{"2.31", DataTypeContextParameter, DataTypeUnipolar216, F},
+		{"2.32", DataTypeContextParameter, DataTypeUnipolar216, A},
+		// Not monotonic: removed from the channel diagnosis by V2.31 and
+		// from the unit diagnosis by V2.32.
+		{"2.3", DataTypeContextExtChannel, DataTypeOctetString, A},
+		{"2.31", DataTypeContextExtChannel, DataTypeOctetString, F},
 		{"2.2", DataTypeContextExtChannel, DataTypeVisibleString, A},
 		{"2.35", DataTypeContextExtChannel, DataTypeVisibleString, F},
-		{"2.2", DataTypeContextUnitDiag, DataTypeDate, A},
+		{"2.31", DataTypeContextUnitDiag, DataTypeDate, A},
+		{"2.32", DataTypeContextUnitDiag, DataTypeDate, F},
 		{"2.35", DataTypeContextUnitDiag, DataTypeDate, F},
+		// The process alarm context starts with V2.35.
+		{"2.34", DataTypeContextProcessAlarm, DataTypeUnsigned8, F},
+		{"2.35", DataTypeContextProcessAlarm, DataTypeUnsigned8, A},
 		// Added by V2.1 to the parameter Ref.
 		{"2.0", DataTypeContextParameter, DataTypeFloat32, F},
 		{"2.1", DataTypeContextParameter, DataTypeFloat32, A},
 		// A context the version does not have allows nothing.
 		{"1.0", DataTypeContextExtChannel, DataTypeUnsigned8, F},
 		{"2.2", DataTypeContextProcessAlarm, DataTypeUnsigned8, F},
-		// V2.0's copy enumerates "F_MessageTrailer5Byte " with a space.
+		// V2.0's schema enumerates "F_MessageTrailer5Byte " with a space.
 		{"2.0", DataTypeContextIO, DataTypeFMessageTrailer5Byte, U},
 		{"2.0", DataTypeContextIO, DataTypeFMessageTrailer4Byte, A},
-		// Versions no audited schema covers, newer ones included.
-		{"2.3", DataTypeContextIO, DataTypeUnsigned8, U},
-		{"2.34", DataTypeContextIO, DataTypeBit, U},
-		{"2.45", DataTypeContextIO, DataTypeUnsigned8, U},
+		// Every version from V1.0 to V2.46 is audited.
+		{"2.3", DataTypeContextIO, DataTypeUnsigned8, A},
+		{"2.34", DataTypeContextIO, DataTypeBit, F},
+		{"2.45", DataTypeContextIO, DataTypeUnsigned8, A},
+		// A version no audited schema covers, newer or unknown.
 		{"2.5", DataTypeContextIO, DataTypeUnsigned8, U},
+		{"2.47", DataTypeContextIO, DataTypeUnsigned8, U},
+		{"2.27", DataTypeContextIO, DataTypeUnsigned8, U},
 		{"", DataTypeContextIO, DataTypeUnsigned8, U},
 		{"2.35", "other", DataTypeUnsigned8, U},
 	} {
@@ -76,7 +97,7 @@ func TestDataTypeLegality(t *testing.T) {
 			t.Errorf("%s %s %s: %v, want %v", tc.version, tc.ctx, tc.dt, got, tc.want)
 		}
 	}
-	if got := DataTypeLegalityVersions(); !reflect.DeepEqual(got, []string{"1.0", "2.0", "2.1", "2.2", "2.35"}) {
+	if got := DataTypeLegalityVersions(); !reflect.DeepEqual(got, []string{"1.0", "2.0", "2.1", "2.2", "2.25", "2.3", "2.31", "2.32", "2.33", "2.34", "2.35", "2.4", "2.41", "2.42", "2.43", "2.44", "2.45", "2.46"}) {
 		t.Fatalf("versions %v", got)
 	}
 	// Every context of the tables has its constant.
@@ -113,7 +134,7 @@ func TestLegalityText(t *testing.T) {
 
 // TestCheckDataTypeContext: a DataType the audited V2.35 schema forbids in
 // its context is a warning, and Validate still passes; a document of a
-// version that was not audited gets one unvalidated issue.
+// version no audited schema covers gets one unvalidated issue.
 func TestCheckDataTypeContext(t *testing.T) {
 	b, err := os.ReadFile("testdata/fixtures/GSDML-V2.35-OTFabric-CompactFixture-20261027.xml")
 	if err != nil {

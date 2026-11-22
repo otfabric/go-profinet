@@ -1,0 +1,7 @@
+golden/pnio-rs_sample-16real-32bool.typed.xml is the re-encoding by
+gsdml/typed of gsdml/testdata/pnio-rs_sample-16real-32bool.xml, from
+https://github.com/core-engineering/pnio-rs (MIT OR Apache-2.0, used under
+the MIT licence; source, commit and licence text in gsdml/testdata/NOTICE).
+
+The other golden vectors are re-encodings of go-profinet's own fixtures in
+gsdml/testdata/fixtures, MIT licensed like the rest of the module.

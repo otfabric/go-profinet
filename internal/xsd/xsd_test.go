@@ -74,6 +74,12 @@ func TestLoadRoot(t *testing.T) {
 	if len(s.Files) != 2 || s.Files[0].Name != "root.xsd" || s.Files[1].Name != "types.xsd" || s.Files[0].Version != "9.1" || s.Files[1].TargetNamespace != "urn:t" || len(s.Files[0].SHA256) != 64 {
 		t.Fatalf("files %+v", s.Files)
 	}
+	if f := s.Files[0]; f.VersionDate != "20250512" || f.Size == 0 || !reflect.DeepEqual(f.Imports, []string{"types.xsd", "types.xsd", "gone.xsd"}) {
+		t.Fatalf("root file %+v", f)
+	}
+	if f := s.Files[1]; f.VersionDate != "" || f.Imports != nil {
+		t.Fatalf("types file %+v", f)
+	}
 	if !reflect.DeepEqual(s.Missing, []string{"gone.xsd"}) {
 		t.Fatalf("missing %v", s.Missing)
 	}

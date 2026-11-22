@@ -19,6 +19,7 @@ addresses and timings differ from run to run).
 | [chaos](chaos/main.go) | an AR under loss, duplication, reordering, corruption and jitter; a pulled cable; reconnection and counters | self-contained |
 | [gsdml](gsdml/main.go) | generating the GSDML file of a device model | self-contained |
 | [gsdmlimport](gsdmlimport/main.go) | reading and validating a GSDML file, converting it to the expected configuration | self-contained |
+| [gsdmltyped](gsdmltyped/main.go) | the generated GSDML model: validating against the file's own schema version, the typed structs of that version, a change the schema forbids | self-contained |
 | [gsdx](gsdx/main.go) | inspecting an OPC (GSDX) container and checking the GSDML part in it | self-contained |
 | [device](device/main.go) | an IO-Device on a real interface | needs raw Ethernet access |
 | [controller](controller/main.go) | an IO-Controller on a real interface, connecting the example device | needs raw Ethernet access |
@@ -191,6 +192,20 @@ slot 3: "out3" (0x00000103) subslot 1: 0 octets in, 64 out, 0 record(s)
 slot 4: "out4" (0x00000104) subslot 1: 0 octets in, 4 out, 0 record(s)
 4 module type(s) usable
 ```
+
+## gsdmltyped
+
+```console
+$ go run ./examples/gsdmltyped
+the file is valid against GSDML V2.35 (one of 18 generated schema versions)
+vendor 0xF000, device 0x0001
+DAP DAP: module ident 0x00000100, slots 0..2, shared device false
+after an invalid change: line 16: /ISO15745Profile/ProfileBody/DeviceIdentity: attribute DeviceID: "66" does not match the pattern of Unsigned16hexT (0x[0-9a-fA-F]{1,4})
+CheckBytes: 0 errors, 0 warnings
+```
+
+`go run ./examples/gsdmltyped FILE` lists the issues of a file, with lines,
+and exits 1 when it has errors.
 
 ## gsdx
 

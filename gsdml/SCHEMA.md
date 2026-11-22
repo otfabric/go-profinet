@@ -17,14 +17,14 @@ and attributes a document has beyond these are kept and written back.
 | `Boolean` | true or false (also 1 or 0). One of: `true`, `false`, `1`, `0`. |
 | `ConformanceClass` | The PROFINET conformance class. One of: `A`, `B`, `C`, `D`. |
 | `Consistency` | The consistency of IO data. One of: `Item consistency`, `All items consistency`. |
-| `DataType` | The data type of a DataItem or Ref. 55 values. |
-| `ID` | An identifier unique in the document. |
-| `IDRef` | A reference to an ID. |
+| `DataType` | The data type of a DataItem or Ref. 59 values. |
+| `ID` | An identifier (xsd:token in every schema version, so it may contain spaces). |
+| `IDRef` | A reference to an ID (xsd:token, compared after collapsing white space). |
 | `Language` | An ISO 639-1 language code. |
 | `MainFamily` | The main device family. 15 values. |
 | `NetloadClass` | The netload robustness class. One of: `I`, `II`, `III`. |
 | `RTClasses` | RT classes separated by blanks or semicolons. |
-| `SoftwareRelease` | A software release such as V1.2.3. |
+| `SoftwareRelease` | A software release such as V1.2.3 (xsd:token: "V 1.2.3" is valid too). |
 | `StartupMode` | The startup modes of an interface. |
 | `TokenList` | Tokens separated by blanks or semicolons. |
 | `Unsigned16` | 0..65535 in decimal or 0x hexadecimal. |
@@ -421,7 +421,7 @@ The interface submodule (subslot 0x8000) with the RT properties.
 | Attribute | Type | |
 |-----------|------|---|
 | `ID` | `ID` | **required** |
-| `SubslotNumber` | `Unsigned16` |  |
+| `SubslotNumber` | `Unsigned16` | default `32768` |
 | `TextId` | `IDRef` | **required** |
 | `SubmoduleIdentNumber` | `Unsigned32Hex` | **required** |
 | `SupportedRT_Classes` | `RTClasses` |  |

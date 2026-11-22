@@ -89,6 +89,7 @@ matrix (section 5).
 | SNMP agent v1/v2c (MIB-II, LLDP-MIB) | ✅ | n/a | — | ✅ | Net-SNMP |
 | Persistence of name, IP, DHCP options, I&M | ✅ | n/a | n/a | ✅ restart, corruption | n/a (local) |
 | GSDML: parse, validate, check, model, generate, GSDX inspection | ✅ library | ✅ library | ✅ `gsdml` | ✅ fixtures | pnio-rs's GSDML; profinet-py parses go-profinet's |
+| GSDML typed model and schema validation, V1.0–V2.46 (`gsdml/typed`, `gsdml/versions`, `gsdml.CheckBytes`), generated from the reference schemas | ✅ library | ✅ library | — | ✅ fixtures, mutants | libxml2's xmllint agrees on every file and mutant of the differential test |
 | System redundancy S2 | 🧪 | 🧪 | — | ✅ | none exists |
 | RT_CLASS_UDP, MCR, PTCP delay frames | ⚙ | ⚙ | — | refusal | decoders only |
 | Observability: `profinet.Metrics` callbacks, slog structured logging, per-component counters | ✅ | ✅ | ◐ `--debug` logs, `io statistics` | ✅ | n/a (local) |
@@ -195,6 +196,7 @@ text is not available to the project.
 | Persistence | temporary vs permanent as p-net reads the CMINA state table | port, interface and MRP adjustments not stored |
 | System redundancy S2 | Wireshark's elements; p-net's comment for the RDHT unit | not interoperable; R1/R2, MTOT, backup re-parameterization not implemented |
 | RT_CLASS_UDP, MCR, PTCP | Wireshark | no behaviour: no open implementation to check against |
-| GSDML | an independent catalog of the schema (the XSDs are members-only) | not PI's checker; GSDML 2.46/2.50 content unvalidated |
+| GSDML | an independent catalog of the schema (the XSDs are members-only); DataType legality per context from the schemas V1.0–V2.46 as TIA Portal V21 installs them (docs/research/GSDML-XSD-AUDIT.md) | not PI's checker; with the catalog alone (`Check`, `Validate`), GSDML 2.46 content other than DataTypes, and 2.50, unvalidated |
+| GSDML typed model, `CheckBytes` | generated from the 18 reference schemas V1.0–V2.46 (the copies TIA Portal V21 installs) by `internal/cmd/gsdmlc`; differential test against libxml2's xmllint: fixtures × 18 versions, 127 vendor files, 29 hand-written and about 3 200 seeded mutants, re-encodings (docs/research/GSDML-CODEGEN.md) | not PI's checker; agreement with one other XSD implementation; no V2.5x; `xsi:type` refused ([LIMITATIONS.md](../LIMITATIONS.md#gsdml)) |
 | AF_PACKET transport | Linux packet(7) | no rings (TPACKET_V3), no qdisc bypass: not measured to help |
 | Out of scope (IRT, PTCP sync, isochronous mode, MRPD, TSN, PROFIsafe, security classes, SXP, CC-E, certification) | members-only or hardware-bound | [research/NEXT-PROGRAM-REPORT.md](research/NEXT-PROGRAM-REPORT.md) |

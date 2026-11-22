@@ -52,16 +52,9 @@ func TestFixtures(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// A V2.35 fixture has no issue: its DataTypes are legal in
-			// their contexts by the audited V2.35 schema. Another
-			// version's has one: its DataType legality was not audited.
-			r := Check(doc)
-			switch {
-			case r.SchemaVersion == "2.35":
-				if len(r.Issues) != 0 {
-					t.Fatalf("issues: %+v", r.Issues)
-				}
-			case len(r.Issues) != 1 || r.Issues[0].Rule != RuleDataTypeContext || r.Issues[0].Severity != SeverityUnvalidated:
+			// No issue: every fixture's DataTypes are legal in their
+			// contexts by the audited schema of its version.
+			if r := Check(doc); len(r.Issues) != 0 {
 				t.Fatalf("issues: %+v", r.Issues)
 			}
 			out, err := Marshal(doc)

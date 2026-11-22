@@ -96,7 +96,7 @@ const (
 	RuleReductionRatio = "reduction-ratio"
 	// RuleDataTypeContext: a DataItem or parameter Ref DataType that the
 	// audited schema of the document's version does not allow in that
-	// context (third-party copies of the schemas; a warning), or whose
+	// context (a warning: see DataTypeLegality), or whose
 	// legality no audited schema decides (unvalidated, once per document).
 	// See DataTypeLegality.
 	RuleDataTypeContext = "datatype-context"
@@ -147,9 +147,15 @@ func (r *Report) Err() error {
 // in the path of an issue of the semantic rules is quoted up to 256
 // octets. The slot rules look at the slot numbers 0 to 65535: a list is
 // warned about once for the values above them.
-func Check(doc *Document) Report {
-	v := &validator{ids: map[string]string{}, texts: map[string]bool{}}
+func Check(doc *Document) Report { return check(doc, false) }
+
+func check(doc *Document, schema bool) Report {
+	v := &validator{ids: map[string]string{}, texts: map[string]bool{}, schema: schema}
 	doc.validate(v)
+	if schema {
+		// the schema's key and keyref constraints decide references
+		v.refs, v.tids = nil, nil
+	}
 	for _, r := range v.refs {
 		if _, ok := v.ids[r.id]; !ok {
 			v.add(r.path, SeverityError, RuleReference, "attribute %s: no element with ID %q", r.kind, r.id)
@@ -161,7 +167,7 @@ func Check(doc *Document) Report {
 		}
 	}
 	rep := Report{SchemaVersion: schemaVersion(doc)}
-	if rep.SchemaVersion != "" && newerThanCatalog(rep.SchemaVersion) {
+	if !schema && rep.SchemaVersion != "" && newerThanCatalog(rep.SchemaVersion) {
 		v.add("ISO15745Profile", SeverityUnvalidated, RuleSchemaVersion,
 			"schema version %s is newer than go-profinet's catalog (up to %s): what that version added is kept, not validated", rep.SchemaVersion, SchemaVersions[len(SchemaVersions)-1])
 	}
@@ -218,6 +224,9 @@ func newerThanCatalog(v string) bool {
 }
 
 func (v *validator) unknown(nodes []*Node) {
+	if v.schema {
+		return
+	}
 	for _, n := range nodes {
 		if v.room(SeverityUnvalidated) {
 			v.issues = append(v.issues, Issue{Path: v.where(), Severity: SeverityUnvalidated, Rule: RuleUnknown,
@@ -227,6 +236,9 @@ func (v *validator) unknown(nodes []*Node) {
 }
 
 func (v *validator) unknownAttrs(attrs []xml.Attr) {
+	if v.schema {
+		return
+	}
 	for _, a := range attrs {
 		// Namespace declarations and the XML Schema instance attributes
 		// (the parser keeps their prefixes in the name) are not content.

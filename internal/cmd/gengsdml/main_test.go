@@ -51,6 +51,9 @@ func TestCatalogChecks(t *testing.T) {
 		`{"root": "A", "simpleTypes": {"e": {"enum": ["x"]}}, "elements": [{"name": "A", "attrs": ["a:e=y"]}]}`,
 		`{"root": "A", "simpleTypes": {"p": {"pattern": "^a$"}}, "elements": [{"name": "A", "attrs": ["a:p=b"]}]}`,
 		`{"root": "A", "elements": [{"name": "A", "attrs": ["a:missing=1"]}]}`,
+		// whiteSpace: only "collapse"; a default is collapsed, then matched.
+		`{"root": "A", "simpleTypes": {"t": {"whiteSpace": "preserve"}}, "elements": [{"name": "A"}]}`,
+		`{"root": "A", "simpleTypes": {"t": {"whiteSpace": "collapse", "pattern": "^a$"}}, "elements": [{"name": "A", "attrs": ["a:t=a b"]}]}`,
 	}
 	dir := t.TempDir()
 	for i, b := range bad {
@@ -65,13 +68,13 @@ func TestCatalogChecks(t *testing.T) {
 	}
 	// A valid default.
 	p := filepath.Join(dir, "ok.json")
-	_ = os.WriteFile(p, []byte(`{"root": "A", "simpleTypes": {"u": {"uint": 8}, "e": {"enum": ["x"]}}, "elements": [{"name": "A", "attrs": ["a:u=1", "b:e=x"]}]}`), 0o644)
+	_ = os.WriteFile(p, []byte(`{"root": "A", "simpleTypes": {"u": {"uint": 8}, "e": {"enum": ["x"]}, "t": {"whiteSpace": "collapse", "pattern": "^a b$"}}, "elements": [{"name": "A", "attrs": ["a:u=1", "b:e=x", "c:t=a  b"]}]}`), 0o644)
 	c, _, err := load(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	src, err := generateGo(c, []byte("{}"))
-	if err != nil || !bytes.Contains(src, []byte("func (x *A) aOrDefault() string {")) || !bytes.Contains(src, []byte(`return "1"`)) {
+	if err != nil || !bytes.Contains(src, []byte("func (x *A) aOrDefault() string {")) || !bytes.Contains(src, []byte(`return "1"`)) || !bytes.Contains(src, []byte(`"t": {doc: "", pattern: regexp.MustCompile("^a b$"), collapse: true}`)) {
 		t.Fatalf("accessor missing: %v\n%s", err, src)
 	}
 	if doc := generateDoc(c); !bytes.Contains(doc, []byte("| `a` | `u` | default `1` |")) {

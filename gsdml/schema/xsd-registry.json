@@ -1,0 +1,908 @@
+{
+  "schema": "otfabric-gsdml-xsd-registry-v1",
+  "order": "by GSDML version number: the major version, then the minor version as two digits (2.4 is 2.40, after 2.35)",
+  "versions": [
+    {
+      "version": "1.0",
+      "deviceProfile": "GSDML-DeviceProfile-v1.0.xsd",
+      "primitives": "GSDML-Primitives-v1.0.xsd",
+      "schemaVersionAttribute": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "files": [
+        "GSDML-DeviceProfile-v1.0.xsd",
+        "xml.xsd",
+        "GSDML-Primitives-v1.0.xsd"
+      ],
+      "catalog": false,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.0",
+      "deviceProfile": "GSDML-DeviceProfile-v2.0.xsd",
+      "primitives": "GSDML-Primitives-v2.0.xsd",
+      "schemaVersionAttribute": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "files": [
+        "GSDML-DeviceProfile-v2.0.xsd",
+        "xml.xsd",
+        "GSDML-Primitives-v2.0.xsd",
+        "xmldsig-core-schema.xsd"
+      ],
+      "catalog": false,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.1",
+      "deviceProfile": "GSDML-DeviceProfile-v2.1.xsd",
+      "primitives": "GSDML-Primitives-v2.1.xsd",
+      "schemaVersionAttribute": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "files": [
+        "GSDML-DeviceProfile-v2.1.xsd",
+        "xml.xsd",
+        "GSDML-Primitives-v2.1.xsd",
+        "xmldsig-core-schema.xsd"
+      ],
+      "catalog": false,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.2",
+      "deviceProfile": "GSDML-DeviceProfile-v2.2.xsd",
+      "primitives": "GSDML-Primitives-v2.2.xsd",
+      "schemaVersionAttribute": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20080603",
+      "files": [
+        "GSDML-DeviceProfile-v2.2.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.2.xsd"
+      ],
+      "catalog": false,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.25",
+      "deviceProfile": "GSDML-DeviceProfile-v2.25.xsd",
+      "primitives": "GSDML-Primitives-v2.25.xsd",
+      "schemaVersionAttribute": "2.25",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20100611",
+      "files": [
+        "GSDML-DeviceProfile-v2.25.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.25.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.3",
+      "deviceProfile": "GSDML-DeviceProfile-v2.3.xsd",
+      "primitives": "GSDML-Primitives-v2.3.xsd",
+      "schemaVersionAttribute": "2.3",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20111110",
+      "files": [
+        "GSDML-DeviceProfile-v2.3.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.3.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.31",
+      "deviceProfile": "GSDML-DeviceProfile-v2.31.xsd",
+      "primitives": "GSDML-Primitives-v2.31.xsd",
+      "schemaVersionAttribute": "2.31",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20131120",
+      "files": [
+        "GSDML-DeviceProfile-v2.31.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.31.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.32",
+      "deviceProfile": "GSDML-DeviceProfile-v2.32.xsd",
+      "primitives": "GSDML-Primitives-v2.32.xsd",
+      "schemaVersionAttribute": "2.32",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20150325",
+      "files": [
+        "GSDML-DeviceProfile-v2.32.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.32.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.33",
+      "deviceProfile": "GSDML-DeviceProfile-v2.33.xsd",
+      "primitives": "GSDML-Primitives-v2.33.xsd",
+      "schemaVersionAttribute": "2.33",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20160315",
+      "files": [
+        "GSDML-DeviceProfile-v2.33.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.33.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.34",
+      "deviceProfile": "GSDML-DeviceProfile-v2.34.xsd",
+      "primitives": "GSDML-Primitives-v2.34.xsd",
+      "schemaVersionAttribute": "2.34",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20170703",
+      "files": [
+        "GSDML-DeviceProfile-v2.34.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.34.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.35",
+      "deviceProfile": "GSDML-DeviceProfile-v2.35.xsd",
+      "primitives": "GSDML-Primitives-v2.35.xsd",
+      "schemaVersionAttribute": "2.35",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20180423",
+      "files": [
+        "GSDML-DeviceProfile-v2.35.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.35.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.4",
+      "deviceProfile": "GSDML-DeviceProfile-v2.4.xsd",
+      "primitives": "GSDML-Primitives-v2.4.xsd",
+      "schemaVersionAttribute": "2.4",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20190805",
+      "files": [
+        "GSDML-DeviceProfile-v2.4.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.4.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.41",
+      "deviceProfile": "GSDML-DeviceProfile-v2.41.xsd",
+      "primitives": "GSDML-Primitives-v2.41.xsd",
+      "schemaVersionAttribute": "2.41",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20200518",
+      "files": [
+        "GSDML-DeviceProfile-v2.41.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.41.xsd",
+        "XAdES01903v132-201601.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.42",
+      "deviceProfile": "GSDML-DeviceProfile-v2.42.xsd",
+      "primitives": "GSDML-Primitives-v2.42.xsd",
+      "schemaVersionAttribute": "2.42",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20210225",
+      "files": [
+        "GSDML-DeviceProfile-v2.42.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.42.xsd",
+        "XAdES01903v132-201601.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.43",
+      "deviceProfile": "GSDML-DeviceProfile-v2.43.xsd",
+      "primitives": "GSDML-Primitives-v2.43.xsd",
+      "schemaVersionAttribute": "2.43",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20220429",
+      "files": [
+        "GSDML-DeviceProfile-v2.43.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.43.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.44",
+      "deviceProfile": "GSDML-DeviceProfile-v2.44.xsd",
+      "primitives": "GSDML-Primitives-v2.44.xsd",
+      "schemaVersionAttribute": "2.44",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20230529",
+      "files": [
+        "GSDML-DeviceProfile-v2.44.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.44.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.45",
+      "deviceProfile": "GSDML-DeviceProfile-v2.45.xsd",
+      "primitives": "GSDML-Primitives-v2.45.xsd",
+      "schemaVersionAttribute": "2.45",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20240508",
+      "primitivesVersionDate": "20240329",
+      "files": [
+        "GSDML-DeviceProfile-v2.45.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.45.xsd"
+      ],
+      "catalog": true,
+      "dataTypeLegality": true
+    },
+    {
+      "version": "2.46",
+      "deviceProfile": "GSDML-DeviceProfile-v2.46.xsd",
+      "primitives": "GSDML-Primitives-v2.46.xsd",
+      "schemaVersionAttribute": "2.46",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20250512",
+      "files": [
+        "GSDML-DeviceProfile-v2.46.xsd",
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.46.xsd"
+      ],
+      "catalog": false,
+      "dataTypeLegality": true
+    }
+  ],
+  "files": [
+    {
+      "name": "Common-Primitives-v1.0.xsd",
+      "sha256": "fc61c74221228eadf52d3c4563fc5c2dd8ae9e7d723aef1b0459d4e926ba18b9",
+      "size": 28622,
+      "version": "1.00",
+      "targetNamespace": "http://www.profibus.com/Common/2003/11/Primitives",
+      "versionDate": "20031130",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd"
+      ],
+      "usedBy": []
+    },
+    {
+      "name": "GSDML-DeviceProfile-v1.0.xsd",
+      "sha256": "e26673b282ed8312dc2529aea1be13ae8629080a316863b9097044a775bc1103",
+      "size": 32405,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "imports": [
+        "xml.xsd",
+        "GSDML-Primitives-v1.0.xsd"
+      ],
+      "usedBy": [
+        "1.0"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.0.xsd",
+      "sha256": "6fb4b0f83a9ee0053177460c917ff7c3792e2e2d91fd243a8f304ccdefd02ec2",
+      "size": 57399,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "imports": [
+        "xml.xsd",
+        "GSDML-Primitives-v2.0.xsd",
+        "xmldsig-core-schema.xsd"
+      ],
+      "usedBy": [
+        "2.0"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.1.xsd",
+      "sha256": "7e1c03887ceb42df16781559f69fa56277fd8cbb3dcb28f51698072d267057bc",
+      "size": 65373,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "imports": [
+        "xml.xsd",
+        "GSDML-Primitives-v2.1.xsd",
+        "xmldsig-core-schema.xsd"
+      ],
+      "usedBy": [
+        "2.1"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.2.xsd",
+      "sha256": "476464763d3b1d01384fa83d4c5da4277fec0ff828bbe19fb13d83d01cb291fc",
+      "size": 80791,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20080603",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.2.xsd"
+      ],
+      "usedBy": [
+        "2.2"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.25.xsd",
+      "sha256": "e51d1f65b1bf1612775c61e6afd7be9d6c51ea193a7b60f4319921f86950eccb",
+      "size": 73143,
+      "version": "2.25",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20100611",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.25.xsd"
+      ],
+      "usedBy": [
+        "2.25"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.3.xsd",
+      "sha256": "fac5ae06d401b5d6564bffb4e8e53927e680750b1bbd2e68c48c5c6e9df94e48",
+      "size": 80311,
+      "version": "2.3",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20111110",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.3.xsd"
+      ],
+      "usedBy": [
+        "2.3"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.31.xsd",
+      "sha256": "f8ddb451d527c54b807e5482b81a17039982068258a9b34ff634dc3f0f918469",
+      "size": 84975,
+      "version": "2.31",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20131120",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.31.xsd"
+      ],
+      "usedBy": [
+        "2.31"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.32.xsd",
+      "sha256": "020778e9a90d24dcd40800ce5bfb0e52bad8a281770e7e570fc36220847832a9",
+      "size": 90180,
+      "version": "2.32",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20150325",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.32.xsd"
+      ],
+      "usedBy": [
+        "2.32"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.33.xsd",
+      "sha256": "1caf2839cd32c938b17d3cf4fd39cd64d1d063477c6bd67fbfb0ab33390585bb",
+      "size": 93961,
+      "version": "2.33",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20160315",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.33.xsd"
+      ],
+      "usedBy": [
+        "2.33"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.34.xsd",
+      "sha256": "5ae59e8e5a34b5877cc52172a608c389b97389aa22edbe6bd5b62e4beaa1025e",
+      "size": 94546,
+      "version": "2.34",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20170703",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.34.xsd"
+      ],
+      "usedBy": [
+        "2.34"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.35.xsd",
+      "sha256": "72a955b073cbb94e04ff551e4fec06dd5d19a61b85edb58d624d8537613cafb0",
+      "size": 104146,
+      "version": "2.35",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20180423",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.35.xsd"
+      ],
+      "usedBy": [
+        "2.35"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.4.xsd",
+      "sha256": "640a1528c5c3bb32bdf74babd9b59ad1c594c1939964d8b336aaaee3497006e3",
+      "size": 105638,
+      "version": "2.4",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20190805",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.4.xsd"
+      ],
+      "usedBy": [
+        "2.4"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.41.xsd",
+      "sha256": "9052a778d0dc8a3bd72498d77aa43d4afb60e98cd0878701114f23d666786afa",
+      "size": 106412,
+      "version": "2.41",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20200518",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.41.xsd",
+        "XAdES01903v132-201601.xsd"
+      ],
+      "usedBy": [
+        "2.41"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.42.xsd",
+      "sha256": "96fd49de939ae1989c57ce8c40e1a249f5211488e7b4560499be0af0348df516",
+      "size": 106832,
+      "version": "2.42",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20210225",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.42.xsd",
+        "XAdES01903v132-201601.xsd"
+      ],
+      "usedBy": [
+        "2.42"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.43.xsd",
+      "sha256": "ea37fc5cf7cb66cc9ef91f673f6fbd0ee97c97f80efde6102bece9c41e6cb837",
+      "size": 116897,
+      "version": "2.43",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20220429",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.43.xsd"
+      ],
+      "usedBy": [
+        "2.43"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.44.xsd",
+      "sha256": "cb028daf85dbb066e4a44753ca0e533f004fb29408e8fdf5c0f3636150845c67",
+      "size": 119997,
+      "version": "2.44",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20230529",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.44.xsd"
+      ],
+      "usedBy": [
+        "2.44"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.45.xsd",
+      "sha256": "48d79bba3712f6bd66783ba03b82b01793744bf0370c82fbc51b4a7e85f522f3",
+      "size": 120399,
+      "version": "2.45",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20240508",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.45.xsd"
+      ],
+      "usedBy": [
+        "2.45"
+      ]
+    },
+    {
+      "name": "GSDML-DeviceProfile-v2.46.xsd",
+      "sha256": "da00136aa36736196bdaeb4e7d15600d587477e1974de6ab6c1f8dfe890d1f83",
+      "size": 120485,
+      "version": "2.46",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/DeviceProfile",
+      "versionDate": "20250512",
+      "imports": [
+        "xml.xsd",
+        "xmldsig-core-schema.xsd",
+        "GSDML-Primitives-v2.46.xsd"
+      ],
+      "usedBy": [
+        "2.46"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v1.0.xsd",
+      "sha256": "bdd6fb4c29c7ba9b7a19c12a96895747733ddd886a01e42787c1a47cd9e03226",
+      "size": 6129,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "1.0"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.0.xsd",
+      "sha256": "ac9230937e39988b31a82cf40bbb1bfd335e9fde5b6b0acb0b692b82a0090a7f",
+      "size": 10162,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.0"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.1.xsd",
+      "sha256": "fa5fc9050d423d7ca0c6d2c511e70306c373ffa6e01e777c87764e08bdc9ae39",
+      "size": 12186,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.1"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.2.xsd",
+      "sha256": "751e98e527f6dfb564083dcdc9122c4d1794fd61679d1f4f2b27034a263d6e7a",
+      "size": 13917,
+      "version": "1.0",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20080603",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.2"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.25.xsd",
+      "sha256": "00be88b12e03bdf74a0a346b7a4684ec36e1fc9686d8e044e1df89293d2a681d",
+      "size": 13974,
+      "version": "2.25",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20100611",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.25"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.3.xsd",
+      "sha256": "a2399066bb5fe0f942117eacfec6018e7dc07b3d03a7ddf4a1eb555e9f674170",
+      "size": 14384,
+      "version": "2.3",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20111110",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.3"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.31.xsd",
+      "sha256": "259e85616a34fd895326532036f9783358be71978512b72e4b7d40ca0c83d44c",
+      "size": 14779,
+      "version": "2.31",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20131120",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.31"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.32.xsd",
+      "sha256": "bdcb394ad7ea5e7e2a58b1bfcc14153e8f3297e1066403ab6b2354cf85b00a22",
+      "size": 16339,
+      "version": "2.32",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20150325",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.32"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.33.xsd",
+      "sha256": "623d7064555c9509cebb1a1fc48fa40ebd89281c2102439f8088c3838bbb0c5f",
+      "size": 16824,
+      "version": "2.33",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20160315",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.33"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.34.xsd",
+      "sha256": "c0c3d8fc1248395e53dc86b65ac99681254d8c89e5b0bbd550f60d85b6b5a7a6",
+      "size": 16824,
+      "version": "2.34",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20170703",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.34"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.35.xsd",
+      "sha256": "87ce4e3513daf1939d86ac349ceda7df993094832c6d8ee48cbe0b4ca826fc2b",
+      "size": 17429,
+      "version": "2.35",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20180423",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.35"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.4.xsd",
+      "sha256": "376cb5ce74cfdaf4b7285c1e9ae5023c52f69736d6f1ed63863552c9c43ba132",
+      "size": 17593,
+      "version": "2.4",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20190805",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.4"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.41.xsd",
+      "sha256": "85287fc3116222e90d89d136b2b32b8681ea51bb40242d573e358e7a82cf13c7",
+      "size": 17594,
+      "version": "2.41",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20200518",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.41"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.42.xsd",
+      "sha256": "ea48a4ae4986a8804e473d3469fe3e15c793c424b631e210ee48c9e35401bc33",
+      "size": 17594,
+      "version": "2.42",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20210225",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.42"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.43.xsd",
+      "sha256": "5be49e5b3463f7bd91863873d7ea06774fe4d2ddf46c17668efbb096b2a42abe",
+      "size": 18680,
+      "version": "2.43",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20220429",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.43"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.44.xsd",
+      "sha256": "b107c97ce898aa6d3f065a974255fd8aa0ffba2c9212596aa91ed01cf37170bd",
+      "size": 19613,
+      "version": "2.44",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20230529",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.44"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.45.xsd",
+      "sha256": "78f61c95e062c0562991e7c45f5bc208fa1aebe46c569ff9408f73e70a941aad",
+      "size": 19613,
+      "version": "2.44",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20240329",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.45"
+      ]
+    },
+    {
+      "name": "GSDML-Primitives-v2.46.xsd",
+      "sha256": "3753923711f8d69b531da38c2a64c89dabf0cc0ddf7645ddd0f408eef822f1a2",
+      "size": 19835,
+      "version": "2.46",
+      "targetNamespace": "http://www.profibus.com/GSDML/2003/11/Primitives",
+      "versionDate": "20250512",
+      "imports": [
+        "xml.xsd"
+      ],
+      "usedBy": [
+        "2.46"
+      ]
+    },
+    {
+      "name": "XAdES01903v132-201601.xsd",
+      "sha256": "e044abf768111ede45a2bd30cbe7bfdcaed971819445ef28a7a687e8ae5d5493",
+      "size": 22572,
+      "targetNamespace": "http://uri.etsi.org/01903/v1.3.2#",
+      "imports": [
+        "xmldsig-core-schema.xsd"
+      ],
+      "usedBy": [
+        "2.41",
+        "2.42"
+      ]
+    },
+    {
+      "name": "xml.xsd",
+      "sha256": "61960fb3131e38022caad5360e2f33a3382578ab3c80cd58bd74320ede61b20c",
+      "size": 8836,
+      "targetNamespace": "http://www.w3.org/XML/1998/namespace",
+      "usedBy": [
+        "1.0",
+        "2.0",
+        "2.1",
+        "2.2",
+        "2.25",
+        "2.3",
+        "2.31",
+        "2.32",
+        "2.33",
+        "2.34",
+        "2.35",
+        "2.4",
+        "2.41",
+        "2.42",
+        "2.43",
+        "2.44",
+        "2.45",
+        "2.46"
+      ]
+    },
+    {
+      "name": "xmldsig-core-schema.xsd",
+      "sha256": "9ae9509e4c7f5274329a2a181117c1fdf317a6d94a766eb022951bcf697f3731",
+      "size": 8905,
+      "version": "0.1",
+      "targetNamespace": "http://www.w3.org/2000/09/xmldsig#",
+      "usedBy": [
+        "2.0",
+        "2.1",
+        "2.2",
+        "2.25",
+        "2.3",
+        "2.31",
+        "2.32",
+        "2.33",
+        "2.34",
+        "2.35",
+        "2.4",
+        "2.41",
+        "2.42",
+        "2.43",
+        "2.44",
+        "2.45",
+        "2.46"
+      ]
+    }
+  ]
+}

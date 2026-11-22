@@ -19,6 +19,7 @@ interop-results/
 /examples/discovery/discovery
 /examples/gsdml/gsdml
 /examples/gsdmlimport/gsdmlimport
+/examples/gsdmltyped/gsdmltyped
 /examples/gsdx/gsdx
 /examples/hello/hello
 /examples/mrp/mrp
@@ -27,6 +28,7 @@ interop-results/
 /examples/records/records
 /examples/topology/topology
 /internal/cmd/gengsdml/gengsdml
+/internal/cmd/gsdmlc/gsdmlc
 /internal/cmd/l2bench/l2bench
 /interop/otfnode/otfnode
 
@@ -35,3 +37,6 @@ interop-results/
 
 # Schema copies fetched by scripts/gsdml-xsd-audit.sh; never committed
 /.xsd/
+
+# Checkout of the private otfabric/profinet-gsdml-schema (scripts/gsdml-schemas.sh fetch)
+/.gsdml-schemas/

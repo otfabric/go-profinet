@@ -45,13 +45,15 @@ What the library retries by itself, and what it leaves to the application:
 | `*dcp.SetError` | the MAC, the block and the `BlockError` of a DCP Set or Get the device refused | `ErrRejected`; `ErrUnsupported` for option and suboption unsupported |
 | `*rpc.Fault` | a DCE/RPC FAULT or REJECT and its status | `ErrRejected`; `ErrUnsupported` (unknown interface, operation out of range, unsupported type), `ErrResourceExhausted` (server too busy) |
 | `*snmp.VersionError` | the `Version` of an SNMP message that is neither v1 nor v2c (SNMPv3 is 3) | `ErrUnsupported` |
-| `*gsdml.ValidationError` | the `Issues` of a document (path and message) | `ErrMalformed` |
+| `*gsdml.ValidationError` | the `Issues` of a document (path, message, rule, and for the schema rule the line) | `ErrMalformed` |
+| `*typed.SchemaError` | the schema `Version` and the `Issues` (line, path, message; at most 1000, `Truncated` beyond) of a document that is not valid against the GSDML schema of that version (`gsdml/typed`) | `ErrMalformed` |
 | `dcp.ErrInvalidName` | a station name that is not a valid NameOfStation | `ErrInvalidConfig` |
 
-Two sentinels belong to a single package:
+Three sentinels belong to a single package:
 
 | Sentinel | Meaning | Matches |
 |----------|---------|---------|
+| `typed.ErrUnknownVersion` | a GSDML document names no schema version in `xsi:schemaLocation`, or one `gsdml/typed` has no schema for (V2.5x); or a version given to `ValidateVersion`, `ParseVersion` or `DecodeVersion` is not one of `typed.Versions()` | nothing else |
 | `ethernet.ErrInvalidMAC` | `ethernet.ParseMAC` was given text that is not six octets separated by `:` or `-`, or twelve hexadecimal digits | nothing else: it is returned for an argument, not for a frame |
 | `store.ErrCorrupt` | a persisted value failed its integrity check (short or bad header, wrong length, trailing data, checksum) and no intact previous version remains to fall back on | `ErrMalformed` |
 
@@ -131,9 +133,15 @@ or device access point with more than 1440 submodules, or a Const
 ByteOffset or Ref BitOffset that is no number, or a VisibleString,
 UTF8String or OctetString Ref default longer than its Length
 (`gsdml.ToModel`); a
-PDRealData record whose MultipleBlockHeaders nest more than four deep. As
+PDRealData record whose MultipleBlockHeaders nest more than four deep. The same element, size and depth bounds (256 levels) apply to
+`typed.ParseNode` and everything in `gsdml/typed` that reads a document;
+there, a document that is not namespace-well-formed (an undeclared
+prefix, `xmlns:p=""`, a reserved prefix rebound, two attributes with one
+expanded name) is `ErrMalformed`; `Decode` returns a decoding error that
+matches `ErrMalformed` for an element or attribute the schema of the
+version does not have, or a value that does not parse as its type. As
 `ErrUnsupported`: a GSDML document whose document type declaration has an
-internal subset (`gsdml.Parse`; docs/GSDML.md); a Ref whose DataType has no
+internal subset (`gsdml.Parse`, `typed.ParseNode`; docs/GSDML.md); a Ref whose DataType has no
 verified DefaultValue encoding, such as `Integer16_S`, `TimeStamp` or `N2`
 (`gsdml.ToModel`; docs/GSDML.md).
 

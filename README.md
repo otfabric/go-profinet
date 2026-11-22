@@ -47,7 +47,12 @@ The library provides:
   statistics; **alarms** (`alarm`): the RTA protocol with sequence numbers,
   acknowledgement, retransmission and window
 - **GSDML** (`gsdml`): parsing, validation, encoding and conversion between
-  GSDML files and device models, from a schema catalog by code generation
+  GSDML files and device models, from a schema catalog by code generation;
+  and a complete model of every GSDML schema version V1.0 to V2.46
+  (`gsdml/typed`, `gsdml/versions/vNNN`), generated from the reference
+  schemas: typed structs, reflection-free codecs, and a validator that
+  checks a file against the schema of its own version with no schema at
+  run time
 - **Layer 2 backends**: Linux AF_PACKET, macOS/BSD BPF, Windows Npcap
   (`l2/osport` picks the one of the platform) and an in-memory **virtual
   Ethernet** (`vnet`) with seeded faults, plus a small ARP/IPv4/UDP stack
@@ -116,7 +121,7 @@ is from PI's public pages.
 | Re-parameterization in Data (PrmBegin) | ✅ device and controller | — (refuses PrmBegin) | — (refuses PrmBegin) | ✅ controller | ✅ |
 | Media redundancy (MRP) | ✅ client, manager, automatic manager (multiport device) | — | — | n/a | not documented |
 | SNMP agent | ✅ v1/v2c, MIB-II, LLDP-MIB | ◐ optional, through Net-SNMP | — | n/a | not documented |
-| GSDML | ✅ parse, validate (catalog), generate, model conversion | — (static file) | ◐ generate | ◐ parse for cyclic | — |
+| GSDML | ✅ parse, validate (catalog, and each file's own schema version), generate, model conversion, typed model of V1.0–V2.46 | — (static file) | ◐ generate | ◐ parse for cyclic | — |
 | Platforms | Linux, macOS/BSD, Windows (Npcap) | Linux, RTOS ports (not in the public tree) | Linux | Linux | Linux (Raspberry Pi demo) |
 | Runs without privileges in tests | ✅ virtual Ethernet in process | — | — | — | — |
 | Tested against other stacks in CI | ✅ p-net, pnio-rs, profinet-py, pnio-dcp; umrp and microchip-ung/mrp (MRP); Net-SNMP; scapy and Wireshark decode every capture | not documented | golden frames from p-net and an S7-1500 | p-net (integration tests) | not documented |
@@ -146,6 +151,7 @@ Requires Go 1.26 or later.
 | `device` | IO-Device |
 | `model` | the device model: identity, DAP, slots, modules, submodules, records |
 | `gsdml` | GSDML documents (generated types), validation with severities, model conversion |
+| `gsdml/typed`, `gsdml/versions/v100` … `v246` | the model of every GSDML schema version, generated from the reference schemas: types, decoder, encoder, validator |
 | `gsdml/gsdx` | a safe inspector of GSDX (OPC) containers |
 | `dcp` | DCP codec, requester (`Client`), responder |
 | `lldp` | LLDP codec and agent |
@@ -163,7 +169,7 @@ Requires Go 1.26 or later.
 | `vnet` | virtual Ethernet switch with loss, duplication, corruption, reordering, delay and jitter |
 | `netstack` | ARP, IPv4 and UDP over a `l2.Mux` |
 | `pcap` | pcap reader and writer |
-| `examples/` | quickstart, discovery, DCP Hello, alarms, records, topology, observability (slog and metrics), an MRP ring, chaos, GSDML generation and import, GSDX inspection, a device and a controller on a real interface ([outputs](examples/README.md)) |
+| `examples/` | quickstart, discovery, DCP Hello, alarms, records, topology, observability (slog and metrics), an MRP ring, chaos, GSDML generation and import, the typed GSDML model, GSDX inspection, a device and a controller on a real interface ([outputs](examples/README.md)) |
 | `e2e/` | end-to-end and chaos tests on vnet; real Layer 2 tests |
 | `interop/` | the interop suite against profinet-interop (build tag `interop`) |
 
@@ -214,7 +220,11 @@ m, err := gsdml.ToModel(doc, "") // the first device access point
 d, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "io-rack-1", Model: m})
 ```
 
-and a device built with go-profinet describes itself with one:
+`gsdml.ValidateBytes(data)` validates the file against the schema of the
+version it names first; `v246.Parse(data)` (package `gsdml/versions/v246`)
+reads a V2.46 file into its typed structs.
+
+A device built with go-profinet describes itself with one:
 
 ```go
 doc, err := gsdml.FromModel(m, gsdml.GenerateOptions{SupervisorAR: true})
@@ -280,7 +290,8 @@ and, for the previous round,
 member: what that costs (official XSD validation, GSDX, MRCD, signing,
 certification) is listed in [docs/PI-MEMBERSHIP.md](docs/PI-MEMBERSHIP.md).
 GSDML validation follows
-an independent catalog, not PI's licensed schemas; GSDX and MRCD are not
+an independent catalog and, for `CheckBytes`, code generated from the
+schemas (checked against libxml2, not PI's checker); GSDX and MRCD are not
 implemented (their formats are not public), beyond a generic inspector of
 the public OPC container (`gsdml/gsdx`, signatures not verified). The full list is in
 [LIMITATIONS.md](LIMITATIONS.md).
