@@ -67,11 +67,22 @@ is absent once the document is written and read again.
 
 The DefaultValue of an integer or bit Ref is decimal with an optional
 sign, where leading zeros are decimal (`"010"` is ten), as in the lexical
-space of xsd:integer, or 0x hexadecimal, as the package reads every other
-number. A value outside the DataType's range, or in any other form (Go's
-octal `0o`/`0` prefix, binary `0b`, digit separators `_`), fails with
-`ErrMalformed`. That hexadecimal is allowed in a DefaultValue has not been
-checked against the members-only GSDML specification (LIMITATIONS.md).
+space of xsd:integer. ISO 15745-4:2003/Amd 1:2006, Annex D, D.4.7.4,
+Table D.31 (Attributes of element Ref; read in its adoption GOST R ISO
+15745-4-2010) constrains DefaultValue by the pattern `\-?[\d+]{1,20}`:
+decimal digits, no hexadecimal. The V2.35 XSD declares it xsd:string with
+no pattern, so passing the schema says nothing about the form. As a
+compatibility tolerance the package also reads `0x` (or `0X`) hexadecimal,
+as it reads every other number: a magnitude with an optional sign before
+the prefix (`"-0x80"` is −128), not a two's complement pattern (`"0xFF"`
+does not fit an Integer8). Decimal and hexadecimal of one value write the
+same octets. A value outside the DataType's range, or in any other form
+(Go's octal `0o`/`0` prefix, binary `0b`, digit separators `_`, a sign after
+`0x`), fails with `ErrMalformed`. Whether the current GSDML specification
+allows hexadecimal there is not known: its text is members-only
+(LIMITATIONS.md). `FromModel` writes no Ref (a record's default is Const
+octets); a DefaultValue it wrote would be decimal. The Const Data and
+OctetString DefaultValue form (`"0x01,0x02"`) is a separate matter, below.
 
 The DefaultValue of a VisibleString, UTF8String or OctetString Ref fills
 the Length octets of its field: a longer value fails with `ErrMalformed`,
