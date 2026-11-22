@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT. A synthetic schema set for LoadRoot: an include, an import and a missing import. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:t" targetNamespace="urn:r" version="9.1">
+	<xs:include schemaLocation="types.xsd"/>
+	<xs:import namespace="urn:t" schemaLocation="types.xsd"/>
+	<xs:import namespace="urn:gone" schemaLocation="gone.xsd"/>
+	<xs:complexType name="RefT">
+		<xs:attribute name="DataType" type="t:RefTypeT" use="required"/>
+		<xs:attribute name="ByteOffset" type="xs:unsignedInt"/>
+	</xs:complexType>
+	<xs:complexType name="ItemT">
+		<xs:attributeGroup ref="DataTypeGroup"/>
+	</xs:complexType>
+	<xs:attributeGroup name="DataTypeGroup">
+		<xs:attribute name="DataType" type="t:ItemTypeT" use="required"/>
+	</xs:attributeGroup>
+	<xs:element name="Root">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="Record">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="Ref" type="RefT" maxOccurs="unbounded"/>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+				<xs:element name="Input">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="DataItem" type="ItemT"/>
+							<xs:element ref="Diag"/>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:element name="Diag">
+		<xs:complexType>
+			<xs:complexContent>
+				<xs:extension base="RefT">
+					<xs:attribute name="Id" type="xs:string"/>
+				</xs:extension>
+			</xs:complexContent>
+		</xs:complexType>
+	</xs:element>
+</xs:schema>

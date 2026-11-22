@@ -32,3 +32,6 @@ interop-results/
 
 # go build ./internal/cmd/l2bench in the root
 /l2bench
+
+# Schema copies fetched by scripts/gsdml-xsd-audit.sh; never committed
+/.xsd/

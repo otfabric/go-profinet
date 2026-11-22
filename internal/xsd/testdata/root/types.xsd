@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT. Synthetic simple types: an enumeration with comments, a restriction of it, a union. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:t" targetNamespace="urn:t" version="9.1">
+	<xs:simpleType name="RefTypeT">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="Unsigned8"/>
+			<xs:enumeration value="Old16"/> <!--obsolete, superseded by "Unsigned16"-->
+			<xs:enumeration value="Unsigned16"/>
+			<xs:enumeration value="Padded "/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="AliasT">
+		<xs:restriction base="t:RefTypeT"/>
+	</xs:simpleType>
+	<xs:simpleType name="ExtraT">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="Bit"/>
+			<xs:enumeration value="Unsigned8"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="ItemTypeT">
+		<xs:union memberTypes="t:AliasT t:ExtraT"/>
+	</xs:simpleType>
+	<xs:simpleType name="FreeT">
+		<xs:restriction base="xs:string"/>
+	</xs:simpleType>
+</xs:schema>
