@@ -1,6 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: MIT. A synthetic schema set for LoadRoot: an include, an import and a missing import. -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:t" targetNamespace="urn:r" version="9.1">
+	<xs:annotation>
+		<xs:documentation>No appinfo here.</xs:documentation>
+	</xs:annotation>
+	<xs:annotation>
+		<xs:documentation>Not this one.</xs:documentation>
+		<xs:appinfo>
+			<other versiondate="19990101"/>
+			<schemainfo/>
+			<schemainfo versiondate="20250512"/>
+		</xs:appinfo>
+	</xs:annotation>
+	<xs:annotation>
+		<xs:appinfo>
+			<schemainfo versiondate="20000101"/>
+		</xs:appinfo>
+	</xs:annotation>
 	<xs:include schemaLocation="types.xsd"/>
 	<xs:import namespace="urn:t" schemaLocation="types.xsd"/>
 	<xs:import namespace="urn:gone" schemaLocation="gone.xsd"/>

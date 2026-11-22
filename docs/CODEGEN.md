@@ -66,8 +66,22 @@ the previous set given, the files read with their SHA-256 and the catalog
 versions no set covers. `V` is the GSDML version of the set: the schemas'
 own `version` attribute is unreliable (V2.0 to V2.2 say `1.0`). The report
 holds no timestamps or absolute paths, so it is reproducible.
-`scripts/gsdml-xsd-audit.sh` runs it on five versions;
-docs/research/GSDML-XSD-AUDIT.md is the result.
+A directory stands for every DeviceProfile in it, oldest version first.
+
+`-registry DIR` reports, as JSON, every GSDML version in a directory of
+schemas: its DeviceProfile and Primitives files, version attribute, target
+namespace, revision date (`schemainfo/@versiondate`), the files it reads and
+any it names that are missing, and whether the catalog was written for it
+and has its DataType sets; then every file with its size, SHA-256, imports
+and the versions that read it. Versions are ordered by GSDML number (2.4 is
+2.40, after 2.35), never as decimals or semantic versions. When the
+directory has a `SHA256SUMS`, every file must match it.
+
+`scripts/gsdml-xsd-audit.sh` runs both on the reference schemas (see
+below) and writes `gsdml/schema/xsd-registry.json` and
+docs/research/gsdml-xsd-audit.json; docs/research/GSDML-XSD-AUDIT.md
+explains the audit. Both reports hold facts about the schemas, never their
+text.
 
 ## The reference schemas
 

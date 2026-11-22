@@ -33,7 +33,7 @@ func TestAudit(t *testing.T) {
 	if err := json.Unmarshal(b.Bytes(), &r); err != nil {
 		t.Fatal(err)
 	}
-	if r.Schema != auditSchema || len(r.Versions) != 2 || len(r.UnverifiedCatalogVersions) != 0 || !reflect.DeepEqual(r.CatalogValues, []string{"Float32", "Unsigned16", "Unsigned8"}) {
+	if r.Schema != auditSchema || len(r.Versions) != 2 || r.UnverifiedCatalogVersions == nil || len(r.UnverifiedCatalogVersions) != 0 || !reflect.DeepEqual(r.CatalogValues, []string{"Float32", "Unsigned16", "Unsigned8"}) {
 		t.Fatalf("report %+v", r)
 	}
 	v0, v1 := r.Versions[0], r.Versions[1]
@@ -66,6 +66,27 @@ func TestAudit(t *testing.T) {
     "9.0"
   ]`) {
 		t.Fatalf("%v %s", err, b.String())
+	}
+}
+
+// TestAuditDir audits every DeviceProfile of a directory, oldest first.
+func TestAuditDir(t *testing.T) {
+	files := registryFiles()
+	files["GSDML-Primitives-v2.4.xsd"] = `<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:simpleType name="T"><xs:restriction base="xs:string"><xs:enumeration value="Unsigned8"/></xs:restriction></xs:simpleType><xs:element name="DataItem"><xs:complexType><xs:attribute name="DataType" type="T"/></xs:complexType></xs:element><xs:element name="Input"><xs:complexType><xs:sequence><xs:element ref="DataItem"/></xs:sequence></xs:complexType></xs:element></xs:schema>`
+	for _, n := range []string{"GSDML-DeviceProfile-v1.0.xsd", "GSDML-Primitives-v1.0.xsd", "GSDML-DeviceProfile-V2.35.xsd", "GSDML-Primitives-v2.35.xsd"} {
+		delete(files, n)
+	}
+	dir := writeSchemas(t, files, false)
+	var b bytes.Buffer
+	if err := audit(auditCatalog(), []string{dir}, &b); err != nil {
+		t.Fatal(err)
+	}
+	var r auditReport
+	if err := json.Unmarshal(b.Bytes(), &r); err != nil || len(r.Versions) != 1 || r.Versions[0].Version != "2.4" || r.Versions[0].Root != "GSDML-DeviceProfile-v2.4.xsd" {
+		t.Fatalf("%v %s", err, b.String())
+	}
+	if err := audit(auditCatalog(), []string{t.TempDir()}, &b); err == nil || !strings.Contains(err.Error(), "no GSDML-DeviceProfile") {
+		t.Fatalf("empty directory: %v", err)
 	}
 }
 

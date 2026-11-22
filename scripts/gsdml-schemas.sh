@@ -19,7 +19,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 REPO=https://github.com/otfabric/profinet-gsdml-schema
-REF=${GSDML_SCHEMAS_REF:-91d3a8310e34127cf73f7a6edd332c8f8fc3eca7}
+REF=${GSDML_SCHEMAS_REF:-4b3051a6c538f610a009c231861926b3ea2236a3}
 DIR=${GSDML_SCHEMAS:-.gsdml-schemas}
 
 case ${1:-} in

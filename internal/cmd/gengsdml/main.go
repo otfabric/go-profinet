@@ -14,6 +14,10 @@
 //	                                        # report the DataType
 //	                                        # enumerations of each schema
 //	                                        # set as JSON
+//	go run ./internal/cmd/gengsdml -registry DIR
+//	                                        # report the GSDML versions
+//	                                        # and schema files of DIR as
+//	                                        # JSON
 //
 // The official GSDML schemas are published by PROFIBUS & PROFINET
 // International to its members under a licence that does not allow
@@ -658,11 +662,18 @@ func main() {
 	root := flag.String("root", ".", "module root")
 	check := flag.Bool("check", false, "fail when the generated files are out of date")
 	xsdDir := flag.String("xsd", "", "compare the catalog with the GSDML XSDs in this directory")
+	registryDir := flag.String("registry", "", "report, as JSON, the GSDML versions and schema files of this directory of schemas")
 	auditRoots := flag.String("audit", "", "report, as JSON, the DataType enumerations of the schema sets with these root documents (comma-separated, oldest first)")
 	flag.Parse()
 	c, raw, err := load(filepath.Join(*root, "gsdml", "schema", "catalog.json"))
 	if err != nil {
 		fail(err)
+	}
+	if *registryDir != "" {
+		if err := writeRegistry(c, *registryDir, os.Stdout); err != nil {
+			fail(err)
+		}
+		return
 	}
 	if *auditRoots != "" {
 		if err := audit(c, strings.Split(*auditRoots, ","), os.Stdout); err != nil {

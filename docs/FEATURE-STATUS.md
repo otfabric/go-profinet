@@ -195,6 +195,6 @@ text is not available to the project.
 | Persistence | temporary vs permanent as p-net reads the CMINA state table | port, interface and MRP adjustments not stored |
 | System redundancy S2 | Wireshark's elements; p-net's comment for the RDHT unit | not interoperable; R1/R2, MTOT, backup re-parameterization not implemented |
 | RT_CLASS_UDP, MCR, PTCP | Wireshark | no behaviour: no open implementation to check against |
-| GSDML | an independent catalog of the schema (the XSDs are members-only) | not PI's checker; GSDML 2.46/2.50 content unvalidated |
+| GSDML | an independent catalog of the schema (the XSDs are members-only); DataType legality per context from the schemas V1.0–V2.46 as TIA Portal V21 installs them (docs/research/GSDML-XSD-AUDIT.md) | not PI's checker; GSDML 2.46 content other than DataTypes, and 2.50, unvalidated |
 | AF_PACKET transport | Linux packet(7) | no rings (TPACKET_V3), no qdisc bypass: not measured to help |
 | Out of scope (IRT, PTCP sync, isochronous mode, MRPD, TSN, PROFIsafe, security classes, SXP, CC-E, certification) | members-only or hardware-bound | [research/NEXT-PROGRAM-REPORT.md](research/NEXT-PROGRAM-REPORT.md) |

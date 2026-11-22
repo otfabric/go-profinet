@@ -90,7 +90,7 @@ naming the record, where it used to be cut short; a shorter one is padded
 with zero octets, also over octets a Const wrote there. Length is in
 octets, so a UTF-8 value counts its encoded octets (`"äö"` is four). A
 string value is written as given, white space included, since DefaultValue
-is an xsd:string in a third-party copy of the V2.35 XSD, whose white space
+is an xsd:string in the V2.35 XSD, whose white space
 is preserved; an OctetString value is octets as
 in a Const, `"0x01,0x02"`. OPC 30144 v1.00 Table 58 (the Ref DataTypes,
 after the GSDML specification's Table 18) gives no padding rule, and the
@@ -127,27 +127,29 @@ value fails with `ErrMalformed`. Every other DataType fails with
 The DataType vocabulary of the catalog (`DataTypes`) is one list for
 every element. The schemas have one enumeration per context, which differ
 by version and are not monotonic. `DataTypeLegality(version, context,
-DataType)` answers from exact sets for the audited versions V1.0, V2.0,
-V2.1, V2.2 and V2.35 (docs/research/GSDML-XSD-AUDIT.md). It returns:
+DataType)` answers from exact sets for all 18 versions from V1.0 to V2.46
+(docs/research/GSDML-XSD-AUDIT.md). It returns:
 
 - **allowed** or **forbidden** for an audited version;
-- **unverified** for any other version, newer ones included, and for
-  V2.0's `F_MessageTrailer5Byte`, which that schema copy spells with a
-  trailing space.
+- **unverified** for any other version (V2.5x, for example), and for
+  V2.0's `F_MessageTrailer5Byte`, which that schema spells with a trailing
+  space.
 
 `Check` applies it, through the rule `datatype-context`, to every IO
 DataItem and parameter Ref:
 
 - A value forbidden by an audited version is a **warning**, not an error,
-  because the sets come from third-party copies of the schemas. `Validate`
-  therefore does not fail on it.
+  because the sets come from the copy TIA Portal installs, not PI's
+  specification package. `Validate` therefore does not fail on it.
 - A document whose version was not audited, or that declares none, gets
   one **unvalidated** issue.
 - The unit diagnosis, channel diagnosis and process alarm contexts are not
   modelled; their elements are reported as unknown.
 
 `ToModel` refuses by size and encoding, not by legality. `UnicodeString8`,
-`61131_STRING` and `61131_WSTRING` (V2.35) are in the vocabulary, but have
+`61131_STRING` and `61131_WSTRING` (V2.32), and `Unsigned16+Unsigned8`,
+`Integer16+Unsigned8`, `Unsigned32+Unsigned8` and `Integer32+Unsigned8`
+(V2.46, IO data only) are in the vocabulary, but have
 no size: no source the package has gives their layout.
 `Float64+Status8`, `Integer32_S`, `Unsigned32_S` and `UTF8String` are in no
 audited schema. They stay in the vocabulary, unverified.

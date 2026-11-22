@@ -96,7 +96,7 @@ const (
 	RuleReductionRatio = "reduction-ratio"
 	// RuleDataTypeContext: a DataItem or parameter Ref DataType that the
 	// audited schema of the document's version does not allow in that
-	// context (third-party copies of the schemas; a warning), or whose
+	// context (a warning: see DataTypeLegality), or whose
 	// legality no audited schema decides (unvalidated, once per document).
 	// See DataTypeLegality.
 	RuleDataTypeContext = "datatype-context"

@@ -79,10 +79,19 @@ type Use struct {
 
 // File is a schema document read.
 type File struct {
-	Name            string `json:"name"`
-	SHA256          string `json:"sha256"`
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
+	Size   int    `json:"size"`
+	// Version is the version attribute of the schema element.
 	Version         string `json:"version,omitempty"`
 	TargetNamespace string `json:"targetNamespace,omitempty"`
+	// VersionDate is the versiondate attribute of a schemainfo element in
+	// the appinfo of the schema's own annotations, where the XML@PROFIBUS
+	// guidelines put the date of a schema revision ("20250512").
+	VersionDate string `json:"versionDate,omitempty"`
+	// Imports are the schemaLocations of its include, import and redefine
+	// elements, in document order.
+	Imports []string `json:"imports,omitempty"`
 }
 
 // maxFiles bounds the documents LoadRoot follows.
@@ -214,13 +223,8 @@ func LoadRoot(dir, name string) (*Schema, error) {
 			return nil, fmt.Errorf("xsd: %s: %w", n, err)
 		}
 		docs = append(docs, d)
-		for i := range d.root.Children {
-			c := &d.root.Children[i]
-			if c.XMLName.Space != nsXSD || (c.XMLName.Local != "include" && c.XMLName.Local != "import" && c.XMLName.Local != "redefine") {
-				continue
-			}
-			loc := c.attr("schemaLocation")
-			if loc == "" || seen[loc] {
+		for _, loc := range d.file.Imports {
+			if seen[loc] {
 				continue
 			}
 			if len(seen) >= maxFiles {
@@ -260,7 +264,41 @@ func readDoc(root *os.Root, name string) (*doc, error) {
 		return nil, err
 	}
 	sum := sha256.Sum256(b)
-	return &doc{root: n, notes: notes, file: File{Name: name, SHA256: hex.EncodeToString(sum[:]), Version: n.attr("version"), TargetNamespace: n.attr("targetNamespace")}}, nil
+	file := File{Name: name, SHA256: hex.EncodeToString(sum[:]), Size: len(b), Version: n.attr("version"), TargetNamespace: n.attr("targetNamespace")}
+	for i := range n.Children {
+		c := &n.Children[i]
+		switch {
+		case c.XMLName.Space != nsXSD:
+		case c.XMLName.Local == "annotation":
+			if file.VersionDate == "" {
+				file.VersionDate = versionDate(c)
+			}
+		case c.XMLName.Local == "include" || c.XMLName.Local == "import" || c.XMLName.Local == "redefine":
+			if loc := c.attr("schemaLocation"); loc != "" {
+				file.Imports = append(file.Imports, loc)
+			}
+		}
+	}
+	return &doc{root: n, notes: notes, file: file}, nil
+}
+
+// versionDate returns the versiondate of the first schemainfo element in
+// the appinfo of annotation a.
+func versionDate(a *node) string {
+	for i := range a.Children {
+		ai := &a.Children[i]
+		if ai.XMLName.Space != nsXSD || ai.XMLName.Local != "appinfo" {
+			continue
+		}
+		for j := range ai.Children {
+			if si := &ai.Children[j]; si.XMLName.Local == "schemainfo" {
+				if d := si.attr("versiondate"); d != "" {
+					return d
+				}
+			}
+		}
+	}
+	return ""
 }
 
 // enumNotes returns, per named simple type, the comment that follows an

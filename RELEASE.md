@@ -26,6 +26,52 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.14.0
+
+**Date:** unreleased
+**Previous release:** v0.13.0
+
+## Summary
+
+GSDML DataType legality for all 18 schema versions from V1.0 to V2.46,
+taken from the maintainers' licensed copy of the GSDML schemas, and a
+registry of those schema files. API: additive (four DataType constants).
+`Check` decides more; `Validate` fails on nothing new.
+
+## Added
+
+- **Legality for every version up to V2.46.** `gsdml.DataTypeLegality`
+  now has exact sets for V1.0, V2.0, V2.1, V2.2, V2.25, V2.3, V2.31 to
+  V2.35, V2.4 and V2.41 to V2.46 (it had V1.0 to V2.2 and V2.35). The
+  sets come from the schemas as TIA Portal V21 installs them; the five
+  earlier versions' enumerations are unchanged.
+  - A V2.25 to V2.46 document no longer gets the unvalidated
+    `datatype-context` issue "schema version … was not audited"; a value
+    its version forbids in an IO DataItem or parameter Ref is now a
+    warning. Versions after V2.46 stay unverified.
+- **Four V2.46 DataTypes:** `DataTypeUnsigned16PlusUnsigned8`,
+  `DataTypeInteger16PlusUnsigned8`, `DataTypeUnsigned32PlusUnsigned8` and
+  `DataTypeInteger32PlusUnsigned8`, legal in IO data only. They have no
+  size (`DataItemSize` returns `ErrUnsupported`): no source the package has
+  defines their layout.
+- **Schema registry.** `gengsdml -registry DIR` lists every GSDML version
+  of a schema directory with its files, sizes, SHA-256, namespaces,
+  revision dates and imports, ordered by GSDML number (2.35 before 2.4).
+  The result for the reference schemas is
+  `gsdml/schema/xsd-registry.json`. `gengsdml -audit` takes a directory.
+- **Reference schemas.** `make gsdml-schemas` fetches the private
+  otfabric/profinet-gsdml-schema at a pinned commit, `make
+  gsdml-schemas-verify` checks it (checksums, well-formedness, every
+  DeviceProfile compiles under `xmllint --nonet`). Both need access to the
+  private repository and are not part of `make check`.
+
+## Changed
+
+- `gsdml.CatalogSHA256` changes with the catalog (as in v0.13.0, a
+  consumer that compares it with a stored value sees a new one).
+
+---
+
 ## v0.13.0
 
 **Date:** 2026-11-22

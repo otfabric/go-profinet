@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -83,9 +84,15 @@ type auditType struct {
 
 // audit loads each root schema document (with what it includes and
 // imports) and writes the report as JSON to w. A root is PATH or
-// VERSION=PATH, VERSION naming the GSDML version of the set.
+// VERSION=PATH, VERSION naming the GSDML version of the set, or a
+// directory of schemas, which stands for every DeviceProfile in it, oldest
+// version first (-registry).
 func audit(c *catalog, roots []string, w io.Writer) error {
-	r := auditReport{Schema: auditSchema, Attribute: "DataType", CatalogVersions: c.Versions}
+	roots, err := expandRoots(c, roots)
+	if err != nil {
+		return err
+	}
+	r := auditReport{Schema: auditSchema, Attribute: "DataType", CatalogVersions: c.Versions, UnverifiedCatalogVersions: []string{}}
 	r.CatalogValues = slices.Clone(c.SimpleTypes["DataType"].Enum)
 	slices.Sort(r.CatalogValues)
 	prev := map[string][]string{}
@@ -120,6 +127,26 @@ func audit(c *catalog, roots []string, w io.Writer) error {
 	}
 	_, err = w.Write(append(b, '\n'))
 	return err
+}
+
+// expandRoots replaces each directory among roots with the
+// VERSION=PATH roots of its DeviceProfile schemas.
+func expandRoots(c *catalog, roots []string) ([]string, error) {
+	var out []string
+	for _, spec := range roots {
+		if fi, err := os.Stat(spec); err != nil || !fi.IsDir() {
+			out = append(out, spec)
+			continue
+		}
+		r, err := buildRegistry(c, spec)
+		if err != nil {
+			return nil, err
+		}
+		for _, v := range r.Versions {
+			out = append(out, v.Version+"="+filepath.Join(spec, v.DeviceProfile))
+		}
+	}
+	return out, nil
 }
 
 // auditOne reports one schema set; prev maps "Parent/Element" to the

@@ -50,7 +50,7 @@ const (
 	RuleReductionRatio = "reduction-ratio"
 	// RuleDataTypeContext: a DataItem or parameter Ref DataType that the
 	// audited schema of the document's version does not allow in that
-	// context (third-party copies of the schemas; a warning), or whose
+	// context (a warning: see DataTypeLegality), or whose
 	// legality no audited schema decides (unvalidated, once per document).
 	// See DataTypeLegality.
 	RuleDataTypeContext = "datatype-context"
@@ -305,8 +305,8 @@ Legality says whether a schema version allows a DataType in a context.
 ```go
 const (
 	// LegalityUnverified: no audited schema decides it, because the
-	// version was not audited (any version but V1.0, V2.0, V2.1, V2.2 and
-	// V2.35, newer ones included) or its schema cannot decide the value.
+	// version was not audited (any version but the 18 from V1.0 to V2.46,
+	// newer ones included) or its schema cannot decide the value.
 	// It says nothing about whether the value is legal.
 	LegalityUnverified Legality = iota
 	// LegalityAllowed: the audited schema of the version allows it.
@@ -325,7 +325,7 @@ func DataTypeLegality(version string, ctx DataTypeContext, dt DataType) Legality
 
 DataTypeLegality says whether GSDML schema version version ("2.35", as Report.SchemaVersion gives it) allows dt in ctx. Only exact audited versions decide: nothing is inferred for a version between or after them, because a value can be removed and added again between versions.
 
-The sets come from third-party copies of the schemas, not from PI's distribution (docs/research/GSDML-XSD-AUDIT.md), so Check reports a forbidden value as a warning, not an error. Legality is independent of a DataType's size (DataItemSize) and of whether ToModel can write its DefaultValue.
+The sets come from the schemas V1.0 to V2.46 as TIA Portal V21 installs them, a reserialised copy rather than PI's specification package (docs/research/GSDML-XSD-AUDIT.md), so Check reports a forbidden value as a warning, not an error. Legality is independent of a DataType's size (DataItemSize) and of whether ToModel can write its DefaultValue.
 
 #### func (Legality) MarshalText
 
