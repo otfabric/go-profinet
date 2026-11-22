@@ -271,8 +271,11 @@ func versionIndex(sc *schemaTables, version string) int {
 }
 
 // validateNode validates a document tree against the schema of version.
-func validateNode(root *Node, version string) error {
-	sc := tables
+func validateNode(root *Node, version string) error { return validateWith(tables, root, version) }
+
+// validateWith validates a document tree against the schema of version in
+// the tables sc.
+func validateWith(sc *schemaTables, root *Node, version string) error {
 	vi := versionIndex(sc, version)
 	if vi < 0 {
 		return fmt.Errorf("%w: %q", ErrUnknownVersion, version)
