@@ -9,6 +9,13 @@ run-name: "Kernel MRP (${{ github.event_name }}) on ${{ github.ref_name }} by @$
 # one (scripts/mrp-kernel.sh, cached) and runs the tests in a virtme-ng
 # micro-VM with a Docker daemon inside (scripts/microvm-interop.sh). amd64
 # only: GitHub's arm64 runners have no /dev/kvm.
+#
+# One micro-VM per runner: each test is a matrix entry. Five micro-VMs one
+# after another on one runner took 25 minutes, and twice a micro-VM that
+# followed another one never ran its script (runs 45009761756 and
+# 45011852118); the first micro-VM on a runner never failed. The job takes
+# as long as its slowest test (TestMRPRingFaults, about 8 minutes) plus
+# setup.
 
 on:
   schedule:
@@ -35,9 +42,18 @@ env:
 
 jobs:
   kernel-mrp:
-    name: microchip-ung/mrp in a micro-VM
+    name: microchip-ung/mrp ${{ matrix.name }}
     runs-on: ubuntu-24.04   # arm64 runners have no /dev/kvm
-    timeout-minutes: 90
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: otf-manager, run: 'TestMRPOtfManager/^mrp$' }
+          - { name: otf-client, run: 'TestMRPOtfClient/^mrp$' }
+          - { name: ring-faults, run: 'TestMRPRingFaults/^mrp$' }
+          - { name: auto-go-profinet-best, run: 'TestMRPAuto/^mrp$/go-profinet-best' }
+          - { name: auto-peer-best, run: 'TestMRPAuto/^mrp$/peer-best' }
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -81,15 +97,14 @@ jobs:
           git -C "$RUNNER_TEMP/profinet-interop" checkout --quiet "$INTEROP_REF"
           make -C "$RUNNER_TEMP/profinet-interop" image-mrp image-umrp image-scapy image-tshark
 
-      - name: MRP tests in the micro-VM
-        run: >-
-          scripts/microvm-interop.sh "$RUNNER_TEMP/kernel/bzImage"
-          'TestMRPOtfManager/^mrp$' 'TestMRPOtfClient/^mrp$' 'TestMRPRingFaults/^mrp$'
-          'TestMRPAuto/^mrp$/go-profinet-best' 'TestMRPAuto/^mrp$/peer-best'
+      - name: MRP test in the micro-VM
+        env:
+          RUN: ${{ matrix.run }}
+        run: scripts/microvm-interop.sh "$RUNNER_TEMP/kernel/bzImage" "$RUN"
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: kernel-mrp-results
+          name: kernel-mrp-results-${{ matrix.name }}
           path: interop-results/
