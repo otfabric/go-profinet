@@ -28,7 +28,7 @@ section ending with a `---` line and no `---` line inside a section.
 
 ## v0.14.0
 
-**Date:** unreleased
+**Date:** 2026-11-22
 **Previous release:** v0.13.0
 
 ## Summary
@@ -44,7 +44,7 @@ no allowlist; it is not PI's checker. Also: DataType legality for all 18
 versions, and a registry of the schema files. API: additive. `Check` and
 `Validate` on a `*Document` fail on nothing new.
 
-## Added
+### Added
 
 - **The GSDML schema model** (docs/research/GSDML-CODEGEN.md,
   docs/CODEGEN.md#the-generated-schema-model).
@@ -126,7 +126,7 @@ versions, and a registry of the schema files. API: additive. `Check` and
   `OTFABRIC_READ_TOKEN` (it skips with a notice where there are no
   secrets).
 
-## Fixed
+### Fixed
 
 - **IDs and ID references are `xsd:token`,** as in every GSDML schema
   version: `Validate` accepts `"DAP 1"`, `"DIM IO"` and other IDs with
@@ -142,12 +142,16 @@ versions, and a registry of the schema files. API: additive. `Check` and
   at 32768). It refused such a document with `ErrMalformed`. An empty
   attribute is still refused.
 
-## Changed
+### Breaking
 
 - `gsdml.CatalogSHA256` changes with the catalog (as in v0.13.0, a
-  consumer that compares it with a stored value sees a new one).
+  consumer that compares it with a stored value sees a new one). The
+  only API change gorelease reports as incompatible; consumers that do
+  not store the hash are not affected. No otfabric consumer compares it
+  (profinetctl and profinet-interop build against the gsdml package
+  without it).
 
-## Corrected documentation
+### Corrected documentation
 
 - LIMITATIONS.md states that `gsdml.Check`'s reference rule misses IDs in
   elements the catalog does not model (one schema-valid V2.45 vendor file
