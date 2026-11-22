@@ -4,11 +4,13 @@ package xsd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func TestLoadDir(t *testing.T) {
@@ -228,5 +230,73 @@ func TestEnumerationCycle(t *testing.T) {
 	}
 	if got, ok := s.Enumeration("T2"); !ok || got[0] != "deep" {
 		t.Fatalf("T2 %v", got)
+	}
+}
+
+// TestOddSchemas: foreign-namespace children, attribute and element
+// references, an unresolved element reference, a nameless element, a type
+// that extends itself, and a Latin-1 encoding declaration are read without
+// failing; trailing bytes after the root, a directory as a document, a bad
+// directory pattern and a failing reader are errors.
+func TestOddSchemas(t *testing.T) {
+	const odd = `<?xml version="1.0" encoding="ISO-8859-1"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:f="urn:foreign">
+<f:note/>
+<xs:simpleType name="E"><xs:annotation/><f:x/><xs:restriction base="xs:string"><xs:enumeration value="A"/></xs:restriction></xs:simpleType>
+<xs:complexType name="Self"><xs:complexContent><xs:extension base="Self"><xs:attribute name="S"/></xs:extension></xs:complexContent></xs:complexType>
+<xs:element name="Leaf"><xs:complexType><f:y/><xs:attribute ref="xml:lang"/></xs:complexType></xs:element>
+<xs:element name="Root"><xs:complexType><xs:sequence>
+<f:z/>
+<xs:element ref="Leaf"/>
+<xs:element ref="Nowhere"/>
+<xs:element/>
+<xs:element name="Selfish" type="Self"/>
+</xs:sequence></xs:complexType></xs:element>
+</xs:schema>`
+	s, err := Parse(strings.NewReader(odd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e := s.SimpleTypes["E"]; e == nil || !reflect.DeepEqual(e.Enum, []string{"A"}) {
+		t.Fatalf("E %+v", e)
+	}
+	r := s.Elements["Root"]
+	if r == nil || !r.Children["Leaf"] || !r.Children["Nowhere"] || !r.Children["Selfish"] {
+		t.Fatalf("Root %+v", r)
+	}
+	var lang, self bool
+	for _, u := range s.Uses {
+		lang = lang || u.Element == "Leaf" && u.Attribute == "lang"
+		self = self || u.Element == "Selfish" && u.Attribute == "S"
+	}
+	if !lang || !self {
+		t.Fatalf("uses %+v", s.Uses)
+	}
+
+	if _, err := Parse(strings.NewReader(`<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/><`)); err == nil {
+		t.Fatal("trailing bytes")
+	}
+	if _, err := Parse(iotest.ErrReader(errors.New("boom"))); err == nil {
+		t.Fatal("reader error")
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(dir+"/sub.xsd", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRoot(dir, "sub.xsd"); err == nil {
+		t.Fatal("directory as a document")
+	}
+	if err := os.WriteFile(dir+"/tail.xsd", []byte(`<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"/><`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadRoot(dir, "tail.xsd"); err == nil {
+		t.Fatal("trailing bytes in a file")
+	}
+	// A directory whose name is not a valid glob pattern.
+	if err := os.Mkdir(dir+"/[", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadDir(dir + "/["); err == nil {
+		t.Fatal("bad pattern")
 	}
 }
