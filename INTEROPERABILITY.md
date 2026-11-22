@@ -135,7 +135,7 @@ the pin, released as go-profinet v0.8.1).
 | profinet-py | 0.6.6 | IO-Device, DCP responder | 32 | 0 | 1 | 3 |
 | pnio-dcp | 1.2.0 | DCP responder | 8 | 0 | 0 | 0 |
 | umrp | v4.0 | MRP manager, client and MRA | 32 | 0 | 0 | 2 |
-| microchip-ung/mrp | `177717e` | MRP manager, client and MRA (kernel, micro-VM) | 31 | 0 | 1 | 0 |
+| microchip-ung/mrp | `177717e` (since profinet-interop v0.9.1 with the fix `ee224a1`, microchip-ung/mrp#4) | MRP manager, client and MRA (kernel, micro-VM) | 31 | 0 | 1 | 0 |
 | Net-SNMP | 5.9.3 | SNMP agent of the IO-Device | 29 | 0 | 0 | 0 |
 | scapy | 2.6.1 | (decoder of every capture) | 20 | 0 | 0 | 7 |
 | tshark | 4.0.17 | (decoder of every capture) | 19 | 0 | 0 | 0 |

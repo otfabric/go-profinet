@@ -4,7 +4,8 @@
 # microvm-interop.sh <kernel image> <go test -run pattern>...: run interop
 # tests in virtme-ng micro-VMs (QEMU/KVM) booted with the given kernel,
 # with a Docker daemon of their own inside the guest, one boot for each
-# pattern: nothing is torn down (the kernel's teardown of a bridge with an
+# pattern (CI gives each pattern a runner of its own: kernel-mrp.yml):
+# nothing is torn down (the kernel's teardown of a bridge with an
 # MRP instance can hang on RTNL) and no ring of a test keeps running into
 # the next. For peers that need a
 # kernel feature the host does not have: microchip-ung/mrp needs bridge MRP
@@ -62,12 +63,23 @@ failed=()
 for run in "$@"; do
     echo "::group::micro-VM: $run"
     start=$(date +%s)
-    vng --run "$kernel" --root / --user root --memory 8G --cpus "$(nproc)" \
+    # --verbose keeps the guest kernel's console: a guest that never reaches
+    # guest.sh otherwise leaves no trace at all.
+    status=0
+    vng --verbose --run "$kernel" --root / --user root --memory 8G --cpus "$(nproc)" \
         --rwdir "$out" --rwdir "$results" \
-        --exec "bash $out/guest.sh '$run'" | tee "$out/log" || true
-    echo "micro-VM run took $(( $(date +%s) - start )) s"
+        --exec "bash $out/guest.sh '$run'" 2>&1 | tee "$out/log" || status=${PIPESTATUS[0]}
+    echo "micro-VM run took $(( $(date +%s) - start )) s, vng exit status $status"
     echo "::endgroup::"
-    grep -q MICROVM-OK "$out/log" || failed+=("$run")
+    if ! grep -q MICROVM-OK "$out/log"; then
+        failed+=("$run")
+        grep -q '^guest kernel ' "$out/log" || echo "::error::micro-VM $run: the guest never ran guest.sh (vng exit status $status)"
+        echo "::group::host state after the failed micro-VM: $run"
+        free -m || true
+        pgrep -a 'qemu|virtiofsd' || echo "no qemu or virtiofsd left"
+        sudo -n dmesg 2>/dev/null | tail -n 60 || true
+        echo "::endgroup::"
+    fi
 done
 if [ ${#failed[@]} -gt 0 ]; then
     echo "failed: ${failed[*]}" >&2

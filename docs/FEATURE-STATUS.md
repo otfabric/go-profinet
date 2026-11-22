@@ -2,8 +2,9 @@
 
 What go-profinet supports, on what, how each feature is tested, and against
 what. Status: go-profinet v0.12.0 (2026-11-21) and profinetctl v0.14.0.
-v0.12.0 pins profinet-interop v0.8.0; main pins v0.9.0 (contract 1.3, no
-adapter change), from the next release. The interop matrix below is still
+v0.12.0 pins profinet-interop v0.8.0; main pins v0.9.2 (contract 1.3; its mrp image
+carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
+scapy 2.8.0), from the next release. The interop matrix below is still
 that of the profinet-interop v0.8.0 run of 2026-11-12 against go-profinet
 v0.8.1. The Interop workflow has since passed on v0.12.0 (commit f9a5d82,
 2026-11-21, profinet-interop v0.8.0), but the matrix was not regenerated
