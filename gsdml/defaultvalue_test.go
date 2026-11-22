@@ -215,3 +215,86 @@ func trimPlus(s string) string {
 	}
 	return s
 }
+
+// TestRefDefaultDecimalHexEquivalence: a decimal and a 0x hexadecimal
+// integer DefaultValue of the same value write the same record octets for
+// every integer DataType, at the bounds of each. Hexadecimal is a
+// compatibility tolerance (docs/GSDML.md): ISO 15745-4:2003/Amd 1:2006
+// Table D.31 constrains DefaultValue to decimal digits. It is a magnitude
+// with an optional sign, not a two's complement pattern: "0xFF" is 255, so
+// it does not fit an Integer8.
+func TestRefDefaultDecimalHexEquivalence(t *testing.T) {
+	for _, tc := range []struct{ dataType, dec, hex string }{
+		{"Unsigned8", "0", "0x0"}, {"Unsigned8", "255", "0xFF"}, {"Unsigned8", "171", "0xab"},
+		{"Unsigned16", "65535", "0xFFFF"}, {"Unsigned32", "4294967295", "0xFFFFFFFF"},
+		{"Unsigned64", "18446744073709551615", "0xFFFFFFFFFFFFFFFF"},
+		{"Integer8", "127", "0x7F"}, {"Integer8", "-128", "-0x80"}, {"Integer8", "-1", "-0x1"},
+		{"Integer16", "-32768", "-0x8000"}, {"Integer32", "2147483647", "0x7FFFFFFF"},
+		{"Integer64", "-9223372036854775808", "-0x8000000000000000"},
+		{"Bit", "1", "0x1"},
+	} {
+		write := func(def string) ([]byte, error) {
+			rec := make([]byte, 8)
+			return rec, applyRef(rec, &Ref{ByteOffset: "0", DataType: tc.dataType, DefaultValue: def})
+		}
+		d, err1 := write(tc.dec)
+		h, err2 := write(tc.hex)
+		if err1 != nil || err2 != nil || !bytes.Equal(d, h) {
+			t.Errorf("%s %s / %s: % x %v, % x %v", tc.dataType, tc.dec, tc.hex, d, err1, h, err2)
+		}
+	}
+	// Width and signedness hold for hexadecimal as for decimal.
+	for _, tc := range []struct{ dataType, def string }{
+		{"Unsigned8", "0x100"}, {"Unsigned8", "256"}, {"Unsigned8", "-0x1"},
+		{"Integer8", "0xFF"}, {"Integer8", "0x80"}, {"Integer8", "-0x81"}, {"Integer8", "128"},
+		{"Unsigned16", "0x10000"}, {"Integer16", "0x8000"},
+		{"Unsigned8", "0x"}, {"Unsigned8", "0x+1"}, {"Unsigned8", "0b1"}, {"Unsigned8", "0o7"}, {"Unsigned8", "1_0"},
+		{"Integer16", "0x-1"}, {"Integer16", "0x1_0"},
+	} {
+		if err := applyRef(make([]byte, 8), &Ref{ByteOffset: "0", DataType: tc.dataType, DefaultValue: tc.def}); !errors.Is(err, profinet.ErrMalformed) {
+			t.Errorf("%s %q: %v", tc.dataType, tc.def, err)
+		}
+	}
+}
+
+// TestRefDefaultLeadingZeros: leading zeros are decimal for every integer
+// DataType ("010" is ten, "08" and "09" are valid), never octal.
+func TestRefDefaultLeadingZeros(t *testing.T) {
+	for _, tc := range []struct {
+		dataType, def string
+		want          []byte
+	}{
+		{"Unsigned8", "010", []byte{10}}, {"Unsigned8", "08", []byte{8}}, {"Unsigned8", "0009", []byte{9}},
+		{"Unsigned16", "00100", []byte{0, 100}}, {"Integer8", "-010", []byte{0xF6}}, {"Integer8", "+010", []byte{10}},
+		{"Integer16", "-0008", []byte{0xFF, 0xF8}}, {"Unsigned32", "0255", []byte{0, 0, 0, 255}},
+	} {
+		rec := make([]byte, len(tc.want))
+		if err := applyRef(rec, &Ref{ByteOffset: "0", DataType: tc.dataType, DefaultValue: tc.def}); err != nil || !bytes.Equal(rec, tc.want) {
+			t.Errorf("%s %q: % x %v, want % x", tc.dataType, tc.def, rec, err, tc.want)
+		}
+	}
+}
+
+// TestGeneratedDocumentHasNoRefDefault: FromModel describes a record's
+// default with Const octets, so it writes no Ref DefaultValue, decimal or
+// hexadecimal; should it ever write one, it is to be decimal (the form of
+// ISO 15745-4 Table D.31).
+func TestGeneratedDocumentHasNoRefDefault(t *testing.T) {
+	m := &model.Device{
+		Identity: model.Identity{VendorID: 0xF000, DeviceID: 1, VendorName: "OT Fabric", TypeOfStation: "test", OrderID: "T", HardwareRevision: 1},
+		DAP:      model.Module{IdentNumber: 1, Submodules: []model.Submodule{{Subslot: 1, IdentNumber: 1}}},
+		Slots: []model.Slot{{Number: 1, Module: model.Module{IdentNumber: 2, Submodules: []model.Submodule{{Subslot: 1, IdentNumber: 2, InputLen: 1,
+			Records: []model.Record{{Index: 0x10, Length: 2, Default: []byte{0, 1}}}}}}}},
+	}
+	doc, err := FromModel(m, GenerateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b, []byte("<Ref ")) || bytes.Contains(b, []byte("DefaultValue=")) || !bytes.Contains(b, []byte(`Data="0x00,0x01"`)) {
+		t.Fatalf("generated record:\n%s", b)
+	}
+}

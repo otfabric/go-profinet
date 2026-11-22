@@ -67,11 +67,22 @@ is absent once the document is written and read again.
 
 The DefaultValue of an integer or bit Ref is decimal with an optional
 sign, where leading zeros are decimal (`"010"` is ten), as in the lexical
-space of xsd:integer, or 0x hexadecimal, as the package reads every other
-number. A value outside the DataType's range, or in any other form (Go's
-octal `0o`/`0` prefix, binary `0b`, digit separators `_`), fails with
-`ErrMalformed`. That hexadecimal is allowed in a DefaultValue has not been
-checked against the members-only GSDML specification (LIMITATIONS.md).
+space of xsd:integer. ISO 15745-4:2003/Amd 1:2006, Annex D, D.4.7.4,
+Table D.31 (Attributes of element Ref; read in its adoption GOST R ISO
+15745-4-2010) constrains DefaultValue by the pattern `\-?[\d+]{1,20}`:
+decimal digits, no hexadecimal. The V2.35 XSD declares it xsd:string with
+no pattern, so passing the schema says nothing about the form. As a
+compatibility tolerance the package also reads `0x` (or `0X`) hexadecimal,
+as it reads every other number: a magnitude with an optional sign before
+the prefix (`"-0x80"` is −128), not a two's complement pattern (`"0xFF"`
+does not fit an Integer8). Decimal and hexadecimal of one value write the
+same octets. A value outside the DataType's range, or in any other form
+(Go's octal `0o`/`0` prefix, binary `0b`, digit separators `_`, a sign after
+`0x`), fails with `ErrMalformed`. Whether the current GSDML specification
+allows hexadecimal there is not known: its text is members-only
+(LIMITATIONS.md). `FromModel` writes no Ref (a record's default is Const
+octets); a DefaultValue it wrote would be decimal. The Const Data and
+OctetString DefaultValue form (`"0x01,0x02"`) is a separate matter, below.
 
 The DefaultValue of a VisibleString, UTF8String or OctetString Ref fills
 the Length octets of its field: a longer value fails with `ErrMalformed`,
@@ -95,11 +106,18 @@ canonical), from the xsd:boolean forms true, false, 1 and 0; any other
 value fails with `ErrMalformed`. Every other DataType fails with
 `ErrUnsupported` (`no verified DefaultValue encoding for DataType Integer16_S`):
 
-- the `_S` types embed two status bits in the value (OPC 30144 v1.00
-  Table 17 gives the codes B, S, U, G and Table 58 the value ranges, such as
-  0–63 for Unsigned8_S, but neither the bit positions nor how the status is
-  written in a DefaultValue); Unsigned32_S and Integer32_S are not Ref
-  DataTypes in Table 58 at all;
+- the `_S` types: their binary layout is established, and the `pnio`
+  package encodes and decodes it (`pnio.EncodeUnsigned8S`,
+  `EncodeUnsigned16S`, `EncodeInteger16S`, `EncodeOctetStringS` and their
+  decoders; IEC 61158-5-10:2023 5.3.1.6.8–5.3.1.6.10 and 5.3.2.2, RIO for
+  Process Automation 3.132 Tables 8 and 9): the value above two status
+  bits (B 0, S 1, U 2, G 3), Integer16_S as 14-bit two's complement, and
+  OctetString_S as m value octets followed by 2·m octets of channel
+  statuses. How a DefaultValue writes the value and its status is not
+  (OPC 30144 Table 58 says "plus status B/S/U/G" without a grammar), nor
+  which status a parameter may carry, so a guess at either would write a
+  wrong record; Unsigned32_S and Integer32_S are not Ref DataTypes in
+  Table 58 and have no layout in any source the package has;
 - the composite types (`Float32+Status8`, `Unsigned8+Unsigned8`, …), the
   date and time types (`Date`, `TimeStamp`, …) and the PROFIdrive types
   (`N2`, `V2`, `X4`, …) have no public lexical form for a DefaultValue;
