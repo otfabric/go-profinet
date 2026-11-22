@@ -48,6 +48,12 @@ const (
 	// RuleReductionRatio: a reduction ratio that is not a power of two
 	// from 1 to 512, the RT_CLASS_1 ratios (local heuristic).
 	RuleReductionRatio = "reduction-ratio"
+	// RuleDataTypeContext: a DataItem or parameter Ref DataType that the
+	// audited schema of the document's version does not allow in that
+	// context (third-party copies of the schemas; a warning), or whose
+	// legality no audited schema decides (unvalidated, once per document).
+	// See DataTypeLegality.
+	RuleDataTypeContext = "datatype-context"
 )
 ```
 
@@ -80,6 +86,14 @@ func DataItemSize(dataType, length string) (int, error)
 ```
 
 DataItemSize returns the size in octets of a data item.
+
+### func DataTypeLegalityVersions
+
+```go
+func DataTypeLegalityVersions() []string
+```
+
+DataTypeLegalityVersions returns the schema versions whose legality is verified, in ascending order.
 
 ### func Encode
 
@@ -164,6 +178,34 @@ func Validate(doc *Document) error
 Validate checks the document against the catalog's structural and lexical rules, checks that every ID is unique and every reference (module, submodule, value item, graphic, category and text references) resolves, and that no submodule's IO data exceed an RT frame. It returns nil or a \*ValidationError with the errors; Check reports the warnings and the unvalidated content as well.
 
 ## Types
+
+### type DataTypeContext
+
+```go
+type DataTypeContext string
+```
+
+DataTypeContext names a place in a GSDML document where a DataType attribute occurs. Schema versions allow different values in different contexts (docs/research/GSDML-XSD-AUDIT.md).
+
+```go
+const (
+	// DataTypeContextIO: the DataItem of an Input or Output.
+	DataTypeContextIO DataTypeContext = "io"
+	// DataTypeContextParameter: the Ref of a ParameterRecordDataItem (and
+	// of a Request).
+	DataTypeContextParameter DataTypeContext = "parameter"
+	// DataTypeContextUnitDiag: the Ref of a UnitDiagTypeItem or
+	// ProfileUnitDiagTypeItem.
+	DataTypeContextUnitDiag DataTypeContext = "unitDiag"
+	// DataTypeContextExtChannel: the DataItem of an ExtChannelAddValue.
+	DataTypeContextExtChannel DataTypeContext = "extChannel"
+	// DataTypeContextProcessAlarm: the DataItem of a
+	// ProcessAlarmReasonAddValue.
+	DataTypeContextProcessAlarm DataTypeContext = "processAlarm"
+)
+```
+
+DataType contexts.
 
 ### type Document
 
@@ -251,6 +293,63 @@ Issue is a problem Validate found.
 ```go
 func (i Issue) String() string
 ```
+
+### type Legality
+
+```go
+type Legality int
+```
+
+Legality says whether a schema version allows a DataType in a context.
+
+```go
+const (
+	// LegalityUnverified: no audited schema decides it, because the
+	// version was not audited (any version but V1.0, V2.0, V2.1, V2.2 and
+	// V2.35, newer ones included) or its schema cannot decide the value.
+	// It says nothing about whether the value is legal.
+	LegalityUnverified Legality = iota
+	// LegalityAllowed: the audited schema of the version allows it.
+	LegalityAllowed
+	// LegalityForbidden: the audited schema of the version does not allow
+	// it, or does not have the context.
+	LegalityForbidden
+)
+```
+
+#### func DataTypeLegality
+
+```go
+func DataTypeLegality(version string, ctx DataTypeContext, dt DataType) Legality
+```
+
+DataTypeLegality says whether GSDML schema version version ("2.35", as Report.SchemaVersion gives it) allows dt in ctx. Only exact audited versions decide: nothing is inferred for a version between or after them, because a value can be removed and added again between versions.
+
+The sets come from third-party copies of the schemas, not from PI's distribution (docs/research/GSDML-XSD-AUDIT.md), so Check reports a forbidden value as a warning, not an error. Legality is independent of a DataType's size (DataItemSize) and of whether ToModel can write its DefaultValue.
+
+#### func (Legality) MarshalText
+
+```go
+func (l Legality) MarshalText() ([]byte, error)
+```
+
+MarshalText makes a Legality a JSON string.
+
+#### func (Legality) String
+
+```go
+func (l Legality) String() string
+```
+
+String returns the legality's name.
+
+#### func (Legality) UnmarshalText
+
+```go
+func (l *Legality) UnmarshalText(b []byte) error
+```
+
+UnmarshalText reads the names MarshalText writes.
 
 ### type Node
 

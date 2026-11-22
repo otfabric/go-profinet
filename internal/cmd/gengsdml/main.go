@@ -59,12 +59,125 @@ type element struct {
 }
 
 type catalog struct {
-	Comment     string                `json:"comment"`
-	Namespace   string                `json:"namespace"`
-	Root        string                `json:"root"`
-	Versions    []string              `json:"versions"`
-	SimpleTypes map[string]simpleType `json:"simpleTypes"`
-	Elements    []element             `json:"elements"`
+	Comment          string                `json:"comment"`
+	Namespace        string                `json:"namespace"`
+	Root             string                `json:"root"`
+	Versions         []string              `json:"versions"`
+	SimpleTypes      map[string]simpleType `json:"simpleTypes"`
+	DataTypeLegality *legality             `json:"dataTypeLegality"`
+	Elements         []element             `json:"elements"`
+}
+
+// legality is the catalog's dataTypeLegality: exact DataType sets per
+// audited schema version and context, and the values a set cannot decide.
+type legality struct {
+	Doc      string `json:"doc"`
+	Evidence string `json:"evidence"`
+	// Contexts maps a context name to its "Parent/Element" occurrences.
+	Contexts      map[string][]string            `json:"contexts"`
+	Versions      map[string]map[string][]string `json:"versions"`
+	Unverified    map[string]map[string][]string `json:"unverified"`
+	UnverifiedDoc string                         `json:"unverifiedDoc"`
+}
+
+var contextName = regexp.MustCompile(`^[a-z][A-Za-z]*$`)
+var legalityVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
+
+// check validates the legality section: known contexts, version names,
+// and values of the DataType enumeration.
+func (l *legality) check(enum []string) error {
+	known := map[string]bool{}
+	for _, v := range enum {
+		known[v] = true
+	}
+	for name, uses := range l.Contexts {
+		if !contextName.MatchString(name) || len(uses) == 0 {
+			return fmt.Errorf("dataTypeLegality: context %q", name)
+		}
+	}
+	for _, sets := range []map[string]map[string][]string{l.Versions, l.Unverified} {
+		for v, ctxs := range sets {
+			if !legalityVersion.MatchString(v) {
+				return fmt.Errorf("dataTypeLegality: version %q", v)
+			}
+			for ctx, vals := range ctxs {
+				if _, ok := l.Contexts[ctx]; !ok {
+					return fmt.Errorf("dataTypeLegality %s: unknown context %q", v, ctx)
+				}
+				for _, x := range vals {
+					if !known[x] {
+						return fmt.Errorf("dataTypeLegality %s %s: %q is not a DataType value", v, ctx, x)
+					}
+				}
+			}
+		}
+	}
+	for v, ctxs := range l.Unverified {
+		for ctx, vals := range ctxs {
+			for _, x := range vals {
+				if slices.Contains(l.Versions[v][ctx], x) {
+					return fmt.Errorf("dataTypeLegality %s %s: %q is both allowed and unverified", v, ctx, x)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// generateLegality writes the legality tables of package gsdml.
+func generateLegality(l *legality, p func(string, ...any)) {
+	sorted := func(m map[string]map[string][]string) []string {
+		ks := make([]string, 0, len(m))
+		for k := range m {
+			ks = append(ks, k)
+		}
+		sort.Strings(ks)
+		return ks
+	}
+	ctxs := make([]string, 0, len(l.Contexts))
+	for k := range l.Contexts {
+		ctxs = append(ctxs, k)
+	}
+	sort.Strings(ctxs)
+	p("// dataTypeContextUses maps a DataType context to the \"Parent/Element\"\n// occurrences it covers.\n")
+	p("var dataTypeContextUses = map[DataTypeContext][]string{\n")
+	for _, c := range ctxs {
+		p("\t%q: {", c)
+		for i, u := range l.Contexts[c] {
+			if i > 0 {
+				p(", ")
+			}
+			p("%q", u)
+		}
+		p("},\n")
+	}
+	p("}\n\n")
+	table := func(name, doc string, m map[string]map[string][]string) {
+		p("// %s %s\n", name, doc)
+		p("var %s = map[string]map[DataTypeContext]map[DataType]bool{\n", name)
+		for _, v := range sorted(m) {
+			p("\t%q: {\n", v)
+			cs := make([]string, 0, len(m[v]))
+			for c := range m[v] {
+				cs = append(cs, c)
+			}
+			sort.Strings(cs)
+			for _, c := range cs {
+				p("\t\t%q: {", c)
+				for i, x := range m[v][c] {
+					if i > 0 {
+						p(", ")
+					}
+					p("%q: true", x)
+				}
+				p("},\n")
+			}
+			p("\t},\n")
+		}
+		p("}\n\n")
+	}
+	table("dataTypeSets", "holds, per audited schema version and context, the\n// DataType values the schema allows ("+l.Evidence+").", l.Versions)
+	table("dataTypeUnverified", "holds the values a set cannot decide.", l.Unverified)
 }
 
 type attr struct {
@@ -225,6 +338,13 @@ func (c *catalog) check() error {
 			return fmt.Errorf("element %s: text and children", e.Name)
 		}
 	}
+	if c.DataTypeLegality != nil {
+		dt, ok := c.SimpleTypes["DataType"]
+		if !ok {
+			return errors.New("dataTypeLegality without a DataType type")
+		}
+		return c.DataTypeLegality.check(dt.Enum)
+	}
 	return nil
 }
 
@@ -297,6 +417,9 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 			p("%q", v)
 		}
 		p("}\n\n")
+	}
+	if c.DataTypeLegality != nil {
+		generateLegality(c.DataTypeLegality, p)
 	}
 
 	for _, e := range c.Elements {

@@ -124,11 +124,33 @@ value fails with `ErrMalformed`. Every other DataType fails with
 - the types of more than 8 octets were written as a 64-bit number with the
   rest zero-filled.
 
-The DataType list of the catalog is one enumeration for every element; the
-V2.35 XSD has one per context (DataItem, Ref, unit and channel diagnosis
-items), which differ. Which DataType is legal where, by schema version, is
-a separate audit (LIMITATIONS.md); `ToModel` refuses by encoding, not by
-legality.
+The DataType vocabulary of the catalog (`DataTypes`) is one list for
+every element. The schemas have one enumeration per context, which differ
+by version and are not monotonic. `DataTypeLegality(version, context,
+DataType)` answers from exact sets for the audited versions V1.0, V2.0,
+V2.1, V2.2 and V2.35 (docs/research/GSDML-XSD-AUDIT.md). It returns:
+
+- **allowed** or **forbidden** for an audited version;
+- **unverified** for any other version, newer ones included, and for
+  V2.0's `F_MessageTrailer5Byte`, which that schema copy spells with a
+  trailing space.
+
+`Check` applies it, through the rule `datatype-context`, to every IO
+DataItem and parameter Ref:
+
+- A value forbidden by an audited version is a **warning**, not an error,
+  because the sets come from third-party copies of the schemas. `Validate`
+  therefore does not fail on it.
+- A document whose version was not audited, or that declares none, gets
+  one **unvalidated** issue.
+- The unit diagnosis, channel diagnosis and process alarm contexts are not
+  modelled; their elements are reported as unknown.
+
+`ToModel` refuses by size and encoding, not by legality. `UnicodeString8`,
+`61131_STRING` and `61131_WSTRING` (V2.35) are in the vocabulary, but have
+no size: no source the package has gives their layout.
+`Float64+Status8`, `Integer32_S`, `Unsigned32_S` and `UTF8String` are in no
+audited schema. They stay in the vocabulary, unverified.
 
 The Boolean attributes `ToModel` reads (`LLDP_NoD_Supported`,
 `DCP_HelloSupported`) are true, false, 1 or 0, with white space around

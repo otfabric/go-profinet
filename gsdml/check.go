@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -93,6 +94,12 @@ const (
 	// RuleReductionRatio: a reduction ratio that is not a power of two
 	// from 1 to 512, the RT_CLASS_1 ratios (local heuristic).
 	RuleReductionRatio = "reduction-ratio"
+	// RuleDataTypeContext: a DataItem or parameter Ref DataType that the
+	// audited schema of the document's version does not allow in that
+	// context (third-party copies of the schemas; a warning), or whose
+	// legality no audited schema decides (unvalidated, once per document).
+	// See DataTypeLegality.
+	RuleDataTypeContext = "datatype-context"
 )
 
 // Report is the result of Check: every issue, with its severity.
@@ -158,7 +165,16 @@ func Check(doc *Document) Report {
 		v.add("ISO15745Profile", SeverityUnvalidated, RuleSchemaVersion,
 			"schema version %s is newer than go-profinet's catalog (up to %s): what that version added is kept, not validated", rep.SchemaVersion, SchemaVersions[len(SchemaVersions)-1])
 	}
+	v.version = rep.SchemaVersion
 	semantic(doc, v)
+	if v.unverified && v.room(SeverityUnvalidated) {
+		msg := "the document declares no schema version"
+		if rep.SchemaVersion != "" {
+			msg = "schema version " + rep.SchemaVersion + " was not audited"
+		}
+		v.issues = append(v.issues, Issue{Path: "ISO15745Profile", Severity: SeverityUnvalidated, Rule: RuleDataTypeContext,
+			Message: fmt.Sprintf("%s: which DataType values its contexts allow is unverified (audited: %s)", msg, strings.Join(DataTypeLegalityVersions(), ", "))})
+	}
 	v.closeIssues()
 	rep.Issues = v.issues
 	return rep
@@ -266,6 +282,12 @@ func (v *validator) checkSubmodules(path func() string, items []*VirtualSubmodul
 		p := func() string { return path() + "/VirtualSubmoduleItem[" + pathID(sm.ID) + "]" }
 		if sm.IOData != nil {
 			if sm.IOData.Input != nil {
+				v.checkDataItems(func() string { return p() + "/IOData/Input" }, sm.IOData.Input.DataItems)
+			}
+			if sm.IOData.Output != nil {
+				v.checkDataItems(func() string { return p() + "/IOData/Output" }, sm.IOData.Output.DataItems)
+			}
+			if sm.IOData.Input != nil {
 				if n := dataLength(sm.IOData.Input.DataItems); n > maxIOData && v.room(SeverityError) {
 					v.issues = append(v.issues, Issue{Path: p(), Rule: RuleIODataLength, Message: fmt.Sprintf("%d octets of input data: an RT frame carries at most %d with the provider status", n, maxIOData)})
 				}
@@ -281,8 +303,37 @@ func (v *validator) checkSubmodules(path func() string, items []*VirtualSubmodul
 				if idx, err := parseUint(r.Index, 16); err == nil && idx > 0x7FFF {
 					v.warn(p, RuleRecordIndex, "parameter record index %#x is outside the user range 0x0000-0x7FFF", idx)
 				}
+				for i, ref := range r.Refs {
+					v.checkDataType(func() string {
+						return p() + "/RecordDataList/ParameterRecordDataItem[" + clip(r.Index) + "]/Ref[" + strconv.Itoa(i+1) + "]"
+					}, DataTypeContextParameter, ref.DataType)
+				}
 			}
 		}
+	}
+}
+
+// checkDataItems applies the DataType rule to the items of an Input or
+// Output.
+func (v *validator) checkDataItems(path func() string, items []*DataItem) {
+	for i, it := range items {
+		v.checkDataType(func() string { return path() + "/DataItem[" + strconv.Itoa(i+1) + "]" }, DataTypeContextIO, it.DataType)
+	}
+}
+
+// checkDataType warns about a DataType the audited schema of the
+// document's version forbids in ctx, and records that a legality was not
+// decided. A value outside the vocabulary is the structure rule's.
+func (v *validator) checkDataType(path func() string, ctx DataTypeContext, dt string) {
+	if !slices.Contains(DataTypes, DataType(dt)) {
+		return
+	}
+	switch DataTypeLegality(v.version, ctx, DataType(dt)) {
+	case LegalityForbidden:
+		v.warn(path, RuleDataTypeContext, "DataType %s is not allowed in the %s context by the audited GSDML V%s schema", dt, ctx, v.version)
+	case LegalityUnverified:
+		v.unverified = true
+	default:
 	}
 }
 

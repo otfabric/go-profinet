@@ -363,6 +363,10 @@ type validator struct {
 	// slots is the working memory of the slot rules, made when a device
 	// access point first needs it.
 	slots *slotWork
+	// version is the document's schema version, for the DataType rule;
+	// unverified records that a DataType's legality was not decided.
+	version    string
+	unverified bool
 }
 
 // room reports whether one more issue of severity s is listed, and

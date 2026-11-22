@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSHA256 is the SHA-256 of the catalog the types were generated from.
-const CatalogSHA256 = "a71e0d2807fed37c3a0d7eef835541e79e5d3fa94b89d5ebd2d34ebb62b5556d"
+const CatalogSHA256 = "ea55a5b91bf786dba87d94d8785f2709adb5c9a0356c620fea20ab0c3d85e6ab"
 
 // Namespace is the XML namespace of GSDML documents.
 const Namespace = "http://www.profibus.com/GSDML/2003/11/DeviceProfile"
@@ -23,7 +23,7 @@ var simpleTypes = map[string]simpleType{
 	"Boolean":          {doc: "true or false (also 1 or 0).", enum: map[string]bool{"true": true, "false": true, "1": true, "0": true}},
 	"ConformanceClass": {doc: "The PROFINET conformance class.", enum: map[string]bool{"A": true, "B": true, "C": true, "D": true}},
 	"Consistency":      {doc: "The consistency of IO data.", enum: map[string]bool{"Item consistency": true, "All items consistency": true}},
-	"DataType":         {doc: "The data type of a DataItem or Ref.", enum: map[string]bool{"Bit": true, "BitArea": true, "Boolean": true, "Integer8": true, "Integer16": true, "Integer32": true, "Integer64": true, "Unsigned8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Float32": true, "Float64": true, "Date": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "NetworkTime": true, "NetworkTimeDifference": true, "VisibleString": true, "OctetString": true, "Unsigned8+Unsigned8": true, "Float32+Unsigned8": true, "Float32+Status8": true, "Float64+Status8": true, "Unsigned8_S": true, "OctetString_S": true, "Unsigned16_S": true, "Integer16_S": true, "Integer32_S": true, "Unsigned32_S": true, "N2": true, "N4": true, "V2": true, "L2": true, "R2": true, "T2": true, "T4": true, "D2": true, "E2": true, "C4": true, "X2": true, "X4": true, "Unipolar2.16": true, "OctetString2+Unsigned8": true, "UTF8String": true, "F_MessageTrailer4Byte": true, "F_MessageTrailer5Byte": true, "TimeStamp": true, "TimeStampDifference": true, "TimeStampDifferenceShort": true}},
+	"DataType":         {doc: "The data type of a DataItem or Ref.", enum: map[string]bool{"Bit": true, "BitArea": true, "Boolean": true, "Integer8": true, "Integer16": true, "Integer32": true, "Integer64": true, "Unsigned8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Float32": true, "Float64": true, "Date": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "NetworkTime": true, "NetworkTimeDifference": true, "VisibleString": true, "OctetString": true, "Unsigned8+Unsigned8": true, "Float32+Unsigned8": true, "Float32+Status8": true, "Float64+Status8": true, "Unsigned8_S": true, "OctetString_S": true, "Unsigned16_S": true, "Integer16_S": true, "Integer32_S": true, "Unsigned32_S": true, "N2": true, "N4": true, "V2": true, "L2": true, "R2": true, "T2": true, "T4": true, "D2": true, "E2": true, "C4": true, "X2": true, "X4": true, "Unipolar2.16": true, "OctetString2+Unsigned8": true, "UTF8String": true, "F_MessageTrailer4Byte": true, "F_MessageTrailer5Byte": true, "TimeStamp": true, "TimeStampDifference": true, "TimeStampDifferenceShort": true, "UnicodeString8": true, "61131_STRING": true, "61131_WSTRING": true}},
 	"ID":               {doc: "An identifier unique in the document.", pattern: regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_.\\-]*$")},
 	"IDRef":            {doc: "A reference to an ID.", pattern: regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_.\\-]*$")},
 	"Language":         {doc: "An ISO 639-1 language code.", pattern: regexp.MustCompile("^[a-z]{2}(-[A-Za-z]{2})?$")},
@@ -101,10 +101,64 @@ const (
 	DataTypeTimeStamp                           DataType = "TimeStamp"
 	DataTypeTimeStampDifference                 DataType = "TimeStampDifference"
 	DataTypeTimeStampDifferenceShort            DataType = "TimeStampDifferenceShort"
+	DataTypeUnicodeString8                      DataType = "UnicodeString8"
+	DataType61131STRING                         DataType = "61131_STRING"
+	DataType61131WSTRING                        DataType = "61131_WSTRING"
 )
 
 // DataTypes lists every DataType value.
-var DataTypes = []DataType{"Bit", "BitArea", "Boolean", "Integer8", "Integer16", "Integer32", "Integer64", "Unsigned8", "Unsigned16", "Unsigned32", "Unsigned64", "Float32", "Float64", "Date", "TimeOfDay with date indication", "TimeOfDay without date indication", "TimeDifference with date indication", "TimeDifference without date indication", "NetworkTime", "NetworkTimeDifference", "VisibleString", "OctetString", "Unsigned8+Unsigned8", "Float32+Unsigned8", "Float32+Status8", "Float64+Status8", "Unsigned8_S", "OctetString_S", "Unsigned16_S", "Integer16_S", "Integer32_S", "Unsigned32_S", "N2", "N4", "V2", "L2", "R2", "T2", "T4", "D2", "E2", "C4", "X2", "X4", "Unipolar2.16", "OctetString2+Unsigned8", "UTF8String", "F_MessageTrailer4Byte", "F_MessageTrailer5Byte", "TimeStamp", "TimeStampDifference", "TimeStampDifferenceShort"}
+var DataTypes = []DataType{"Bit", "BitArea", "Boolean", "Integer8", "Integer16", "Integer32", "Integer64", "Unsigned8", "Unsigned16", "Unsigned32", "Unsigned64", "Float32", "Float64", "Date", "TimeOfDay with date indication", "TimeOfDay without date indication", "TimeDifference with date indication", "TimeDifference without date indication", "NetworkTime", "NetworkTimeDifference", "VisibleString", "OctetString", "Unsigned8+Unsigned8", "Float32+Unsigned8", "Float32+Status8", "Float64+Status8", "Unsigned8_S", "OctetString_S", "Unsigned16_S", "Integer16_S", "Integer32_S", "Unsigned32_S", "N2", "N4", "V2", "L2", "R2", "T2", "T4", "D2", "E2", "C4", "X2", "X4", "Unipolar2.16", "OctetString2+Unsigned8", "UTF8String", "F_MessageTrailer4Byte", "F_MessageTrailer5Byte", "TimeStamp", "TimeStampDifference", "TimeStampDifferenceShort", "UnicodeString8", "61131_STRING", "61131_WSTRING"}
+
+// dataTypeContextUses maps a DataType context to the "Parent/Element"
+// occurrences it covers.
+var dataTypeContextUses = map[DataTypeContext][]string{
+	"extChannel":   {"ExtChannelAddValue/DataItem"},
+	"io":           {"Input/DataItem", "Output/DataItem"},
+	"parameter":    {"ParameterRecordDataItem/Ref", "Request/Ref"},
+	"processAlarm": {"ProcessAlarmReasonAddValue/DataItem"},
+	"unitDiag":     {"UnitDiagTypeItem/Ref", "ProfileUnitDiagTypeItem/Ref"},
+}
+
+// dataTypeSets holds, per audited schema version and context, the
+// DataType values the schema allows (docs/research/gsdml-xsd-audit.json).
+var dataTypeSets = map[string]map[DataTypeContext]map[DataType]bool{
+	"1.0": {
+		"io":        {"Date": true, "Float32": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+		"parameter": {"Bit": true, "BitArea": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true},
+		"unitDiag":  {"Bit": true, "BitArea": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true},
+	},
+	"2.0": {
+		"io":        {"Date": true, "F_MessageTrailer4Byte": true, "Float32": true, "Float32+Status8": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+		"parameter": {"Bit": true, "BitArea": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true},
+		"unitDiag":  {"Bit": true, "BitArea": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true},
+	},
+	"2.1": {
+		"extChannel": {"Float32": true, "Integer16": true, "Integer32": true, "Integer8": true, "OctetString": true, "TimeDifference without date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned8": true, "VisibleString": true},
+		"io":         {"Date": true, "F_MessageTrailer4Byte": true, "F_MessageTrailer5Byte": true, "Float32": true, "Float32+Status8": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+		"parameter":  {"Bit": true, "BitArea": true, "Date": true, "Float32": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+		"unitDiag":   {"Bit": true, "BitArea": true, "Date": true, "Float32": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+	},
+	"2.2": {
+		"extChannel": {"Float32": true, "Integer16": true, "Integer32": true, "Integer8": true, "OctetString": true, "TimeDifference without date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned8": true, "VisibleString": true},
+		"io":         {"Date": true, "F_MessageTrailer4Byte": true, "F_MessageTrailer5Byte": true, "Float32": true, "Float32+Status8": true, "Float32+Unsigned8": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "Unsigned8+Unsigned8": true, "VisibleString": true},
+		"parameter":  {"Bit": true, "BitArea": true, "Date": true, "Float32": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+		"unitDiag":   {"Bit": true, "BitArea": true, "Date": true, "Float32": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+	},
+	"2.35": {
+		"extChannel":   {"Float32": true, "Integer16": true, "Integer32": true, "Integer8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned8": true},
+		"io":           {"61131_STRING": true, "61131_WSTRING": true, "Boolean": true, "C4": true, "D2": true, "Date": true, "E2": true, "F_MessageTrailer4Byte": true, "F_MessageTrailer5Byte": true, "Float32": true, "Float32+Status8": true, "Float32+Unsigned8": true, "Float64": true, "Integer16": true, "Integer16_S": true, "Integer32": true, "Integer64": true, "Integer8": true, "L2": true, "N2": true, "N4": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "OctetString2+Unsigned8": true, "OctetString_S": true, "R2": true, "T2": true, "T4": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "TimeStamp": true, "TimeStampDifference": true, "TimeStampDifferenceShort": true, "UnicodeString8": true, "Unipolar2.16": true, "Unsigned16": true, "Unsigned16_S": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "Unsigned8+Unsigned8": true, "Unsigned8_S": true, "V2": true, "VisibleString": true, "X2": true, "X4": true},
+		"parameter":    {"61131_STRING": true, "61131_WSTRING": true, "Bit": true, "BitArea": true, "Boolean": true, "C4": true, "D2": true, "Date": true, "E2": true, "Float32": true, "Float32+Unsigned8": true, "Float64": true, "Integer16": true, "Integer16_S": true, "Integer32": true, "Integer64": true, "Integer8": true, "L2": true, "N2": true, "N4": true, "NetworkTime": true, "NetworkTimeDifference": true, "OctetString": true, "OctetString2+Unsigned8": true, "OctetString_S": true, "R2": true, "T2": true, "T4": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "TimeStamp": true, "TimeStampDifference": true, "TimeStampDifferenceShort": true, "UnicodeString8": true, "Unipolar2.16": true, "Unsigned16": true, "Unsigned16_S": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "Unsigned8+Unsigned8": true, "Unsigned8_S": true, "V2": true, "VisibleString": true, "X2": true, "X4": true},
+		"processAlarm": {"Float32": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true},
+		"unitDiag":     {"Bit": true, "BitArea": true, "Float32": true, "Float64": true, "Integer16": true, "Integer32": true, "Integer64": true, "Integer8": true, "OctetString": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Unsigned8": true, "VisibleString": true},
+	},
+}
+
+// dataTypeUnverified holds the values a set cannot decide.
+var dataTypeUnverified = map[string]map[DataTypeContext]map[DataType]bool{
+	"2.0": {
+		"io": {"F_MessageTrailer5Byte": true},
+	},
+}
 
 // ISO15745Profile is the GSDML element ISO15745Profile: the document root.
 type ISO15745Profile struct {
