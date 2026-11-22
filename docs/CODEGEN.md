@@ -37,6 +37,7 @@ reading and writing a file loses nothing.
 go generate ./gsdml                         # or: make generate
 go run ./internal/cmd/gengsdml -check       # make generate-check: fail when out of date
 go run ./internal/cmd/gengsdml -xsd DIR     # compare the catalog with licensed XSDs in DIR
+go run ./internal/cmd/gengsdml -audit V=ROOT.xsd,...  # DataType enumerations per context, as JSON
 ```
 
 For each element it generates a struct with `encoding/xml` tags (attributes
@@ -54,6 +55,18 @@ generated from; CI fails when they differ (`make generate-check`).
 of `internal/xsd` and reports elements and attributes the catalog lacks, has
 in excess, or types and requiredness that differ. Against GSDML v2.35 it
 reports no difference for the modelled elements.
+
+`-audit V=ROOT.xsd,...` reads each schema set from its root document,
+following its includes and imports (`xsd.LoadRoot`), and reports as JSON,
+for every element occurrence with a `DataType` attribute, the enumeration it
+takes (through restriction bases and unions), the comments that mark values
+obsolete, the differences with the catalog's DataType enumeration and with
+the previous set given, the files read with their SHA-256 and the catalog
+versions no set covers. `V` is the GSDML version of the set: the schemas'
+own `version` attribute is unreliable (V2.0 to V2.2 say `1.0`). The report
+holds no timestamps or absolute paths, so it is reproducible.
+`scripts/gsdml-xsd-audit.sh` runs it on five versions;
+docs/research/GSDML-XSD-AUDIT.md is the result.
 
 ## Changing the catalog
 
