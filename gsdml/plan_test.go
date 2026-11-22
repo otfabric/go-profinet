@@ -136,6 +136,13 @@ func TestPlanParametersAuthorization(t *testing.T) {
 	if !errors.Is(err, profinet.ErrInvalidConfig) {
 		t.Fatalf("ValueItem: %v", err)
 	}
+	// A ValueItemTarget that names no ValueItem refuses the plan, defaults
+	// included: the field's permitted values are not known.
+	doc, m = planFixture(t, append(sequenced, `ValueItemTarget="V_MODE"`, `ValueItemTarget="V_NONE"`)...)
+	plan, err = PlanParameters(doc, m, PlanOptions{Defaults: true})
+	if !errors.Is(err, profinet.ErrInvalidConfig) || len(plan.Writes) != 0 || !hasIssue(plan.Issues, RuleParameterAllowedValues, SeverityError) {
+		t.Fatalf("missing ValueItem: %v %+v", err, plan)
+	}
 }
 
 // The model must be of the file's device, not only of its module ident

@@ -132,7 +132,9 @@ profile with a negative `TestInterval`. As `ErrMalformed`: a GSDML module
 or device access point with more than 1440 submodules, or a Const
 ByteOffset or Ref BitOffset that is no number, or a VisibleString,
 UTF8String or OctetString Ref default longer than its Length
-(`gsdml.ToModel`, and `gsdml.SubmoduleParameters` for the same records); a
+(`gsdml.ToModel`, and `gsdml.SubmoduleParameters` for the same records),
+and any value for a parameter field whose ValueItemTarget names no
+ValueItem of the file (`gsdml.ParameterRecord.Set`); a
 value that does not fit its parameter field, is outside its AllowedValues or,
 without them, is not a value of its ValueItem
 (`gsdml.ParameterRecord.Set` and `Encode`, `ErrInvalidConfig`, the record

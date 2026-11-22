@@ -141,8 +141,10 @@ the OctetString form, hexadecimal integers). The rules taken from ISO
 D.31) are as the maintainer's review states them; the amendment is not in
 this repository. `Set` writes a field that is not `Changeable` (only
 `PlanParameters` refuses one), and `Visible` is not used. `AllowedValues`
-and ValueItem values are compared for numeric, Bit, BitArea and Boolean
-fields only. Fields that share bits with each other are reported by
+is compared for numeric, Bit, BitArea and Boolean fields only; ValueItem
+values of every DataType go through the field's encoder. A
+ValueItemTarget that names no ValueItem is refused, not taken as
+unrestricted. Fields that share bits with each other are reported by
 `ParameterRecord.Check` as a warning, not refused: no source this package
 has says whether that is allowed. Consts that share octets are an error
 (D.4.7.3); a field over a Const is allowed, the Ref taking precedence

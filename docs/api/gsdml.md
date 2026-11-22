@@ -80,8 +80,9 @@ const (
 	// declarations).
 	RuleParameterDefault = "parameter-default"
 	// RuleParameterAllowedValues: an AllowedValues that is not a
-	// SignedOrFloatValueListT, a ValueItem value that is no value of the
-	// field's DataType, or an AllowedValues that is not a subset of the
+	// SignedOrFloatValueListT, a ValueItemTarget that names no ValueItem, a
+	// ValueItem value that the field cannot hold (its DataType and width),
+	// or an AllowedValues that is not a subset of the
 	// values of the field's ValueItem (errors; Table D.31), or an
 	// AllowedValues this package does not compare (unvalidated).
 	RuleParameterAllowedValues = "parameter-allowed-values"
@@ -471,8 +472,19 @@ type ParameterField struct {
 	// value for it (Table D.31). Visible is not used.
 	Changeable bool `json:"changeable"`
 	Visible    bool `json:"visible"`
+	// ValueItem is the Ref's ValueItemTarget, the ID of a ValueItem of
+	// the file; empty when the Ref has none.
+	ValueItem string `json:"value_item,omitempty"`
+	// ValueItemMissing reports a ValueItemTarget that names no ValueItem
+	// of the file. The field's permitted values are then not known: Set
+	// refuses a value for it and Check reports it, rather than taking the
+	// field as unrestricted.
+	ValueItemMissing bool `json:"value_item_missing,omitempty"`
 	// Values are the texts the file's ValueItem (ValueItemTarget) assigns
-	// to values, in its order.
+	// to values, in its order. Without AllowedValues they are the
+	// permitted values; with neither, the DataType alone limits the value
+	// (Siemens, GSDML Getting Started V1.10, 02/2024, section 15.2;
+	// Table D.31 of ISO 15745-4:2003/Amd 1:2006, Annex D).
 	Values []ParameterValue `json:"values,omitempty"`
 	// Encodable reports whether Set can write the field: false for a
 	// DataType without a verified encoding (the _S, composite, time and
@@ -592,7 +604,7 @@ func (r *ParameterRecord) Set(rec []byte, i int, value string) error
 
 Set writes value into the field i of rec, a record of r's Length: in the lexical form of a DefaultValue of the field's DataType ("12", "-3", "1.5", "true", "0x01,0x02" for an OctetString, a string as it is). The octets and bits outside the field are not changed. SetUint, SetInt, SetFloat, SetBool, SetString and SetBytes take Go values instead.
 
-It returns an error matching profinet.ErrInvalidConfig for a value that does not fit the field, is outside its AllowedValues or, when it has none, is not a value its ValueItem assigns (Table D.31), and for a field whose Length or bits do not agree with its DataType; profinet.ErrUnsupported for a DataType without a verified encoding, an AllowedValues of a string or an OctetString (not compared) or beyond what is compared (see Check); and profinet.ErrMalformed for an AllowedValues that is not a SignedOrFloatValueListT.
+It returns an error matching profinet.ErrInvalidConfig for a value that does not fit the field, is outside its AllowedValues or, when it has none, is not a value its ValueItem assigns (Table D.31), and for a field whose Length or bits do not agree with its DataType; profinet.ErrUnsupported for a DataType without a verified encoding, an AllowedValues of a string or an OctetString (not compared) or beyond what is compared (see Check); and profinet.ErrMalformed for an AllowedValues that is not a SignedOrFloatValueListT, and for every value of a field whose ValueItemTarget names no ValueItem (ValueItemMissing).
 
 #### func (ParameterRecord) SetBool
 

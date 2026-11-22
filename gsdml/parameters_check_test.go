@@ -28,7 +28,11 @@ func TestParameterJSONRoundTrip(t *testing.T) {
 		if err := json.Unmarshal(b, &back); err != nil {
 			t.Fatal(err)
 		}
-		for i := range r.Fields {
+		for i, f := range r.Fields {
+			if g := back.Fields[i]; g.ValueItem != f.ValueItem || g.ValueItemMissing != f.ValueItemMissing || len(g.Values) != len(f.Values) {
+				t.Errorf("record %d field %d: ValueItem %q %v %d, want %q %v %d", r.Index, i,
+					g.ValueItem, g.ValueItemMissing, len(g.Values), f.ValueItem, f.ValueItemMissing, len(f.Values))
+			}
 			want, wantErr := r.Encode(map[int]string{i: "1"})
 			got, err := back.Encode(map[int]string{i: "1"})
 			if !bytes.Equal(got, want) || (err == nil) != (wantErr == nil) {
@@ -501,14 +505,36 @@ func TestParameterValueItem(t *testing.T) {
 		{DataTypeFloat32, "1.5", vals("1.5"), 0},
 		{DataTypeFloat32, "1..2", vals("1", "2"), 1},
 		{DataTypeUnsigned8, "1", vals("1", "x"), 1},
-		{DataTypeVisibleString, "1", vals("a"), 0}, // not compared
+		{DataTypeVisibleString, "1", vals("a"), 0}, // AllowedValues not compared
+		// Each value through the field's encoder: its type and width.
+		{DataTypeUnsigned8, "", vals("1", "300"), 1},
+		{DataTypeUnsigned8, "", vals("-1"), 1},
+		{DataTypeInteger8, "", vals("-128", "127", "128"), 1},
+		{DataTypeBit, "", vals("0", "1", "2"), 1},
+		{DataTypeBitArea, "", vals("3", "4"), 1}, // two bits
+		{DataTypeVisibleString, "", vals("ab", "abc"), 1},
+		{DataTypeBoolean, "", vals("true", "0", "yes"), 1},
 	} {
 		f := ParameterField{DataType: c.t, AllowedValues: c.allowed, Values: c.values}
+		switch c.t {
+		case DataTypeBit:
+			f.BitLength = 1
+		case DataTypeBitArea:
+			f.BitLength = 2
+		case DataTypeVisibleString:
+			f.Length = 2
+		default:
+			f.Length, _ = DataItemSize(string(c.t), "")
+		}
+		ref, err := f.fieldRef()
+		if err != nil {
+			t.Fatal(err)
+		}
 		ranges, err := parseAllowedValues(c.allowed)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if is := f.valueItemIssues(ranges); len(is) != c.issues {
+		if is := f.valueItemIssues(ranges, ref, make([]byte, 8)); len(is) != c.issues {
 			t.Errorf("%s %q %v: %v", c.t, c.allowed, c.values, is)
 		}
 	}
@@ -523,5 +549,54 @@ func TestParameterValueItem(t *testing.T) {
 	}
 	if got["ParameterRecordDataItem[1]/Ref[0] parameter-allowed-values"] != SeverityError || got["ParameterRecordDataItem[1]/Ref[1] parameter-default"] != SeverityWarning || len(got) != 2 {
 		t.Fatalf("%v", got)
+	}
+}
+
+// A ValueItemTarget that names no ValueItem leaves the field's permitted
+// values unknown: Set refuses a value and Check reports it, rather than
+// taking the field as unrestricted.
+func TestParameterValueItemMissing(t *testing.T) {
+	t.Parallel()
+	b := parameterFixture(t)
+	b = bytes.Replace(b, []byte(`ValueItemTarget="V_MODE"`), []byte(`ValueItemTarget="V_NONE"`), 1)
+	doc, err := ParseBytes(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recs, err := SubmoduleParameters(doc, "", 0x50, 0x51)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := recs[0]
+	f := r.Fields[2]
+	if f.ValueItem != "V_NONE" || !f.ValueItemMissing || f.Values != nil {
+		t.Fatalf("%+v", f)
+	}
+	rec := append([]byte(nil), r.Default...)
+	if err := r.Set(rec, 2, "1"); !errors.Is(err, profinet.ErrMalformed) {
+		t.Fatalf("set: %v", err)
+	}
+	if is := r.Check(); len(is) != 1 || is[0].Rule != RuleParameterAllowedValues || is[0].Severity != SeverityError {
+		t.Fatalf("check: %v", is)
+	}
+	// The flag survives JSON: a record read back still refuses.
+	j, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back ParameterRecord
+	if err := json.Unmarshal(j, &back); err != nil {
+		t.Fatal(err)
+	}
+	if err := back.Set(rec, 2, "1"); !errors.Is(err, profinet.ErrMalformed) {
+		t.Fatalf("set after JSON: %v", err)
+	}
+	// A resolved ValueItem keeps its ID; one without a target has none.
+	recs = fixtureParameters(t)
+	if f := recs[0].Fields[2]; f.ValueItem != "V_MODE" || f.ValueItemMissing || len(f.Values) != 2 {
+		t.Fatalf("resolved %+v", f)
+	}
+	if f := recs[0].Fields[0]; f.ValueItem != "" || f.ValueItemMissing {
+		t.Fatalf("none %+v", f)
 	}
 }
