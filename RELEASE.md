@@ -45,8 +45,8 @@ already found per record.
 - **`gsdml.RuleParameterRecord`** (`parameter-record`): a record of the
   document that `SubmoduleParameters`, and so `ToModel`, refuses: a
   DefaultValue that does not encode, a field or Const outside the record,
-  a malformed attribute. An error; unvalidated for content go-profinet does
-  not support.
+  a malformed attribute. An error; a field without a verified encoding is
+  the unvalidated `parameter-encoding` issue instead.
 
 ### Changed
 

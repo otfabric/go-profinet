@@ -327,15 +327,13 @@ func (v *validator) checkSubmodules(path func() string, items []*VirtualSubmodul
 }
 
 // checkRecords applies the record rules to the parameter records of a
-// submodule, described as SubmoduleParameters describes them: a record
-// SubmoduleParameters refuses (RuleParameterRecord), the issues of
+// submodule (checkSubmodules runs after semantic made v.conv), described as
+// SubmoduleParameters describes them: a record SubmoduleParameters refuses
+// (RuleParameterRecord), the issues of
 // ParameterRecord.Check, and the TransferSequence rule of PlanParameters.
 // Each record gets the whole MaxModelRecordOctets: the budget is that of
 // one model, and a document describes the records of every module type.
 func (v *validator) checkRecords(path func() string, items []*ParameterRecordDataItem) {
-	if v.conv == nil || len(items) == 0 {
-		return
-	}
 	base := path() + "/RecordDataList/"
 	recs := make([]ParameterRecord, 0, len(items))
 	for _, r := range items {
@@ -345,11 +343,9 @@ func (v *validator) checkRecords(path func() string, items []*ParameterRecordDat
 		v.conv.budget = MaxModelRecordOctets
 		pr, err := v.conv.parameterRecord(r)
 		if err != nil {
-			s := SeverityError
-			if errors.Is(err, profinet.ErrUnsupported) {
-				s = SeverityUnvalidated
-			}
-			v.add(base+"ParameterRecordDataItem["+clip(r.Index)+"]", s, RuleParameterRecord, "%s", err.Error())
+			// parameterRecord returns malformed content only: a field
+			// without a verified encoding is a parameter-encoding issue.
+			v.add(base+"ParameterRecordDataItem["+clip(r.Index)+"]", SeverityError, RuleParameterRecord, "%s", err.Error())
 			continue
 		}
 		for _, i := range pr.Check() {

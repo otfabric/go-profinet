@@ -92,7 +92,8 @@ const (
 	// RuleParameterRecord: a record of the document that
 	// SubmoduleParameters, and so ToModel, refuses: a DefaultValue that
 	// does not encode, a field outside the record, a malformed attribute
-	// (an error; unvalidated for content go-profinet does not support).
+	// (an error). A field without a verified encoding is not one: it is
+	// RuleParameterEncoding.
 	// Check of a document reports it; ParameterRecord.Check does not, as
 	// its record was built.
 	RuleParameterRecord = "parameter-record"

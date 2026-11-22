@@ -86,6 +86,11 @@ func TestCheckRecords(t *testing.T) {
 	if len(is) != 1 || !strings.HasPrefix(is[0].Path, sub+"/RecordDataList/ParameterRecordDataItem[") {
 		t.Fatalf("record %v", is)
 	}
+	// An index that is no number is the structure's error only.
+	rep = check(append(sequenced, `<ParameterRecordDataItem Index="2"`, `<ParameterRecordDataItem Index="x"`)...)
+	if len(issuesOf(rep, RuleParameterRecord, SeverityError)) != 0 || rep.Err() == nil {
+		t.Fatalf("index x %v", rep.Issues)
+	}
 	// A record index outside the user range is the record-index warning
 	// only.
 	rep = check(append(sequenced, `<ParameterRecordDataItem Index="2"`, `<ParameterRecordDataItem Index="0x8000"`)...)
