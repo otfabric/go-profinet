@@ -598,6 +598,13 @@ const (
 	// RuleParameterEncoding: a field whose DataType has no verified
 	// encoding (unvalidated).
 	RuleParameterEncoding = "parameter-encoding"
+	// RuleParameterRecord: a record of the document that
+	// SubmoduleParameters, and so ToModel, refuses: a DefaultValue that
+	// does not encode, a field outside the record, a malformed attribute
+	// (an error; unvalidated for content go-profinet does not support).
+	// Check of a document reports it; ParameterRecord.Check does not, as
+	// its record was built.
+	RuleParameterRecord = "parameter-record"
 )
 
 // maxRecordIssues is the number of issues Check lists for one record;

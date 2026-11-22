@@ -311,7 +311,11 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
 
   `SubmoduleParameters` refuses a malformed layout or default already, so
   for its records `Check` reports overlaps, AllowedValues and encodings.
-  `gsdml.Check` of a document does not run it.
+  `gsdml.Check` of a document runs it on the records of every submodule of
+  every DAP and module, with `parameter-record` for a record
+  `SubmoduleParameters` (and so `ToModel`) refuses and the
+  `transfer-sequence` rule of the plan; `Validate` fails on their errors
+  (see the rule table below).
 - `Changeable` and `Visible` are reported. `Set` is a low-level encoder and
   writes a field that is not Changeable; `PlanParameters` refuses a value
   for one (Table D.31). `Visible` is not used.
@@ -458,6 +462,9 @@ err := r.Err() // or gsdml.Validate(doc)
 | `structure` | error | required elements and attributes, the lexical types of attributes (hexadecimal and decimal unsigned values, value lists, enumerations, IDs), unique IDs | go-profinet's catalog ([CODEGEN.md](CODEGEN.md)) |
 | `reference` | error | every module, submodule, value item, graphic, category and text reference resolves | the catalog |
 | `io-data-length` | error | a submodule's input or output data and its provider status fit the 1440 octets of an RT frame | a physical limit of the frame |
+| `parameter-record` | error (unvalidated: content go-profinet does not support) | a parameter record `ToModel` can convert: its DefaultValues encode, its fields and Consts lie in the record, its attributes parse; a record outside the user index range is left to `record-index` | the encoders `ToModel` uses ([Parameter records](#parameter-records)) |
+| `parameter-layout`, `parameter-overlap`, `parameter-default`, `parameter-allowed-values`, `parameter-encoding` | as `ParameterRecord.Check` grades them | the record rules of [Parameter records](#parameter-records), for every record of the document | ISO 15745-4:2003/Amd 1:2006, Annex D as the maintainer's review states it; Siemens GSDML Getting Started 02/2024 §15 |
+| `transfer-sequence` | error, warning | a submodule's TransferSequence values are 1 to N (error), and records without one are not mixed with sequenced ones (warning) | Table D.28; the warning is go-profinet's plan policy |
 | `slots` | warning | modules allowed, used or fixed in slots the device access point has (`PhysicalSlots`), used or fixed only where allowed, no slot fixed by two modules | consistency of the file's own declarations |
 | `record-index` | warning | parameter records in the user index range 0x0000–0x7FFF | the record index ranges of PROFINET IO |
 | `ident-number` | warning | no two modules with one ModuleIdentNumber | local heuristic: a controller could not tell them apart |

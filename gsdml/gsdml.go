@@ -383,6 +383,9 @@ type validator struct {
 	// unverified records that a DataType's legality was not decided.
 	version    string
 	unverified bool
+	// conv describes the parameter records for the record rules, as
+	// SubmoduleParameters does; nil until the semantic rules run.
+	conv *conv
 	// schema: the schema of the document's version decides structure
 	// (CheckBytes), so the catalog's structural and unknown-content
 	// issues are not listed.
