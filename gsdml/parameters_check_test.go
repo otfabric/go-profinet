@@ -324,7 +324,7 @@ func TestParameterCheck(t *testing.T) {
 		t.Errorf("record 3: %v", is)
 	}
 	r := ParameterRecord{Index: 5, Length: 4, Default: []byte{0}, Consts: []ParameterConst{
-		{ByteOffset: 3, Data: []byte{1}}, {ByteOffset: 4, Data: []byte{1}},
+		{ByteOffset: 3, Data: []byte{1}}, {ByteOffset: 4, Data: []byte{1}}, {ByteOffset: 3, Data: []byte{2}},
 	}, Fields: []ParameterField{
 		{Name: "Word", DataType: DataTypeUnsigned16, Length: 2, Default: "1"},                                       // 0: overlaps 1
 		{Name: "Bit", DataType: DataTypeBit, ByteOffset: 1, BitOffset: 7, BitLength: 1, Default: "1"},               // 1
@@ -379,9 +379,10 @@ func TestParameterCheck(t *testing.T) {
 			overlaps = append(overlaps, is.Message)
 		}
 	}
-	// Word and Bit; Const[0] and Over; the bits of octet 2 with Range.
-	if len(overlaps) < 2 || !strings.Contains(strings.Join(overlaps, "\n"), `Ref[0] "Word" and Ref[1] "Bit"`) ||
-		!strings.Contains(strings.Join(overlaps, "\n"), `Const[0] and Ref[2] "Over"`) {
+	// Word and Bit; Const[0] and Const[2]; not Const[0] and Over, a Ref
+	// over a Const (D.4.7.4).
+	all := strings.Join(overlaps, "\n")
+	if !strings.Contains(all, `Ref[0] "Word" and Ref[1] "Bit"`) || !strings.Contains(all, `Const[0] and Const[2]`) || strings.Contains(all, `"Over"`) {
 		t.Errorf("overlaps %q", overlaps)
 	}
 }

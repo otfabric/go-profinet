@@ -143,7 +143,15 @@ two fields share or an ID two fields have (`ParameterRecord.Field`); a
 field without a verified encoding or an AllowedValues on a string field,
 with more than 4096 values, a mantissa of more than 128 digits or an
 exponent beyond ±400 (`ErrUnsupported`); an AllowedValues that is not a
-SignedOrFloatValueListT (`ErrMalformed`); a
+SignedOrFloatValueListT (`ErrMalformed`); for `gsdml.PlanParameters`, a
+model that does not match the file (another DAP, a module the DAP cannot
+use or in a slot outside `PhysicalSlots` or its `AllowedInSlots`, a
+submodule the file does not have), values for a record no plugged
+submodule has or two sets for one record, a written record with a `Check`
+error, or TransferSequence values of a submodule that are not 1 to N
+(`ErrInvalidConfig`, with the plan's issues and no writes), a DAP the file
+does not have (`ErrNotFound`), and values for a record with a field
+without a verified encoding (`ErrUnsupported`); a
 PDRealData record whose MultipleBlockHeaders nest more than four deep. The same element, size and depth bounds (256 levels) apply to
 `typed.ParseNode` and everything in `gsdml/typed` that reads a document;
 there, a document that is not namespace-well-formed (an undeclared

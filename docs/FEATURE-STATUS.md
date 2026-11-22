@@ -91,6 +91,7 @@ matrix (section 5).
 | Persistence of name, IP, DHCP options, I&M | ✅ | n/a | n/a | ✅ restart, corruption | n/a (local) |
 | GSDML: parse, validate, check, model, generate, GSDX inspection | ✅ library | ✅ library | ✅ `gsdml` | ✅ fixtures | pnio-rs's GSDML; profinet-py parses go-profinet's |
 | GSDML parameter records: fields, AllowedValues, ValueItem texts, records built from chosen values (`gsdml.SubmoduleParameters`, `ParameterRecord.Set`, typed setters, `Encode`, `Field`); record checks: layout, overlaps, defaults against AllowedValues (`ParameterRecord.Check`) | ✅ library | n/a | — | ✅ fixture with hand-derived golden octets, fuzz | none: no engineering tool or captured parameter write compared yet |
+| GSDML parameterization plan: records to write for a plugged model, checked against slot rules, ordered by TransferSequence (`gsdml.PlanParameters`) | ✅ library | n/a | — | ✅ fixture; e2e: a plan written by the controller to a go-profinet device and read back | none: no plan written to an independent device; TransferSequence rule from ISO 15745-4 Amd 1 Table D.28 as the maintainer read it |
 | GSDML typed model and schema validation, V1.0–V2.46 (`gsdml/typed`, `gsdml/versions`, `gsdml.CheckBytes`), generated from the reference schemas | ✅ library | ✅ library | — | ✅ fixtures, mutants | libxml2's xmllint agrees on every file and mutant of the differential test |
 | System redundancy S2 | 🧪 | 🧪 | — | ✅ | none exists |
 | RT_CLASS_UDP, MCR, PTCP delay frames | ⚙ | ⚙ | — | refusal | decoders only |

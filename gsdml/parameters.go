@@ -553,9 +553,13 @@ const (
 	// whose Length or bits do not agree with its DataType, or a Default
 	// not of the record's Length (an error).
 	RuleParameterLayout = "parameter-layout"
-	// RuleParameterOverlap: two fields, or a field and a Const, share bits
-	// (a warning: no source this package has states whether the GSDML
-	// specification allows it; the field written last decides the bits).
+	// RuleParameterOverlap: two fields, or two Consts, share bits (a
+	// warning: no source this package has states whether the GSDML
+	// specification allows it; the one written last decides the bits). A
+	// field over a Const is not reported: ISO 15745-4:2003/Amd 1:2006,
+	// Annex D, D.4.7.4 allows it, and the Ref takes precedence, as ToModel
+	// and Encode write the Consts first (the maintainer's reading of the
+	// amendment, which this repository does not have).
 	RuleParameterOverlap = "parameter-overlap"
 	// RuleParameterDefault: a DefaultValue that does not encode (an error),
 	// or is outside the field's AllowedValues (a warning: consistency of
@@ -607,14 +611,16 @@ func (r *ParameterRecord) Check() []Issue {
 		add(noItem, SeverityError, RuleParameterLayout, "default of %d octets, the record's length is %d", len(r.Default), r.Length)
 	}
 	bits := uint64(r.Length) * 8
-	var spans []span
+	// Fields and Consts are compared among themselves: a field over a
+	// Const is allowed (RuleParameterOverlap).
+	var spans, constSpans []span
 	for k, c := range r.Consts {
 		if !within(c.ByteOffset, len(c.Data), int(r.Length)) {
 			add(-1-k, SeverityError, RuleParameterLayout, "%d octets at %d beyond the record of %d", len(c.Data), c.ByteOffset, r.Length)
 			continue
 		}
 		lo := uint64(c.ByteOffset) * 8
-		spans = append(spans, span{lo, lo + uint64(len(c.Data))*8, -1 - k})
+		constSpans = append(constSpans, span{lo, lo + uint64(len(c.Data))*8, -1 - k})
 	}
 	// One scratch record for every field's Default: putRef writes only the
 	// field's octets, and what it writes is not read.
@@ -661,7 +667,7 @@ func (r *ParameterRecord) Check() []Issue {
 			add(noItem, SeverityError, RuleParameterDefault, "Default is not the record its Consts and fields build: Encode builds the latter")
 		}
 	}
-	for _, o := range overlaps(spans) {
+	for _, o := range append(overlaps(constSpans), overlaps(spans)...) {
 		add(noItem, SeverityWarning, RuleParameterOverlap, "%s and %s share bits", r.itemName(o[0]), r.itemName(o[1]))
 	}
 	if more > 0 {
