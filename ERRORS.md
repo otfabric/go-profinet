@@ -133,6 +133,9 @@ or device access point with more than 1440 submodules, or a Const
 ByteOffset or Ref BitOffset that is no number, or a VisibleString,
 UTF8String or OctetString Ref default longer than its Length
 (`gsdml.ToModel`, and `gsdml.SubmoduleParameters` for the same records),
+a document without a DeviceAccessPointList (`gsdml.AnalyzeModels`; the
+errors of its DAPs and modules are in its reports, as `ToModel` returns
+them),
 and any value for a parameter field whose ValueItemTarget names no
 ValueItem of the file (`gsdml.ParameterRecord.Set`); a
 value that does not fit its parameter field, is outside its AllowedValues or,

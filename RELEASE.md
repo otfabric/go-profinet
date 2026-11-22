@@ -26,6 +26,42 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.19.0
+
+**Date:** 2026-11-23
+**Previous release:** v0.18.0
+
+## Summary
+
+`gsdml.AnalyzeModels` reports, for every device access point of a
+document, whether `ToModel` converts it and, when not, why: the outcome of
+the DAP's own content and of each module it can use. `ToModel` is
+unchanged.
+
+## Changes
+
+### Added
+
+- **`gsdml.AnalyzeModels`**, **`ModelReport`**, **`ModuleReport`** and
+  **`Outcome`** (`converted`, `malformed`, `unsupported`,
+  `resource_exhausted`, `blocked`). A report's `Model` is `ToModel`'s, and
+  only for a DAP that converts; no partial model is returned. A module is
+  converted on its own and reports its errors, slots and record octets, so
+  a DAP refused for the aggregate `MaxModelRecordOctets` limit shows every
+  module as converted next to the DAP's `resource_exhausted`. A document
+  without device access points is `ErrMalformed`. JSON tags are given for
+  reports; `Err` and `Model` are not marshalled.
+
+### Changed
+
+- `gsdml.ToModel` is split into the conversion of the DAP's own content
+  and that of its modules, which `AnalyzeModels` reuses. Its results and
+  errors are unchanged.
+- docs/FEATURE-STATUS.md: the status header and versions table name
+  v0.18.0; the interop evidence keeps the versions it was measured on.
+
+---
+
 ## v0.18.0
 
 **Date:** 2026-11-22

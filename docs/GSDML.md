@@ -191,6 +191,49 @@ it.
 A controller connects with `controller.DeviceConfig{Model: m}`; plug further
 modules of the catalog into `m.Slots` first (profinetctl's `--plug`).
 
+### Why a device access point does not convert
+
+`ToModel` is all or nothing: one module it cannot convert fails the DAP,
+and it converts one DAP. `AnalyzeModels` is the diagnostic for a whole
+document; it does not replace `ToModel`:
+
+```go
+reps, err := gsdml.AnalyzeModels(doc) // one ModelReport per DAP, in file order
+for _, r := range reps {
+	fmt.Println(r.DAP, r.Outcome, r.Error)
+	for _, mr := range r.Modules {
+		fmt.Println(" ", mr.Target, mr.Outcome, mr.Slots, mr.Error)
+	}
+}
+```
+
+Each DAP's `Outcome`, `Err` and `Model` are those of `ToModel(doc, dap)`:
+a report's `Model` is set only for `OutcomeConverted`, and is then the
+model `ToModel` returns (the tests compare both, structurally and as
+JSON). No partial model is returned. For a DAP that does not convert, the
+report says why:
+
+| Outcome | Meaning |
+|---|---|
+| `converted` | `ToModel` converts it |
+| `malformed` | the DAP's own content (identity, capabilities, its submodules) does not convert (`DAPError`), or an error of `ErrMalformed` or of no other class |
+| `unsupported` | `ErrUnsupported`: content go-profinet does not implement, such as a field without a verified encoding |
+| `resource_exhausted` | `ErrResourceExhausted`, such as parameter records beyond `MaxModelRecordOctets` in the modules as plugged |
+| `blocked` | the DAP's own content converts, but a module reference does not: a module that does not convert, a reference to no module, or a slot list that does not parse |
+
+Every `UseableModules` reference gets a `ModuleReport`, in file order: the
+reference's path and the module's (`ModulePath`), its
+`ModuleIdentNumber`, the module's own outcome and error, and the slots
+`ToModel` plugs it in (none for a module that is only in the catalog). A
+module is converted on its own, with the whole `MaxModelRecordOctets`,
+and once however many references name it; its `RecordOctets` are what
+one slot of it adds. So a DAP whose modules each convert but together
+exceed the limit is `resource_exhausted` with every module `converted`,
+and the modules' octets show where the size goes. Malformed content is
+reported as malformed, never as unsupported: an error that matches
+`ErrMalformed` is classified first. Errors are kept (`Err`; `Error` and
+the paths are what the JSON form carries).
+
 ### Parameter records
 
 `ToModel` keeps a record's index, length and default octets

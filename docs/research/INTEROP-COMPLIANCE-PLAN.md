@@ -224,6 +224,11 @@ package in §14.
   for every DAP. This is a candidate for the corpus run (§7), which needs
   per-DAP results anyway.
 - **Size:** M.
+- **Done in v0.19.0:** `gsdml.AnalyzeModels` reports every DAP with
+  ToModel's outcome, error and model (converted only), and every module
+  reference with its own conversion and slots; outcomes `converted`,
+  `malformed`, `unsupported`, `resource_exhausted`, `blocked`. ToModel is
+  unchanged. The corpus run (C1/C2/C5, profinet-interop) is still to do.
 
 ### D8 — XML hardening relies on encoding/xml defaults (robustness, P3)
 
@@ -445,7 +450,7 @@ the `_S` encodings, which need the bit positions.
 | C1 | Corpus manifest and fetch tool (no vendor files) | new feature | P1 | M | profinet-interop | Q5, Q6 |
 | C2 | Corpus run producing the §7 matrix (manual/scheduled workflow) | new feature | P1 | M | profinet-interop | C1, D7 |
 | C3 | `gsdml check --json` | API improvement | P2 | S | profinetctl | — |
-| C4 | Per-DAP / per-module conversion report (D7) | API improvement | P2 | M | go-profinet | — |
+| C4 | Per-DAP / per-module conversion report (D7); done in v0.19.0 (`gsdml.AnalyzeModels`) | API improvement | P2 | M | go-profinet | — |
 | C5 | Minimised regression cases from corpus failures | test | P1 | per case | go-profinet | C2 |
 | E1 | Controller ARInfo timing from the negotiated IOCR | API/compliance | P3 | M | go-profinet | — |
 | E2 | Device Stats() | API improvement | P3 | S | go-profinet | — |
