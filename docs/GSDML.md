@@ -216,10 +216,11 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
 - The submodules are those `ToModel` converts: the `VirtualSubmoduleList`
   of the device access point (when the module ident number is the DAP's)
   or of a module the DAP can use (`UseableModules`).
-- `Default` is the record `ToModel` builds. It is nil when a field has a
-  DataType without a verified encoding (the `_S`, composite, time and
-  PROFIdrive types above): the field is described, but not `Encodable`,
-  and `Encode` refuses the record rather than build it without that field.
+- `Default` is the record `ToModel` built when the record was described,
+  a snapshot. It is nil when a field has a DataType without a verified
+  encoding (the `_S`, composite, time and PROFIdrive types above): the
+  field is described, but not `Encodable`, and `Encode` refuses the record
+  rather than build it without that field.
 - A field's `BitOffset`, `BitLength`, `Changeable` and `Visible` take the
   defaults of PI's schemas when the file does not give them: 0, 1, true
   and true. These are the defaults of a parameter record's Ref in every
@@ -239,8 +240,17 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
   not interpreted, and `Set` fails with `ErrUnsupported`.
   The whole list is parsed first, in the form of the schemas' pattern
   (numbers `-?[0-9]+(\.[0-9]+)?([eE]-?[0-9]+)?`, single spaces), so a
-  malformed list is `ErrMalformed` whatever the value. A float is compared
-  as it is written, rounded to its DataType.
+  malformed list is `ErrMalformed` whatever the value. A mantissa of more
+  than 128 digits, an exponent beyond ±400 or more than 4096 values are not
+  compared (`ErrUnsupported`), so the cost of a comparison does not grow
+  with the file.
+- A float is compared at the precision of its DataType, the only one a
+  device receives: the value as written, rounded to a Float32 or a Float64,
+  against the bounds rounded the same way. A bound such as 1.1, which no
+  float holds exactly, so admits the float nearest to it, and a Float32
+  value that rounds onto a bound (1.50000001 onto 1.5) is that bound. This
+  is a policy of this package; no source it has says how a device or a
+  tool compares.
 - A field is plain data. `Set` writes it where its exported fields say
   (`ByteOffset`, `BitOffset`, `BitLength`, `Length`, `DataType`), so a
   record read back from its JSON, or changed by its caller, encodes as it
@@ -248,25 +258,37 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
   refused with `ErrInvalidConfig`. `Encodable` is reported; `Set` decides
   from the DataType.
 - `Field(key)` finds a field by its `ID`, which a Ref has from schema V2.3,
-  or else by its `Name` when only one field has it; a name two fields share
-  is `ErrInvalidConfig`. The typed setters (`SetUint`, `SetInt`,
+  or else by its `Name` when only one field has it; a name two fields
+  share, or an ID two fields have (a record edited as JSON), is
+  `ErrInvalidConfig`. The typed setters (`SetUint`, `SetInt`,
   `SetFloat`, `SetBool`, `SetString`, `SetBytes`) write a Go value as `Set`
   writes its lexical form, and refuse a field of another DataType.
-- `Encode` refuses two given fields that share bits: which one would be
-  written last is not its choice.
+- `Encode` builds the record from `Consts` and `Fields` as they are, as
+  `ToModel` does (zeros, the Const octets, every field's `Default`), and
+  then sets the given values; `Default`, the snapshot, is not read. So an
+  edited Default, or a moved field, is encoded as it reads. `Encode`
+  refuses two given fields that share bits: which one would be written
+  last is not its choice.
+- `Check` reports; `Encode` encodes. A field's Default is written as the
+  file gives it, also when `Check` warns that it is outside the field's
+  AllowedValues; a value given to `Set` or `Encode` must be within them.
+  Which issues allow a record to be written to a device is the caller's
+  decision: an unvalidated issue is not evidence that the record is right.
 - `Check` reports, as `Issue`s with a severity:
   - `parameter-layout` (error): a field or a Const outside the record, a
     field whose Length or bits do not agree with its DataType, a Default
-    not of the record's length;
+    not of the record's length, an ID two fields have;
   - `parameter-overlap` (warning): two fields, or a field and a Const,
     that share bits. No source this package has says whether the GSDML
     specification allows that, so it is not refused; the field written last
     decides the bits;
-  - `parameter-default`: a DefaultValue that does not encode (error), or is
-    outside the field's own AllowedValues (warning);
+  - `parameter-default`: a DefaultValue that does not encode, or a
+    `Default` snapshot that is not the record `Encode` builds (errors); a
+    DefaultValue outside the field's own AllowedValues (warning);
   - `parameter-allowed-values`: an AllowedValues not of the schemas' form
     (error), or one that is not compared: on a string field, with more than
-    4096 values or an exponent beyond ±400 (unvalidated);
+    4096 values, a mantissa of more than 128 digits or an exponent beyond
+    ±400 (unvalidated);
   - `parameter-encoding` (unvalidated): a DataType without a verified
     encoding.
 

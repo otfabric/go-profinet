@@ -474,10 +474,12 @@ type ParameterRecord struct {
 	// TransferSequence is the order the record is written in; 0, the
 	// schema default, when the file does not give one.
 	TransferSequence uint16 `json:"transfer_sequence"`
-	// Default is the record as ToModel builds it (model.Record.Default):
-	// zeros, the Const octets, then every field's DefaultValue. It is nil
-	// when a field has no encoding this package has verified; Encode then
-	// refuses the record.
+	// Default is the record as ToModel built it (model.Record.Default)
+	// when the record was described: zeros, the Const octets, then every
+	// field's DefaultValue. It is nil when a field has no encoding this
+	// package has verified. It is reported only: Encode builds the record
+	// from Consts and Fields as they are, and Check reports a Default that
+	// differs from that.
 	Default []byte           `json:"default,omitempty"`
 	Consts  []ParameterConst `json:"consts,omitempty"`
 	Fields  []ParameterField `json:"fields"`
@@ -510,7 +512,11 @@ Check reports what makes the record unfit to build records from, beyond the sche
 func (r *ParameterRecord) Encode(values map[int]string) ([]byte, error)
 ```
 
-Encode builds the record from its Default with the values of the fields given by their index set, as Set does. It returns an error matching profinet.ErrUnsupported when the record has no Default, and profinet.ErrInvalidConfig when its Default is not of its Length or two of the given fields share bits: which one would be written last is not a choice Encode makes.
+Encode builds the record as ToModel does, from Consts and Fields as they are (zeros, the Const octets, every field's Default), and then sets the values of the fields given by their index, as Set does.
+
+Encode encodes; it does not judge. A field's Default is written as the file gives it, also when Check warns that it is outside the field's AllowedValues, while a value given to Encode must be within them. What may be written to a device is the caller's decision, with Check.
+
+It returns an error matching profinet.ErrUnsupported when a field has no verified encoding (the record cannot be built without it), and profinet.ErrInvalidConfig for a Const outside the record, a field or a Default that does not encode, or two given fields that share bits: which one would be written last is not a choice Encode makes.
 
 #### func (ParameterRecord) Field
 
@@ -518,7 +524,7 @@ Encode builds the record from its Default with the values of the fields given by
 func (r *ParameterRecord) Field(key string) (int, error)
 ```
 
-Field returns the index of the field with ID key, or else of the only field with Name key. IDs exist from schema V2.3; a name is the text of the primary language, and two fields can share one. It returns an error matching profinet.ErrNotFound when no field has that ID or name, and profinet.ErrInvalidConfig when several fields have that name and none that ID.
+Field returns the index of the field with ID key, or else of the only field with Name key. IDs exist from schema V2.3; a name is the text of the primary language, and two fields can share one. It returns an error matching profinet.ErrNotFound when no field has that ID or name, and profinet.ErrInvalidConfig when several fields have that ID, or that name and none that ID.
 
 #### func (ParameterRecord) Set
 

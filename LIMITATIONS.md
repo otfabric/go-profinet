@@ -146,7 +146,9 @@ specification allows it. `Encode` refuses two given values for such
 fields; `Set` of one changes the bits of the other. A default outside its
 own `AllowedValues` is a warning of `Check`; `ToModel` and `Encode` keep
 it. `Field` falls back to a field's name, which is the text of the primary
-language, when the file's Refs have no IDs (before V2.3). The golden octets of
+language, when the file's Refs have no IDs (before V2.3). A float is
+compared with AllowedValues at the precision of its DataType, value and
+bounds rounded alike: a package policy, not taken from a source. The golden octets of
 the tests are derived by hand from the encodings; no engineering tool or
 captured parameter write has confirmed them.
 DataType legality by context is known for the 18 versions from V1.0 to

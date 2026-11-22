@@ -36,8 +36,9 @@ section ending with a `---` line and no `---` line inside a section.
 The parameter records of v0.15.0 hardened before a parameterization plan
 and profinetctl build on them: a described field is plain data that
 encodes as it reads, also after a JSON round trip; records are checked as
-a whole (layout, overlaps, defaults against AllowedValues); fields are
-found by ID or name and set from Go values.
+a whole (layout, overlaps, defaults against AllowedValues); `Encode`
+builds from the fields as they are; fields are found by ID or name and set
+from Go values.
 
 ## Changes
 
@@ -51,7 +52,7 @@ found by ID or name and set from Go values.
   Const, are a warning: whether the GSDML specification allows them is
   not known (LIMITATIONS.md).
 - **`ParameterRecord.Field(key)`** finds a field by ID, or by a name only
-  one field has.
+  one field has; an ID or a name two fields have is `ErrInvalidConfig`.
 - **Typed setters** `SetUint`, `SetInt`, `SetFloat`, `SetBool`,
   `SetString` and `SetBytes` write a Go value as `Set` writes its lexical
   form, and refuse a field of another DataType with `ErrInvalidConfig`.
@@ -80,10 +81,15 @@ incompatible API change; the changes are in behaviour:
   hexadecimal, fractional or `+`-signed value, or a separator other than
   one space, is `ErrMalformed`; an exponent beyond ±400 or more than 4096
   values is `ErrUnsupported`.
-- A Float32 value is compared with AllowedValues after it is rounded to a
-  Float32, the value written.
-- `Encode` refuses values for two fields that share bits
-  (`ErrInvalidConfig`), and a Default not of the record's Length.
+- A float is compared with AllowedValues at the precision of its
+  DataType: a Float32 value that rounds onto a bound (1.50000001 onto 1.5)
+  is accepted; a mantissa of more than 128 digits is `ErrUnsupported`.
+- `Encode` builds the record from `Consts` and `Fields` as they are, not
+  from `Default`, which is now a snapshot that `Check` compares; a field
+  without a verified encoding is `ErrUnsupported` whether or not the
+  snapshot is nil. It refuses values for two fields that share bits, a
+  Const outside the record and a field Default that does not encode
+  (`ErrInvalidConfig`).
 
 ---
 

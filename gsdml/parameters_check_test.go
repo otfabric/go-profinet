@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -79,6 +80,7 @@ func TestParameterFieldLookup(t *testing.T) {
 	t.Parallel()
 	r := ParameterRecord{Index: 7, Fields: []ParameterField{
 		{Name: "Mode"}, {Name: "Limit", ID: "R_A"}, {Name: "Limit"}, {Name: "R_A2", ID: "R_B"}, {Name: "x", ID: "R_A2"},
+		{Name: "d1", ID: "R_DUP"}, {Name: "d2", ID: "R_DUP"},
 	}}
 	for _, c := range []struct {
 		key  string
@@ -91,6 +93,7 @@ func TestParameterFieldLookup(t *testing.T) {
 		{"Limit", -1, profinet.ErrInvalidConfig},
 		{"Nope", -1, profinet.ErrNotFound},
 		{"", -1, profinet.ErrNotFound}, // an empty ID is no ID
+		{"R_DUP", -1, profinet.ErrInvalidConfig},
 	} {
 		got, err := r.Field(c.key)
 		if got != c.want || (c.err == nil) != (err == nil) || (c.err != nil && !errors.Is(err, c.err)) {
@@ -180,15 +183,45 @@ func TestParameterAllowedValuesForm(t *testing.T) {
 			t.Errorf("value 1 in %q: %v, want %v", c.allowed, err, c.err)
 		}
 	}
-	// A float is compared as it is written: rounded to a Float32, 1.50000001
-	// is 1.5.
+	// A float is compared at the precision of its DataType, the value and
+	// the bounds rounded alike.
 	for _, c := range []struct {
-		t   DataType
-		err error
-	}{{DataTypeFloat32, nil}, {DataTypeFloat64, profinet.ErrInvalidConfig}} {
-		f := ParameterField{DataType: c.t, AllowedValues: "0..1.5"}
-		if err := f.allowed("1.50000001"); (c.err == nil) != (err == nil) || (c.err != nil && !errors.Is(err, c.err)) {
-			t.Errorf("%s: %v, want %v", c.t, err, c.err)
+		t       DataType
+		allowed string
+		value   string
+		ok      bool
+	}{
+		{DataTypeFloat32, "0..1.1", "1.1", true},         // float32(1.1) > 1.1, the bound rounds alike
+		{DataTypeFloat64, "0..1.1", "1.1", true},         // float64(1.1) > 1.1 too
+		{DataTypeFloat32, "0..1.5", "1.50000001", true},  // rounds to 1.5, the bound
+		{DataTypeFloat64, "0..1.5", "1.50000001", false}, // a Float64 holds it
+		{DataTypeFloat32, "0..1.5", "1.5000002", false},  // the next Float32 above 1.5
+		{DataTypeFloat32, "-1.1..0", "-1.1", true},
+		{DataTypeFloat32, "1e300", "3.4e38", false},   // a bound beyond Float32 is +Inf
+		{DataTypeFloat32, "0..1e300", "3.4e38", true}, // ... and bounds nothing above
+		{DataTypeFloat64, "0..1e400", "1.7e308", true},
+		{DataTypeFloat64, "-1e400..0", "-1.7e308", true},
+		{DataTypeFloat32, "0..1", "NaN", false},
+		{DataTypeFloat64, "0..1e400", "Inf", false},
+	} {
+		f := ParameterField{DataType: c.t, AllowedValues: c.allowed}
+		if err := f.allowed(c.value); (err == nil) != c.ok || (err != nil && !errors.Is(err, profinet.ErrInvalidConfig)) {
+			t.Errorf("%s %q in %q: %v, want ok %v", c.t, c.value, c.allowed, err, c.ok)
+		}
+	}
+	// A mantissa of more than maxAllowedDigits digits is not compared.
+	for _, c := range []struct {
+		allowed string
+		err     error
+	}{
+		{strings.Repeat("9", maxAllowedDigits), nil},
+		{"0." + strings.Repeat("9", maxAllowedDigits-1), nil},
+		{strings.Repeat("9", maxAllowedDigits+1), profinet.ErrUnsupported},
+		{"1." + strings.Repeat("0", maxAllowedDigits), profinet.ErrUnsupported},
+		{"1..1" + strings.Repeat("0", 1<<20), profinet.ErrUnsupported},
+	} {
+		if _, err := parseAllowedValues(c.allowed); (c.err == nil) != (err == nil) || (c.err != nil && !errors.Is(err, c.err)) {
+			t.Errorf("%s: %v, want %v", clip(c.allowed), err, c.err)
 		}
 	}
 }
@@ -196,9 +229,9 @@ func TestParameterAllowedValuesForm(t *testing.T) {
 func TestParameterEncodeOverlap(t *testing.T) {
 	t.Parallel()
 	r := ParameterRecord{Index: 9, Length: 2, Default: []byte{0, 0}, Fields: []ParameterField{
-		{Name: "Octet", DataType: DataTypeUnsigned8, Length: 1},
-		{Name: "Bits", DataType: DataTypeBitArea, BitOffset: 2, BitLength: 2},
-		{Name: "Next", DataType: DataTypeUnsigned8, ByteOffset: 1, Length: 1},
+		{Name: "Octet", DataType: DataTypeUnsigned8, Length: 1, Default: "0"},
+		{Name: "Bits", DataType: DataTypeBitArea, BitOffset: 2, BitLength: 2, Default: "0"},
+		{Name: "Next", DataType: DataTypeUnsigned8, ByteOffset: 1, Length: 1, Default: "0"},
 	}}
 	if _, err := r.Encode(map[int]string{0: "1", 1: "1"}); !errors.Is(err, profinet.ErrInvalidConfig) || !strings.Contains(err.Error(), "share bits") {
 		t.Fatalf("overlap: %v", err)
@@ -206,9 +239,75 @@ func TestParameterEncodeOverlap(t *testing.T) {
 	if got, err := r.Encode(map[int]string{1: "3", 2: "5"}); err != nil || !bytes.Equal(got, []byte{0x0C, 0x05}) {
 		t.Fatalf("no overlap: % X %v", got, err)
 	}
-	r.Default = []byte{0}
-	if _, err := r.Encode(nil); !errors.Is(err, profinet.ErrInvalidConfig) {
-		t.Fatalf("short default: %v", err)
+}
+
+// Encode builds the record from Consts and Fields as they are; Default is
+// a snapshot, and Check reports one that differs.
+func TestParameterEncodeSingleSource(t *testing.T) {
+	t.Parallel()
+	r := fixtureParameters(t)[1]
+	r.Fields = append([]ParameterField(nil), r.Fields...)
+	r.Fields[0].Default = "9"
+	got, err := r.Encode(nil)
+	want := append([]byte(nil), fixtureDefault...)
+	want[0] = 9
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("edited default: %v\n got % X\nwant % X", err, got, want)
+	}
+	is := r.Check()
+	if len(is) != 1 || is[0].Rule != RuleParameterDefault || is[0].Severity != SeverityError || is[0].Path != "ParameterRecordDataItem[2]" {
+		t.Fatalf("stale Default: %v", is)
+	}
+	// A moved field takes its default with it.
+	r.Fields[0].Default = "7"
+	r.Fields[0].ByteOffset = 22
+	got, err = r.Encode(map[int]string{0: "8"})
+	want = append([]byte(nil), fixtureDefault...)
+	want[0], want[22] = 0, 8
+	if err != nil || !bytes.Equal(got, want) {
+		t.Fatalf("moved field: %v\n got % X\nwant % X", err, got, want)
+	}
+	// Default is not read: a record without one is built.
+	r.Default = nil
+	if _, err := r.Encode(nil); err != nil {
+		t.Fatalf("no Default: %v", err)
+	}
+	for name, c := range map[string]struct {
+		edit func(r *ParameterRecord)
+		err  error
+	}{
+		"const beyond": {func(r *ParameterRecord) { r.Consts = []ParameterConst{{ByteOffset: 24, Data: []byte{1}}} }, profinet.ErrInvalidConfig},
+		"default bad":  {func(r *ParameterRecord) { r.Fields[1].Default = "x" }, profinet.ErrInvalidConfig},
+		"layout bad":   {func(r *ParameterRecord) { r.Fields[1].Length = 3 }, profinet.ErrInvalidConfig},
+		"no encoding":  {func(r *ParameterRecord) { r.Fields[1].DataType = DataTypeInteger16S }, profinet.ErrUnsupported},
+	} {
+		e := r
+		e.Fields = append([]ParameterField(nil), r.Fields...)
+		c.edit(&e)
+		if _, err := e.Encode(nil); !errors.Is(err, c.err) {
+			t.Errorf("%s: %v, want %v", name, err, c.err)
+		}
+	}
+}
+
+// Check of a large record allocates in proportion to its fields, not to
+// fields times the record's length.
+func TestParameterCheckLarge(t *testing.T) {
+	r := ParameterRecord{Index: 1, Length: math.MaxUint16}
+	for i := range int(r.Length) {
+		r.Fields = append(r.Fields, ParameterField{Name: fmt.Sprint(i), DataType: DataTypeUnsigned8, ByteOffset: uint32(i), Length: 1, Default: "1", AllowedValues: "0..9 " + strings.Repeat("9", maxAllowedDigits)})
+	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	is := r.Check()
+	runtime.ReadMemStats(&after)
+	if len(is) != 0 {
+		t.Fatalf("%d issues: %v", len(is), is[0])
+	}
+	// One scratch record per field would be 4 GiB.
+	if n := after.TotalAlloc - before.TotalAlloc; n > 256<<20 {
+		t.Fatalf("Check allocated %d MiB", n>>20)
 	}
 }
 
@@ -284,6 +383,18 @@ func TestParameterCheck(t *testing.T) {
 	if len(overlaps) < 2 || !strings.Contains(strings.Join(overlaps, "\n"), `Ref[0] "Word" and Ref[1] "Bit"`) ||
 		!strings.Contains(strings.Join(overlaps, "\n"), `Const[0] and Ref[2] "Over"`) {
 		t.Errorf("overlaps %q", overlaps)
+	}
+}
+
+// Check reports a repeated ID, which a record from its JSON can have.
+func TestParameterCheckDuplicateID(t *testing.T) {
+	t.Parallel()
+	r := fixtureParameters(t)[1]
+	r.Fields = append([]ParameterField(nil), r.Fields...)
+	r.Fields[3].ID = r.Fields[10].ID
+	is := r.Check()
+	if len(is) != 1 || is[0].Rule != RuleParameterLayout || is[0].Path != "ParameterRecordDataItem[2]/Ref[10]" {
+		t.Fatalf("%v", is)
 	}
 }
 
