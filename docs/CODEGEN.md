@@ -10,7 +10,8 @@ one input, `gsdml/schema/catalog.json`, by `internal/cmd/gengsdml`.
 
 The GSDML XSDs are published by PROFIBUS & PROFINET International to its
 members under a licence that does not allow redistributing them
-([research/GSDML.md](research/GSDML.md)). The catalog is written
+([research/GSDML.md](research/GSDML.md)), so they are not in this
+repository and nothing in the library or its tests needs them. The catalog is written
 independently from public descriptions of GSDML and contains no text of the
 schemas. It describes the elements and attributes go-profinet models; a
 document's other content is preserved verbatim (`Attrs`, `Unknown`), so
@@ -67,6 +68,25 @@ own `version` attribute is unreliable (V2.0 to V2.2 say `1.0`). The report
 holds no timestamps or absolute paths, so it is reproducible.
 `scripts/gsdml-xsd-audit.sh` runs it on five versions;
 docs/research/GSDML-XSD-AUDIT.md is the result.
+
+## The reference schemas
+
+The maintainers keep a licensed copy of the schemas, GSDML V1.0 to V2.46
+(40 files from the TIA Portal V21 installation, byte for byte, with their
+SHA-256 checksums), in the private repository
+otfabric/profinet-gsdml-schema. go-profinet uses a checkout of it for
+validation and code generation only, never commits or embeds it:
+
+```bash
+make gsdml-schemas          # clone it at the pinned commit into .gsdml-schemas/ (git-ignored)
+make gsdml-schemas-verify   # pinned commit, no local changes, checksums, well-formed, every DeviceProfile compiles
+```
+
+`scripts/gsdml-schemas.sh` holds the pinned commit (`GSDML_SCHEMAS_REF`
+overrides it); `GSDML_SCHEMAS` points at another checkout. The verify step
+needs libxml2's `xmllint` and runs it with `--nonet`: every import resolves
+in the checkout. Fetching needs read access to the private repository, so
+these targets are not part of `make check` or of CI.
 
 ## Changing the catalog
 

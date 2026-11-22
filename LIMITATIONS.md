@@ -39,7 +39,8 @@ go-profinet generates its GSDML types from an independently written catalog
 of the schema (`gsdml/schema/catalog.json`) and validates against it: the
 structure, attribute types and references that a device model relies on.
 `gengsdml -xsd DIR` compares the catalog with a licensed local copy of the
-XSDs (0 differences against v2.35). `gsdml.Validate` is not PI's GSDML
+XSDs (0 differences against v2.35); the maintainers keep theirs, V1.0 to
+V2.46, in a private repository, used only locally. `gsdml.Validate` is not PI's GSDML
 checker, and a file it accepts may still fail PI's. Elements and attributes
 outside the catalog are kept verbatim and reported as unvalidated by
 `gsdml.Check`; its semantic rules are a small set, each with its basis

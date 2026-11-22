@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
+.PHONY: gsdml-schemas gsdml-schemas-verify help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -110,6 +110,12 @@ fuzz: ## Run every fuzz target for FUZZTIME each (default 30s)
 			go test -run='^$$' -fuzz="^$$target\$$" -fuzztime=$(FUZZTIME) $$pkg || exit 1; \
 		done; \
 	done
+
+gsdml-schemas: ## Fetch the GSDML reference schemas (private otfabric/profinet-gsdml-schema) at the pinned commit
+	@sh scripts/gsdml-schemas.sh fetch
+
+gsdml-schemas-verify: ## Check the fetched GSDML schemas: pinned commit, checksums, well-formedness, every DeviceProfile compiles (needs xmllint)
+	@sh scripts/gsdml-schemas.sh verify
 
 generate: ## Generate the GSDML types and SCHEMA.md from gsdml/schema/catalog.json
 	@go generate ./gsdml

@@ -35,3 +35,6 @@ interop-results/
 
 # Schema copies fetched by scripts/gsdml-xsd-audit.sh; never committed
 /.xsd/
+
+# Checkout of the private otfabric/profinet-gsdml-schema (scripts/gsdml-schemas.sh fetch)
+/.gsdml-schemas/

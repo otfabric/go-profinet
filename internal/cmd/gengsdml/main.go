@@ -18,8 +18,10 @@
 // The official GSDML schemas are published by PROFIBUS & PROFINET
 // International to its members under a licence that does not allow
 // redistributing them, so they are not in this repository and are not
-// read by default. Someone holding a licensed copy can check the catalog
-// against them with -xsd; the report names elements and attributes that
+// read by default. The maintainers keep a licensed copy in the private
+// repository otfabric/profinet-gsdml-schema (scripts/gsdml-schemas.sh
+// fetches it at a pinned commit); with it, or any licensed copy, -xsd
+// checks the catalog against them; the report names elements and attributes that
 // the catalog lacks or that the schema does not define. See
 // docs/CODEGEN.md.
 package main
