@@ -402,7 +402,7 @@ func TestNames(t *testing.T) {
 		colon bool
 		want  bool
 	}{
-		{"a:b", false, false}, {"a:b", true, true}, {"Àx", false, true}, {"1a", false, false}, {"à", false, true}, {"က0", false, true},
+		{"a:b", false, false}, {"a:b", true, true}, {"Àx", false, true}, {"1a", false, false}, {"a!", false, false}, {"à", false, true}, {"က0", false, true},
 	} {
 		if got := isName(c.s, c.colon); got != c.want {
 			t.Errorf("isName(%q, %v) = %v", c.s, c.colon, got)
@@ -422,7 +422,68 @@ func TestInternalSubset(t *testing.T) {
 }
 
 func TestParseNodeXMLNSElement(t *testing.T) {
-	if _, err := ParseNode([]byte(`<xmlns:a xmlns:xmlns="urn:x"/>`)); err == nil {
-		t.Fatal("xmlns element prefix accepted")
+	if _, err := ParseNode([]byte(`<xmlns:a/>`)); err == nil || !strings.Contains(err.Error(), "reserved prefix xmlns") {
+		t.Fatalf("xmlns element prefix: %v", err)
+	}
+}
+
+func TestBuildUnknownVersion(t *testing.T) {
+	n, err := ParseNode([]byte(emptyRootDoc))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build("9.9", n); !errors.Is(err, ErrUnknownVersion) {
+		t.Fatalf("build: %v", err)
+	}
+}
+
+const emptyRootDoc = `<ISO15745Profile xmlns="http://www.profibus.com/GSDML/2003/11/DeviceProfile"/>`
+
+// An attribute namespace declared on an ancestor is not declared again.
+func TestEncoderReusesPrefix(t *testing.T) {
+	e := newEncoder()
+	e.start(nsT, "a", false)
+	e.attr("urn:x", "p", "1")
+	e.start(nsT, "b", false)
+	e.attr("urn:x", "q", "2")
+	e.attr(nsXML, "lang", "en")
+	out := e.b.String()
+	if strings.Count(out, `xmlns:ns1="urn:x"`) != 1 || !strings.Contains(out, ` ns1:q="2"`) || !strings.Contains(out, ` xml:lang="en"`) {
+		t.Fatalf("%s", out)
+	}
+}
+
+func TestUnionFacets(t *testing.T) {
+	sc := testTables()
+	sc.simples = append(sc.simples, simpleSpec{name: "SmallUnion", variety: vUnion, base: -1, item: -1, members: []int32{1}, has: hasEnums, enums: []string{"1"}})
+	i := int32(len(sc.simples) - 1)
+	if err := sc.checkSimple(i, "1", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := sc.checkSimple(i, "2", nil); err == nil || !strings.Contains(err.Error(), "not one of the values of SmallUnion") {
+		t.Fatalf("2: %v", err)
+	}
+}
+
+func TestFloatMinInclusive(t *testing.T) {
+	min := &simpleSpec{has: hasMinIncl, minIncl: "1"}
+	if err := bounds(min, bDouble, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := bounds(min, bDouble, "0.5"); err == nil || !strings.Contains(err.Error(), "less than 1") {
+		t.Fatalf("0.5: %v", err)
+	}
+	if f, err := parseXSDFloat("1e-999"); err != nil || f != 0 {
+		t.Fatalf("underflow: %v %v", f, err)
+	}
+}
+
+func TestFacetBounds(t *testing.T) {
+	sc := &schemaTables{simples: []simpleSpec{{name: "Five", variety: vAtomic, builtin: bInt, ws: wsCollapse, base: -1, item: -1, has: hasMaxIncl, maxIncl: "5"}}}
+	if err := sc.checkSimple(0, "5", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := sc.checkSimple(0, "6", nil); err == nil {
+		t.Fatal("6 accepted")
 	}
 }

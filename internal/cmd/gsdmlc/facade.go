@@ -15,15 +15,15 @@ import (
 func (g *gen) genVersions() []byte {
 	var b bytes.Buffer
 	b.WriteString(header)
-	b.WriteString("package typed\n\n")
+	b.WriteString("package typed\n\nimport \"fmt\"\n\n")
 	b.WriteString("// build decodes a document tree as a schema version. It is a switch, not\n")
 	b.WriteString("// a table, so that a program that never decodes links none of the\n")
-	b.WriteString("// decoders.\n")
-	b.WriteString("func build(version string, n *Node) (Versioned, bool, error) {\n\tswitch version {\n")
+	b.WriteString("// decoders. An unknown version is ErrUnknownVersion.\n")
+	b.WriteString("func build(version string, n *Node) (Versioned, error) {\n\tswitch version {\n")
 	for vi, v := range g.c.Versions {
-		fmt.Fprintf(&b, "\tcase %q:\n\t\td, err := asVersioned(buildDocument[%s](n, %q))\n\t\treturn d, true, err\n", v, g.roots[vi].name, v)
+		fmt.Fprintf(&b, "\tcase %q:\n\t\td, err := asVersioned(buildDocument[%s](n, %q))\n\t\treturn d, err\n", v, g.roots[vi].name, v)
 	}
-	b.WriteString("\t}\n\treturn nil, false, nil\n")
+	b.WriteString("\t}\n\treturn nil, fmt.Errorf(\"%w: %q\", ErrUnknownVersion, version)\n")
 	b.WriteString("}\n")
 	return b.Bytes()
 }

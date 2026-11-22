@@ -226,12 +226,12 @@ func startNode(t xml.StartElement, parentNS map[string]string, line int) (*Node,
 		}
 		n.ns[prefix] = a.Value
 	}
+	if t.Name.Space == "xmlns" {
+		return nil, fmt.Errorf("typed: %w: line %d: element <%s> has the reserved prefix xmlns", profinet.ErrMalformed, line, rawName(t.Name))
+	}
 	space, ok := n.lookupPrefix(t.Name.Space)
 	if !ok {
 		return nil, fmt.Errorf("typed: %w: line %d: element <%s>: prefix %q is not declared", profinet.ErrMalformed, line, rawName(t.Name), t.Name.Space)
-	}
-	if t.Name.Space == "xmlns" {
-		return nil, fmt.Errorf("typed: %w: line %d: element <%s> has the reserved prefix xmlns", profinet.ErrMalformed, line, rawName(t.Name))
 	}
 	n.Name = xml.Name{Space: space, Local: t.Name.Local}
 	for _, a := range t.Attr {

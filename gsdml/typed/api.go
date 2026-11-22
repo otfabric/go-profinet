@@ -198,14 +198,7 @@ func parseNode(n *Node, version string, validate bool) (Versioned, error) {
 	if err := checkRoot(n); err != nil {
 		return nil, err
 	}
-	d, ok, err := build(version, n)
-	if !ok {
-		return nil, fmt.Errorf("%w: %q", ErrUnknownVersion, version)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return d, nil
+	return build(version, n)
 }
 
 func checkRoot(n *Node) error {

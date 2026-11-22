@@ -154,3 +154,21 @@ func TestCheckBytesTruncated(t *testing.T) {
 		t.Fatalf("last issue %+v (%d issues)", last, len(rep.Issues))
 	}
 }
+
+// A document the catalog's reader accepts and gsdml/typed's refuses (an
+// undeclared prefix, which encoding/xml leaves unresolved) has one schema
+// error with the reader's message.
+func TestCheckBytesTypedReaderError(t *testing.T) {
+	b := bytes.Replace(readFixture(t, compactFixture), []byte("<ProfileHeader>"), []byte(`<ProfileHeader undeclared:x="1">`), 1)
+	rep, err := gsdml.CheckBytes(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, i := range rep.Issues {
+		found = found || (i.Rule == gsdml.RuleSchema && i.Severity == gsdml.SeverityError && strings.Contains(i.Message, `prefix "undeclared" is not declared`))
+	}
+	if !found {
+		t.Fatalf("no reader error: %+v", rep.Issues)
+	}
+}

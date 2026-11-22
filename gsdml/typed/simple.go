@@ -437,13 +437,10 @@ func parseXSDFloat(s string) (float64, error) {
 	case "-INF":
 		s = "-Inf"
 	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		if ne, ok := err.(*strconv.NumError); ok && ne.Err == strconv.ErrRange {
-			return f, nil // the nearest value: XML Schema rounds
-		}
-		return 0, fmt.Errorf("%q is not a floating-point number", s)
-	}
+	// reFloat admits only what ParseFloat reads, so its one error is
+	// ErrRange, with the nearest value (an infinity or zero): XML Schema
+	// rounds to it.
+	f, _ := strconv.ParseFloat(s, 64)
 	return f, nil
 }
 

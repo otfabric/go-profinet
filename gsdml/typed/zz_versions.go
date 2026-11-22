@@ -2,65 +2,67 @@
 
 package typed
 
+import "fmt"
+
 // build decodes a document tree as a schema version. It is a switch, not
 // a table, so that a program that never decodes links none of the
-// decoders.
-func build(version string, n *Node) (Versioned, bool, error) {
+// decoders. An unknown version is ErrUnknownVersion.
+func build(version string, n *Node) (Versioned, error) {
 	switch version {
 	case "1.0":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V100](n, "1.0"))
-		return d, true, err
+		return d, err
 	case "2.0":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V200](n, "2.0"))
-		return d, true, err
+		return d, err
 	case "2.1":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V210](n, "2.1"))
-		return d, true, err
+		return d, err
 	case "2.2":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V220](n, "2.2"))
-		return d, true, err
+		return d, err
 	case "2.25":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V225](n, "2.25"))
-		return d, true, err
+		return d, err
 	case "2.3":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V230](n, "2.3"))
-		return d, true, err
+		return d, err
 	case "2.31":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V231](n, "2.31"))
-		return d, true, err
+		return d, err
 	case "2.32":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V232](n, "2.32"))
-		return d, true, err
+		return d, err
 	case "2.33":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V233](n, "2.33"))
-		return d, true, err
+		return d, err
 	case "2.34":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V234](n, "2.34"))
-		return d, true, err
+		return d, err
 	case "2.35":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V235](n, "2.35"))
-		return d, true, err
+		return d, err
 	case "2.4":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V240](n, "2.4"))
-		return d, true, err
+		return d, err
 	case "2.41":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V241](n, "2.41"))
-		return d, true, err
+		return d, err
 	case "2.42":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V242](n, "2.42"))
-		return d, true, err
+		return d, err
 	case "2.43":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V243](n, "2.43"))
-		return d, true, err
+		return d, err
 	case "2.44":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V244](n, "2.44"))
-		return d, true, err
+		return d, err
 	case "2.45":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V245](n, "2.45"))
-		return d, true, err
+		return d, err
 	case "2.46":
 		d, err := asVersioned(buildDocument[ISO15745Profile_V246](n, "2.46"))
-		return d, true, err
+		return d, err
 	}
-	return nil, false, nil
+	return nil, fmt.Errorf("%w: %q", ErrUnknownVersion, version)
 }
