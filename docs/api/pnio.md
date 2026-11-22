@@ -77,6 +77,17 @@ AlarmSpecifier bits.
 
 ```go
 const (
+	MaxUnsigned8S  = 63
+	MaxUnsigned16S = 16383
+	MinInteger16S  = -8192
+	MaxInteger16S  = 8191
+)
+```
+
+The value ranges: the value takes the bits above the two status bits.
+
+```go
+const (
 	ARPropStateActive         uint32 = 0x00000001
 	ARPropSupervisorTakeover  uint32 = 0x00000008
 	ARPropPrmServerCMInit     uint32 = 0x00000010 // parameterization by the CM initiator
@@ -403,6 +414,12 @@ const LTIP = 0x0800
 LTIP is the LT of the IOCRs of RT\_CLASS\_UDP and of an AlarmCR of RTA\_CLASS\_UDP: the EtherType of IPv4 instead of LT. p-net requires it for RT\_CLASS\_UDP and profinet-py builds it for alarms over UDP (observed in implementations, docs/research/EVIDENCE-AR-SR-MCR-UDP.md, D).
 
 ```go
+const MaxOctetStringSValues = 21845
+```
+
+MaxOctetStringSValues is the most value octets EncodeOctetStringS and DecodeOctetStringS take: 21845, so that the 3·m octets fit the 65535 of a record. A larger one is refused before anything is allocated.
+
+```go
 const NDRHeaderLen = 20
 ```
 
@@ -508,6 +525,38 @@ func DecodeNDRRequest(body []byte, o rpc.ByteOrder) (uint32, []byte, error)
 ```
 
 DecodeNDRRequest returns ArgsMaximum and the blocks of a request body.
+
+### func EncodeInteger16S
+
+```go
+func EncodeInteger16S(v int16, s ValueStatus) ([2]byte, error)
+```
+
+EncodeInteger16S returns the two octets, big endian, of an Integer16\_S: the value as a 14-bit two's complement number in bits 15 to 2, the status in bits 1 and 0. A value outside −8192 to 8191 or a status above 3 is refused with profinet.ErrInvalidConfig.
+
+### func EncodeOctetStringS
+
+```go
+func EncodeOctetStringS(dst, values []byte, status []ValueStatus) ([]byte, error)
+```
+
+EncodeOctetStringS appends an OctetString\_S of m value octets to dst: the m octets of the 8·m binary channels (channel 1 is bit 0 of the first octet), then their 8·m two-bit statuses in 2·m octets (the status of channel 1 in bits 1 and 0 of the first status octet, each next channel's in the next two bits), 3·m octets in all; values and statuses are not interleaved. status holds one entry per channel, 8·len(values); values must not be empty or longer than MaxOctetStringSValues, and every status must be 0 to 3, or the result is profinet.ErrInvalidConfig and dst is returned as it was.
+
+### func EncodeUnsigned16S
+
+```go
+func EncodeUnsigned16S(v uint16, s ValueStatus) ([2]byte, error)
+```
+
+EncodeUnsigned16S returns the two octets, big endian, of an Unsigned16\_S: the value in bits 15 to 2, the status in bits 1 and 0. A value above 16383 or a status above 3 is refused with profinet.ErrInvalidConfig.
+
+### func EncodeUnsigned8S
+
+```go
+func EncodeUnsigned8S(v uint8, s ValueStatus) (byte, error)
+```
+
+EncodeUnsigned8S returns the octet of an Unsigned8\_S: the value in bits 7 to 2, the status in bits 1 and 0. A value above 63 or a status above 3 is refused with profinet.ErrInvalidConfig, not masked.
 
 ### func FrameIDRange
 
@@ -2640,6 +2689,65 @@ HasOutput reports whether the type consumes output data.
 ```go
 func (t SubmoduleType) String() string
 ```
+
+### type ValueStatus
+
+```go
+type ValueStatus uint8
+```
+
+ValueStatus is the two-bit status of a value with an embedded status. IEC 61158-5-10 defines the four codes for input channels and marks the corresponding output-channel values reserved; the codecs here do not judge which one a context allows.
+
+```go
+const (
+	ValueStatusBad        ValueStatus = 0 // B
+	ValueStatusSimulation ValueStatus = 1 // S
+	ValueStatusUncertain  ValueStatus = 2 // U
+	ValueStatusGood       ValueStatus = 3 // G
+)
+```
+
+The status codes (IEC 61158-5-10:2023 Tables 21, 23, 25, 27; OPC 30144 Table 17).
+
+#### func DecodeInteger16S
+
+```go
+func DecodeInteger16S(b [2]byte) (int16, ValueStatus)
+```
+
+DecodeInteger16S returns the value and the status of an Integer16\_S; the arithmetic shift extends the sign of the 14-bit value.
+
+#### func DecodeOctetStringS
+
+```go
+func DecodeOctetStringS(b []byte) ([]byte, []ValueStatus, error)
+```
+
+DecodeOctetStringS returns the value octets and the channel statuses (8 per value octet) of an OctetString\_S. b must be 3·m octets for some m from 1 to MaxOctetStringSValues: an empty b or one whose length is no multiple of three is profinet.ErrMalformed, a longer one profinet.ErrResourceExhausted, before anything is allocated. The value octets are a copy.
+
+#### func DecodeUnsigned16S
+
+```go
+func DecodeUnsigned16S(b [2]byte) (uint16, ValueStatus)
+```
+
+DecodeUnsigned16S returns the value and the status of an Unsigned16\_S.
+
+#### func DecodeUnsigned8S
+
+```go
+func DecodeUnsigned8S(b byte) (uint8, ValueStatus)
+```
+
+DecodeUnsigned8S returns the value and the status of an Unsigned8\_S. Every octet is one.
+
+#### func (ValueStatus) String
+
+```go
+func (s ValueStatus) String() string
+```
+
+String returns the code's letter: B, S, U or G.
 
 ### type WriteMultipleItem
 
