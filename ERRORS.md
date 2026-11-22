@@ -132,7 +132,11 @@ profile with a negative `TestInterval`. As `ErrMalformed`: a GSDML module
 or device access point with more than 1440 submodules, or a Const
 ByteOffset or Ref BitOffset that is no number, or a VisibleString,
 UTF8String or OctetString Ref default longer than its Length
-(`gsdml.ToModel`); a
+(`gsdml.ToModel`, and `gsdml.SubmoduleParameters` for the same records); a
+value that does not fit its parameter field or is outside its AllowedValues
+(`gsdml.ParameterRecord.Set` and `Encode`, `ErrInvalidConfig`, the record
+left as it was), and a field without a verified encoding or an
+AllowedValues on a string field (`ErrUnsupported`); a
 PDRealData record whose MultipleBlockHeaders nest more than four deep. The same element, size and depth bounds (256 levels) apply to
 `typed.ParseNode` and everything in `gsdml/typed` that reads a document;
 there, a document that is not namespace-well-formed (an undeclared

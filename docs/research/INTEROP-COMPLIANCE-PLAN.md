@@ -200,7 +200,9 @@ package in §14.
 - **Problems:**
   - Overlapping Const and Ref areas are not detected.
   - AllowedValues and ValueItem are not used by ToModel, so a default
-    outside AllowedValues is accepted.
+    outside AllowedValues is accepted. `SubmoduleParameters` reports
+    both, and `ParameterRecord.Set` refuses a value outside
+    AllowedValues; the defaults themselves are still not checked.
   - A BitArea cannot span octets. That matches Table D.31 as we read it
     (VERIFIED against the issue #74 research); re-check it against the
     V2.4x XSD.

@@ -574,7 +574,12 @@ var refDefaultEncoded = map[DataType]bool{
 }
 
 // applyRef writes the DefaultValue of a Ref into a record.
-func applyRef(rec []byte, r *Ref) error {
+func applyRef(rec []byte, r *Ref) error { return putRef(rec, r, r.DefaultValue, "default") }
+
+// putRef writes value, in the lexical form of a DefaultValue, into a record
+// at the place of a Ref. what names the value in errors ("default" or
+// "value"). The octets and bits outside the Ref are not changed.
+func putRef(rec []byte, r *Ref, value, what string) error {
 	off, err := ParseUint32(r.ByteOffset)
 	if err != nil {
 		return fmt.Errorf("gsdml: %w: Ref ByteOffset %q", profinet.ErrMalformed, r.ByteOffset)
@@ -598,13 +603,16 @@ func applyRef(rec []byte, r *Ref) error {
 			}
 			width = uint16(w)
 		}
-		v, err := parseUint(r.DefaultValue, 64)
-		if err != nil || !within(off, 1, len(rec)) || bit >= 8 || bit+width > 8 {
+		v, err := parseUint(value, 64)
+		if !within(off, 1, len(rec)) || bit >= 8 || bit+width > 8 {
 			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d", profinet.ErrMalformed, off, bit)
+		}
+		if err != nil {
+			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d %s %q", profinet.ErrMalformed, off, bit, what, clip(value))
 		}
 		shifted := v << bit
 		if v >= 1<<width || shifted > math.MaxUint8 {
-			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d default %d does not fit %d bits", profinet.ErrMalformed, off, bit, v, width)
+			return fmt.Errorf("gsdml: %w: bit Ref at %d.%d %s %d does not fit %d bits", profinet.ErrMalformed, off, bit, what, v, width)
 		}
 		mask := byte(0xFF) >> (8 - width) << bit
 		rec[off] = rec[off]&^mask | byte(shifted)
@@ -621,18 +629,18 @@ func applyRef(rec []byte, r *Ref) error {
 		return fmt.Errorf("gsdml: %w: Ref at %d of %d octets beyond the record", profinet.ErrMalformed, off, size)
 	}
 	dst := rec[off:][:size]
-	dv := strings.TrimSpace(r.DefaultValue)
+	dv := strings.TrimSpace(value)
 	switch t {
 	case DataTypeFloat32:
 		f, err := strconv.ParseFloat(dv, 32)
 		if err != nil {
-			return fmt.Errorf("gsdml: %w: Float32 default %q", profinet.ErrMalformed, dv)
+			return fmt.Errorf("gsdml: %w: Float32 %s %q", profinet.ErrMalformed, what, clip(dv))
 		}
 		binary.BigEndian.PutUint32(dst, math.Float32bits(float32(f)))
 	case DataTypeFloat64:
 		f, err := strconv.ParseFloat(dv, 64)
 		if err != nil {
-			return fmt.Errorf("gsdml: %w: Float64 default %q", profinet.ErrMalformed, dv)
+			return fmt.Errorf("gsdml: %w: Float64 %s %q", profinet.ErrMalformed, what, clip(dv))
 		}
 		binary.BigEndian.PutUint64(dst, math.Float64bits(f))
 	case DataTypeBoolean:
@@ -643,7 +651,7 @@ func applyRef(rec []byte, r *Ref) error {
 		// Boolean DefaultValue so is not verified (LIMITATIONS.md).
 		b, err := parseBool(dv, true, false)
 		if err != nil {
-			return fmt.Errorf("gsdml: %w: Boolean default: %v", profinet.ErrMalformed, err)
+			return fmt.Errorf("gsdml: %w: Boolean %s: %v", profinet.ErrMalformed, what, err)
 		}
 		dst[0] = 0
 		if b {
@@ -655,7 +663,7 @@ func applyRef(rec []byte, r *Ref) error {
 		// in octets, so a UTF-8 value counts its encoded octets, not its
 		// characters. A longer value is refused rather than cut short; a
 		// shorter one is padded with zero octets (docs/GSDML.md).
-		if err := putPadded(dst, []byte(r.DefaultValue), t, off); err != nil {
+		if err := putPadded(dst, []byte(value), t, off, what); err != nil {
 			return err
 		}
 	case DataTypeOctetString:
@@ -663,13 +671,13 @@ func applyRef(rec []byte, r *Ref) error {
 		if err != nil {
 			return err
 		}
-		if err := putPadded(dst, b, t, off); err != nil {
+		if err := putPadded(dst, b, t, off, what); err != nil {
 			return err
 		}
 	case DataTypeInteger8, DataTypeInteger16, DataTypeInteger32, DataTypeInteger64:
 		v, err := parseInt(dv, size*8)
 		if err != nil {
-			return fmt.Errorf("gsdml: %w: %s default %q", profinet.ErrMalformed, t, dv)
+			return fmt.Errorf("gsdml: %w: %s %s %q", profinet.ErrMalformed, t, what, clip(dv))
 		}
 		// Two's complement, big endian, truncated to the item size: v fits
 		// size octets, so the dropped leading octets are sign extension.
@@ -679,7 +687,7 @@ func applyRef(rec []byte, r *Ref) error {
 	default: // Unsigned8, Unsigned16, Unsigned32, Unsigned64
 		v, err := parseUint(dv, size*8)
 		if err != nil {
-			return fmt.Errorf("gsdml: %w: %s default %q", profinet.ErrMalformed, t, dv)
+			return fmt.Errorf("gsdml: %w: %s %s %q", profinet.ErrMalformed, t, what, clip(dv))
 		}
 		putUint(dst, v)
 	}
@@ -690,9 +698,9 @@ func applyRef(rec []byte, r *Ref) error {
 // over octets a Const wrote there; a v longer than dst is refused. The
 // zero padding is this package's policy, not taken from a specification
 // (LIMITATIONS.md).
-func putPadded(dst, v []byte, t DataType, off uint32) error {
+func putPadded(dst, v []byte, t DataType, off uint32, what string) error {
 	if len(v) > len(dst) {
-		return fmt.Errorf("gsdml: %w: %s Ref at %d: default of %d octets exceeds its Length of %d", profinet.ErrMalformed, t, off, len(v), len(dst))
+		return fmt.Errorf("gsdml: %w: %s Ref at %d: %s of %d octets exceeds its Length of %d", profinet.ErrMalformed, t, off, what, len(v), len(dst))
 	}
 	clear(dst[copy(dst, v):])
 	return nil
