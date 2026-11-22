@@ -136,16 +136,17 @@ the GSDML specification.
 **Parameter records** (`SubmoduleParameters`, `ParameterRecord.Set`,
 `Encode`): a field is written with the encoder of `ToModel`'s defaults, so
 the same DataTypes are refused and the same policies apply (zero padding,
-the OctetString form, hexadecimal integers). `Changeable` and `Visible` are
-reported, not enforced: the schemas declare them without saying what a
-device or a tool does with them. `AllowedValues` is compared for numeric,
-Bit, BitArea and Boolean fields only. Fields that share bits with each
-other, or Consts with each other, are reported by `ParameterRecord.Check`
-as a warning, not refused: no source this package has says whether the
-GSDML specification allows it. A field over a Const is allowed, the Ref
-taking precedence, per ISO 15745-4:2003/Amd 1:2006, Annex D, D.4.7.4 as
-the maintainer read it; the amendment is not in this repository, and its
-meaning of `Changeable` and `Visible` (D.4.7.4) is not yet applied. `Encode` refuses two given values for such
+the OctetString form, hexadecimal integers). The rules taken from ISO
+15745-4:2003/Amd 1:2006, Annex D (D.4.7.1 to D.4.7.4, Tables D.28 and
+D.31) are as the maintainer's review states them; the amendment is not in
+this repository. `Set` writes a field that is not `Changeable` (only
+`PlanParameters` refuses one), and `Visible` is not used. `AllowedValues`
+and ValueItem values are compared for numeric, Bit, BitArea and Boolean
+fields only. Fields that share bits with each other are reported by
+`ParameterRecord.Check` as a warning, not refused: no source this package
+has says whether that is allowed. Consts that share octets are an error
+(D.4.7.3); a field over a Const is allowed, the Ref taking precedence
+(D.4.7.4). `Encode` refuses two given values for such
 fields; `Set` of one changes the bits of the other. A default outside its
 own `AllowedValues` is a warning of `Check`; `ToModel` and `Encode` keep
 it. `Field` falls back to a field's name, which is the text of the primary

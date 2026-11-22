@@ -133,7 +133,8 @@ or device access point with more than 1440 submodules, or a Const
 ByteOffset or Ref BitOffset that is no number, or a VisibleString,
 UTF8String or OctetString Ref default longer than its Length
 (`gsdml.ToModel`, and `gsdml.SubmoduleParameters` for the same records); a
-value that does not fit its parameter field or is outside its AllowedValues
+value that does not fit its parameter field, is outside its AllowedValues or,
+without them, is not a value of its ValueItem
 (`gsdml.ParameterRecord.Set` and `Encode`, `ErrInvalidConfig`, the record
 left as it was), as well as a field whose Length or bits do not agree with
 its DataType, a Go value of another kind than the field's DataType (the
@@ -144,10 +145,11 @@ field without a verified encoding or an AllowedValues on a string field,
 with more than 4096 values, a mantissa of more than 128 digits or an
 exponent beyond ±400 (`ErrUnsupported`); an AllowedValues that is not a
 SignedOrFloatValueListT (`ErrMalformed`); for `gsdml.PlanParameters`, a
-model that does not match the file (another DAP, a module the DAP cannot
+model that does not match the file (another VendorID or DeviceID, another DAP, a module the DAP cannot
 use or in a slot outside `PhysicalSlots` or its `AllowedInSlots`, a
 submodule the file does not have), values for a record no plugged
-submodule has or two sets for one record, a written record with a `Check`
+submodule has, two sets for one record, a value for a field that is not
+Changeable or two for one field (its ID and its name), a written record with a `Check`
 error, or TransferSequence values of a submodule that are not 1 to N
 (`ErrInvalidConfig`, with the plan's issues and no writes), a DAP the file
 does not have (`ErrNotFound`), and values for a record with a field

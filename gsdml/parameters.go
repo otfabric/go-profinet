@@ -80,9 +80,9 @@ type ParameterField struct {
 	// is empty when the file does not restrict the value.
 	Default       string `json:"default"`
 	AllowedValues string `json:"allowed_values,omitempty"`
-	// Changeable and Visible are reported, not enforced: Set writes a
-	// field that is not Changeable. No source this package has states
-	// what a device or a tool does with them (LIMITATIONS.md).
+	// Changeable and Visible are reported. Set, a low-level encoder,
+	// writes a field that is not Changeable; PlanParameters refuses a
+	// value for it (Table D.31). Visible is not used.
 	Changeable bool `json:"changeable"`
 	Visible    bool `json:"visible"`
 	// Values are the texts the file's ValueItem (ValueItemTarget) assigns
@@ -323,7 +323,8 @@ func (r *ParameterRecord) Field(key string) (int, error) {
 // SetFloat, SetBool, SetString and SetBytes take Go values instead.
 //
 // It returns an error matching profinet.ErrInvalidConfig for a value that
-// does not fit the field or is outside its AllowedValues, and for a field
+// does not fit the field, is outside its AllowedValues or, when it has
+// none, is not a value its ValueItem assigns (Table D.31), and for a field
 // whose Length or bits do not agree with its DataType;
 // profinet.ErrUnsupported for a DataType without a verified encoding, an
 // AllowedValues of a string or an OctetString (not compared) or beyond
@@ -553,21 +554,25 @@ const (
 	// whose Length or bits do not agree with its DataType, or a Default
 	// not of the record's Length (an error).
 	RuleParameterLayout = "parameter-layout"
-	// RuleParameterOverlap: two fields, or two Consts, share bits (a
-	// warning: no source this package has states whether the GSDML
-	// specification allows it; the one written last decides the bits). A
-	// field over a Const is not reported: ISO 15745-4:2003/Amd 1:2006,
-	// Annex D, D.4.7.4 allows it, and the Ref takes precedence, as ToModel
-	// and Encode write the Consts first (the maintainer's reading of the
-	// amendment, which this repository does not have).
+	// RuleParameterOverlap: two Consts that share octets (an error: ISO
+	// 15745-4:2003/Amd 1:2006, Annex D, D.4.7.3 does not allow it), or two
+	// fields that share bits (a warning: no source this package has states
+	// whether it is allowed; the one written last decides the bits). A
+	// field over a Const is not reported: D.4.7.4 allows it, and the Ref
+	// takes precedence, as ToModel and Encode write the Consts first. The
+	// amendment is not in this repository: these clauses are as the
+	// maintainer's review states them.
 	RuleParameterOverlap = "parameter-overlap"
 	// RuleParameterDefault: a DefaultValue that does not encode (an error),
-	// or is outside the field's AllowedValues (a warning: consistency of
-	// the file's own declarations).
+	// or is outside the field's AllowedValues, or, without AllowedValues,
+	// not a value of its ValueItem (warnings: consistency of the file's own
+	// declarations).
 	RuleParameterDefault = "parameter-default"
 	// RuleParameterAllowedValues: an AllowedValues that is not a
-	// SignedOrFloatValueListT (an error), or one this package does not
-	// compare (unvalidated).
+	// SignedOrFloatValueListT, a ValueItem value that is no value of the
+	// field's DataType, or an AllowedValues that is not a subset of the
+	// values of the field's ValueItem (errors; Table D.31), or an
+	// AllowedValues this package does not compare (unvalidated).
 	RuleParameterAllowedValues = "parameter-allowed-values"
 	// RuleParameterEncoding: a field whose DataType has no verified
 	// encoding (unvalidated).
@@ -658,6 +663,14 @@ func (r *ParameterRecord) Check() []Issue {
 		if aerr == nil && f.AllowedValues != "" && !isStringType(f.DataType) && !f.inAllowed(f.Default, ranges) {
 			add(i, SeverityWarning, RuleParameterDefault, "DefaultValue %q of field %q is not in its AllowedValues %q", clip(f.Default), clip(f.Name), clip(f.AllowedValues))
 		}
+		if f.AllowedValues == "" && len(f.Values) > 0 && !f.assigned(f.Default) {
+			add(i, SeverityWarning, RuleParameterDefault, "DefaultValue %q of field %q is not one of the values of its ValueItem", clip(f.Default), clip(f.Name))
+		}
+		if aerr == nil {
+			for _, msg := range f.valueItemIssues(ranges) {
+				add(i, SeverityError, RuleParameterAllowedValues, "field %q: %s", clip(f.Name), msg)
+			}
+		}
 	}
 	if seen := duplicateID(r.Fields); seen >= 0 {
 		add(seen, SeverityError, RuleParameterLayout, "ID %q of field %q is the ID of an earlier field", clip(r.Fields[seen].ID), clip(r.Fields[seen].Name))
@@ -667,7 +680,10 @@ func (r *ParameterRecord) Check() []Issue {
 			add(noItem, SeverityError, RuleParameterDefault, "Default is not the record its Consts and fields build: Encode builds the latter")
 		}
 	}
-	for _, o := range append(overlaps(constSpans), overlaps(spans)...) {
+	for _, o := range overlaps(constSpans) {
+		add(noItem, SeverityError, RuleParameterOverlap, "%s and %s share octets", r.itemName(o[0]), r.itemName(o[1]))
+	}
+	for _, o := range overlaps(spans) {
 		add(noItem, SeverityWarning, RuleParameterOverlap, "%s and %s share bits", r.itemName(o[0]), r.itemName(o[1]))
 	}
 	if more > 0 {
@@ -707,6 +723,11 @@ func (r *ParameterRecord) itemName(item int) string {
 // (inAllowed).
 func (f *ParameterField) allowed(value string) error {
 	if f.AllowedValues == "" {
+		if len(f.Values) > 0 && !f.assigned(value) {
+			// Without AllowedValues, the values a ValueItem assigns are
+			// the permitted ones (Table D.31).
+			return fmt.Errorf("gsdml: %w: value %q is not one of the %d values of the field's ValueItem", profinet.ErrInvalidConfig, clip(value), len(f.Values))
+		}
 		return nil
 	}
 	if isStringType(f.DataType) {
@@ -723,6 +744,95 @@ func (f *ParameterField) allowed(value string) error {
 		return fmt.Errorf("gsdml: %w: value %q is not in AllowedValues %q", profinet.ErrInvalidConfig, clip(value), clip(f.AllowedValues))
 	}
 	return nil
+}
+
+// assigned reports whether a value is one of the Contents of the field's
+// ValueItem: compared as numbers for a numeric or Boolean field (a Content
+// that is no number matches nothing; Check reports it), as text for a
+// string field.
+func (f *ParameterField) assigned(value string) bool {
+	if isStringType(f.DataType) {
+		for _, a := range f.Values {
+			if a.Content == value {
+				return true
+			}
+		}
+		return false
+	}
+	v, ok := f.numeric(value)
+	if !ok {
+		return false
+	}
+	for _, a := range f.Values {
+		if c, ok := f.numeric(a.Content); ok && c.Cmp(v) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// maxSubsetValues bounds the integers of an AllowedValues range that
+// Check compares with a ValueItem one by one: a range of more integers
+// than the ValueItem has values is not a subset whatever they are.
+const maxSubsetValues = 1 << 16
+
+// valueItemIssues reports the Contents of a field's ValueItem that are no
+// value of its DataType, and, with an AllowedValues, the allowed values the
+// ValueItem does not assign: AllowedValues must be a subset of the values
+// of the ValueItem (Table D.31). It returns the messages.
+func (f *ParameterField) valueItemIssues(ranges []valueRange) []string {
+	if len(f.Values) == 0 || isStringType(f.DataType) {
+		return nil
+	}
+	var out []string
+	set := make(map[string]bool, len(f.Values))
+	for _, a := range f.Values {
+		c, ok := f.numeric(a.Content)
+		if !ok {
+			out = append(out, fmt.Sprintf("ValueItem value %q is not a %s", clip(a.Content), f.DataType))
+			continue
+		}
+		set[c.RatString()] = true
+	}
+	if f.AllowedValues == "" {
+		return out
+	}
+	for _, r := range ranges {
+		if !f.rangeAssigned(r, set) {
+			out = append(out, fmt.Sprintf("AllowedValues %q is not a subset of the values of the field's ValueItem", clip(f.AllowedValues)))
+			break
+		}
+	}
+	return out
+}
+
+// rangeAssigned reports whether every value of an AllowedValues range is in
+// set, the ValueItem's values: for an integer field each integer from lo to
+// hi, for a float field a single value.
+func (f *ParameterField) rangeAssigned(r valueRange, set map[string]bool) bool {
+	if f.DataType == DataTypeFloat32 || f.DataType == DataTypeFloat64 {
+		return r.lo.Cmp(r.hi) == 0 && set[r.lo.RatString()]
+	}
+	// The integers from ceil(lo) to floor(hi); big.Int.Div rounds toward
+	// minus infinity for a positive divisor, and a Rat's is positive.
+	lo := new(big.Int).Div(r.lo.Num(), r.lo.Denom())
+	if !r.lo.IsInt() {
+		lo.Add(lo, big.NewInt(1))
+	}
+	hi := new(big.Int).Div(r.hi.Num(), r.hi.Denom())
+	n := new(big.Int).Sub(hi, lo)
+	if n.Sign() < 0 {
+		return true // an empty range
+	}
+	if !n.IsInt64() || n.Int64() >= int64(len(set)) || n.Int64() >= maxSubsetValues {
+		return false
+	}
+	for v := new(big.Int).Set(lo); v.Cmp(hi) <= 0; v.Add(v, big.NewInt(1)) {
+		if !set[v.String()] {
+			return false
+		}
+	}
+	return true
 }
 
 // inAllowed reports whether a value is in ranges. An integer, Bit,

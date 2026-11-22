@@ -65,21 +65,25 @@ const (
 	// whose Length or bits do not agree with its DataType, or a Default
 	// not of the record's Length (an error).
 	RuleParameterLayout = "parameter-layout"
-	// RuleParameterOverlap: two fields, or two Consts, share bits (a
-	// warning: no source this package has states whether the GSDML
-	// specification allows it; the one written last decides the bits). A
-	// field over a Const is not reported: ISO 15745-4:2003/Amd 1:2006,
-	// Annex D, D.4.7.4 allows it, and the Ref takes precedence, as ToModel
-	// and Encode write the Consts first (the maintainer's reading of the
-	// amendment, which this repository does not have).
+	// RuleParameterOverlap: two Consts that share octets (an error: ISO
+	// 15745-4:2003/Amd 1:2006, Annex D, D.4.7.3 does not allow it), or two
+	// fields that share bits (a warning: no source this package has states
+	// whether it is allowed; the one written last decides the bits). A
+	// field over a Const is not reported: D.4.7.4 allows it, and the Ref
+	// takes precedence, as ToModel and Encode write the Consts first. The
+	// amendment is not in this repository: these clauses are as the
+	// maintainer's review states them.
 	RuleParameterOverlap = "parameter-overlap"
 	// RuleParameterDefault: a DefaultValue that does not encode (an error),
-	// or is outside the field's AllowedValues (a warning: consistency of
-	// the file's own declarations).
+	// or is outside the field's AllowedValues, or, without AllowedValues,
+	// not a value of its ValueItem (warnings: consistency of the file's own
+	// declarations).
 	RuleParameterDefault = "parameter-default"
 	// RuleParameterAllowedValues: an AllowedValues that is not a
-	// SignedOrFloatValueListT (an error), or one this package does not
-	// compare (unvalidated).
+	// SignedOrFloatValueListT, a ValueItem value that is no value of the
+	// field's DataType, or an AllowedValues that is not a subset of the
+	// values of the field's ValueItem (errors; Table D.31), or an
+	// AllowedValues this package does not compare (unvalidated).
 	RuleParameterAllowedValues = "parameter-allowed-values"
 	// RuleParameterEncoding: a field whose DataType has no verified
 	// encoding (unvalidated).
@@ -462,9 +466,9 @@ type ParameterField struct {
 	// is empty when the file does not restrict the value.
 	Default       string `json:"default"`
 	AllowedValues string `json:"allowed_values,omitempty"`
-	// Changeable and Visible are reported, not enforced: Set writes a
-	// field that is not Changeable. No source this package has states
-	// what a device or a tool does with them (LIMITATIONS.md).
+	// Changeable and Visible are reported. Set, a low-level encoder,
+	// writes a field that is not Changeable; PlanParameters refuses a
+	// value for it (Table D.31). Visible is not used.
 	Changeable bool `json:"changeable"`
 	Visible    bool `json:"visible"`
 	// Values are the texts the file's ValueItem (ValueItemTarget) assigns
@@ -508,7 +512,9 @@ func PlanParameters(doc *Document, m *model.Device, opts PlanOptions) (*Paramete
 
 PlanParameters builds the parameter records to write to a device whose plugged modules m describes, from the file doc m was built from. It writes nothing: the plan is for controller.DeviceConfig.Parameters (converted with controller.Parameter(w.Write)) or for review.
 
+  - The model must be of the file's device (VendorID and DeviceID) and DAP (ModuleIdentNumber).
   - Every plugged module must be one the DAP can use, in a slot of the DAP's PhysicalSlots and of the module's AllowedInSlots, and every plugged submodule must be in the file. The DAP's interface and port submodules have no parameter records here: their PDev records are the controller's (PeerChecks, MRP).
+  - Values may set only fields that are Changeable (Table D.31), each once: an ID and a name of one field are refused, rather than one of them winning by map order.
   - A record is written when PlanOptions.Values sets a field of it, or, with PlanOptions.Defaults, always. A record with values must build (ParameterRecord.Encode); a record written with its defaults only that cannot be built for a field without a verified encoding is left out and reported.
   - A written record with an error of ParameterRecord.Check refuses the plan; its warnings and unvalidated issues are reported.
   - The records of a submodule are written in ascending TransferSequence (1, 2, …, scoped to the submodule: Table D.28), then those of 0, an undefined order, in file order. Submodules are written in slot and subslot order, the DAP first: a policy of this package, not of Table D.28.
@@ -586,7 +592,7 @@ func (r *ParameterRecord) Set(rec []byte, i int, value string) error
 
 Set writes value into the field i of rec, a record of r's Length: in the lexical form of a DefaultValue of the field's DataType ("12", "-3", "1.5", "true", "0x01,0x02" for an OctetString, a string as it is). The octets and bits outside the field are not changed. SetUint, SetInt, SetFloat, SetBool, SetString and SetBytes take Go values instead.
 
-It returns an error matching profinet.ErrInvalidConfig for a value that does not fit the field or is outside its AllowedValues, and for a field whose Length or bits do not agree with its DataType; profinet.ErrUnsupported for a DataType without a verified encoding, an AllowedValues of a string or an OctetString (not compared) or beyond what is compared (see Check); and profinet.ErrMalformed for an AllowedValues that is not a SignedOrFloatValueListT.
+It returns an error matching profinet.ErrInvalidConfig for a value that does not fit the field, is outside its AllowedValues or, when it has none, is not a value its ValueItem assigns (Table D.31), and for a field whose Length or bits do not agree with its DataType; profinet.ErrUnsupported for a DataType without a verified encoding, an AllowedValues of a string or an OctetString (not compared) or beyond what is compared (see Check); and profinet.ErrMalformed for an AllowedValues that is not a SignedOrFloatValueListT.
 
 #### func (ParameterRecord) SetBool
 

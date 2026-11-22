@@ -232,8 +232,12 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
 - `Set` writes one value into a record, in the lexical form of a
   DefaultValue, with the encoder `ToModel` uses for defaults. The other
   octets, and the other bits of a Bit or BitArea octet, are not changed. A
-  value that does not fit the field, or is outside its `AllowedValues`,
-  fails with `ErrInvalidConfig` and leaves the record as it was.
+  value that does not fit the field, is outside its `AllowedValues` or,
+  when the field has none, is not one of the values its `ValueItem`
+  assigns, fails with `ErrInvalidConfig` and leaves the record as it was.
+  Table D.31 of ISO 15745-4:2003/Amd 1:2006, Annex D makes the ValueItem's
+  values the permitted ones when AllowedValues is absent, and requires
+  AllowedValues to be a subset of them when both are given.
   `AllowedValues` (values and `lo..hi` ranges, `SignedOrFloatValueListT`)
   is compared exactly, in rational numbers, for the integer, float, Bit,
   BitArea and Boolean (0, 1) fields; on a string or OctetString field it is
@@ -278,18 +282,20 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
   - `parameter-layout` (error): a field or a Const outside the record, a
     field whose Length or bits do not agree with its DataType, a Default
     not of the record's length, an ID two fields have;
-  - `parameter-overlap` (warning): two fields, or two Consts, that share
-    bits. No source this package has says whether the GSDML specification
-    allows that, so it is not refused; the one written last decides the
-    bits. A field over a Const is not reported: ISO 15745-4:2003/Amd
-    1:2006, Annex D, D.4.7.4 allows it and gives the Ref precedence, as
-    `ToModel` and `Encode` write the Consts first (the maintainer's reading
-    of the amendment, which this repository does not have);
+  - `parameter-overlap`: two Consts that share octets (an error: D.4.7.3
+    does not allow it), or two fields that share bits (a warning: no source
+    this package has says whether that is allowed; the one written last
+    decides the bits). A field over a Const is not reported: D.4.7.4
+    allows it and gives the Ref precedence, as `ToModel` and `Encode`
+    write the Consts first;
   - `parameter-default`: a DefaultValue that does not encode, or a
     `Default` snapshot that is not the record `Encode` builds (errors); a
-    DefaultValue outside the field's own AllowedValues (warning);
-  - `parameter-allowed-values`: an AllowedValues not of the schemas' form
-    (error), or one that is not compared: on a string field, with more than
+    DefaultValue outside the field's own AllowedValues or, without them,
+    not a value of its ValueItem (warnings);
+  - `parameter-allowed-values`: an AllowedValues not of the schemas' form,
+    a ValueItem value that is no value of the DataType, an AllowedValues
+    that is not a subset of the ValueItem's values (errors), or one that is
+    not compared: on a string field, with more than
     4096 values, a mantissa of more than 128 digits or an exponent beyond
     ±400 (unvalidated);
   - `parameter-encoding` (unvalidated): a DataType without a verified
@@ -298,8 +304,12 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
   `SubmoduleParameters` refuses a malformed layout or default already, so
   for its records `Check` reports overlaps, AllowedValues and encodings.
   `gsdml.Check` of a document does not run it.
-- `Changeable` and `Visible` are reported, not enforced: no source this
-  package has says what a device or a tool must do with them (LIMITATIONS.md).
+- `Changeable` and `Visible` are reported. `Set` is a low-level encoder and
+  writes a field that is not Changeable; `PlanParameters` refuses a value
+  for one (Table D.31). `Visible` is not used.
+- The clauses of ISO 15745-4:2003/Amd 1:2006, Annex D cited here (D.4.7.1
+  to D.4.7.4, Tables D.28 and D.31) are as the maintainer's review states
+  them: the amendment is not in this repository.
 
 Nothing writes these records on its own: a controller writes the records of
 `controller.DeviceConfig.Parameters`, as before.
@@ -327,6 +337,13 @@ for _, w := range plan.Writes {
 }
 ```
 
+- The model must be of the file's device: its VendorID and DeviceID, and
+  the DAP's ModuleIdentNumber. Module ident numbers alone do not tell two
+  devices apart.
+- `Values` may set only fields that are `Changeable` (Table D.31), each
+  once: an ID and a name of one field in one set are refused, rather than
+  one of them winning by map order. A field that is not Changeable is still
+  written at its default when its record is written.
 - The topology is checked against the file: every plugged module must be
   one the DAP can use (`UseableModules`), in a slot of the DAP's
   `PhysicalSlots` and of the module's `AllowedInSlots`, and every plugged
