@@ -20,6 +20,7 @@ jobs:
       # Code reads or generates these Markdown files: they count as code.
       code-paths: |
         gsdml/SCHEMA.md
+        docs/GSDML-TYPED.md
 
   ci:
     needs: changes

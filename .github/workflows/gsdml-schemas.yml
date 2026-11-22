@@ -5,10 +5,11 @@ run-name: "GSDML schemas (${{ github.event_name }}) on ${{ github.ref_name }} by
 
 # Everything that needs the GSDML reference schemas, which are in the
 # private otfabric/profinet-gsdml-schema (their licence does not allow
-# redistributing them): verify the pinned checkout, run the differential
-# test of gsdml.Validate against xmllint, and check that the committed
-# registry and DataType audit still match the schemas
-# (make gsdml-schemas-check). The checkout lives in the runner only.
+# redistributing them): verify the pinned checkout, check that the
+# generated gsdml/typed and gsdml/versions match what the schemas
+# generate, run the differential tests of gsdml.Validate and gsdml/typed
+# against xmllint, and check that the committed registry and DataType
+# audit still match the schemas (make gsdml-schemas-check). The checkout lives in the runner only.
 
 on:
   schedule:
@@ -23,7 +24,7 @@ jobs:
   check:
     name: GSDML schemas
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       # A pull request from a fork, and a Dependabot run, have no secrets:
       # the job ends with a notice, so that "OT Fabric Required Checks"

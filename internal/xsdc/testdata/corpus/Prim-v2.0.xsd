@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic test schema written for go-profinet (MIT): not a GSDML schema and no text of one. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:p="urn:test:prim" targetNamespace="urn:test:prim" elementFormDefault="qualified" version="2.0">
+	<xsd:import namespace="http://www.w3.org/XML/1998/namespace" schemaLocation="xml.xsd"/>
+	<xsd:simpleType name="IdT">
+		<xsd:restriction base="xsd:token">
+			<xsd:pattern value="[A-Z][A-Za-z0-9_]*"/>
+			<xsd:minLength value="1"/>
+			<xsd:maxLength value="64"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="ByteT">
+		<xsd:restriction base="xsd:unsignedInt">
+			<xsd:minInclusive value="0"/>
+			<xsd:maxInclusive value="255"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="ColorT">
+		<xsd:restriction base="xsd:string">
+			<xsd:enumeration value="Red"/>
+			<xsd:enumeration value="Green"/>
+		</xsd:restriction>
+	</xsd:simpleType>
+	<xsd:simpleType name="ListT">
+		<xsd:list itemType="p:ByteT"/>
+	</xsd:simpleType>
+	<xsd:simpleType name="UnionT">
+		<xsd:union memberTypes="p:ByteT p:ColorT">
+			<xsd:simpleType>
+				<xsd:restriction base="xsd:boolean"/>
+			</xsd:simpleType>
+		</xsd:union>
+	</xsd:simpleType>
+	<xsd:complexType name="NamedT">
+		<xsd:attribute name="ID" type="p:IdT" use="required"/>
+		<xsd:attribute ref="xml:lang"/>
+	</xsd:complexType>
+	<xsd:element name="Text" type="xsd:string"/>
+</xsd:schema>

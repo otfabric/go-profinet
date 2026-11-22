@@ -35,6 +35,43 @@ change.
 
 The official GSDML schemas and specification are licensed by PROFIBUS &
 PROFINET International to its members and are not redistributable.
+
+**The generated model** (`gsdml/typed`, `gsdml/versions/vNNN`) and the
+schema validation of `gsdml.CheckBytes` and `ValidateBytes` are generated
+from the reference schemas V1.0 to V2.46 that the maintainers keep in a
+private repository (the copies TIA Portal V21 installs, reserialised; not
+PI's specification package). The evidence that the generated validator
+decides as the schemas do is agreement with libxml2's `xmllint`, one other
+implementation and not PI's checker: the four committed fixtures against
+all 18 versions, 127 public vendor files against their own version (three more name no version), 29
+hand-written one-rule mutants, about 3 200 seeded mutants, and the
+re-encoding of every valid input (`make gsdml-differential`, no
+allowlist). Where `xmllint` deviates from XML Schema 1.0, the validator
+would deviate with it unnoticed. Not implemented, and refused where a
+document uses them: `xsi:type` and `xsi:nil`. Not implemented, so
+generation fails if a later schema uses them: `xsd:all`, `xsd:include`,
+`xsd:redefine`, attribute groups, `nillable`, identity-constraint XPath
+beyond child steps, `.//`, `*`, `p:*`, `.` and `@attr`, and pattern
+constructs without an exact RE2 translation (class subtraction, block
+escapes `\p{Is…}`). After an element that does not fit its parent's
+content model, the parent's later children are not assessed: the verdict
+is the same, but fewer issues are listed than `xmllint` lists. A
+`SchemaError` lists at most 1000 issues. There are no types for V2.5x:
+its schema is not in the private repository. Encoding keeps the schema's
+content, attribute values and element order, but not comments,
+processing instructions, the declared encoding (it writes UTF-8) or the
+namespace prefixes (it writes `xsi` and `ns1`…). `gsdml.Check` and
+`Validate`, on a `*Document` in memory, still apply the catalog's rules
+below: the catalog's encoding (`Marshal`) adds defaults and uses the
+newest element order, which is not valid against every older version, so
+only the original octets can be validated against their own version.
+A program that imports `gsdml` but never calls `CheckBytes` links none of
+the generated code; validation of all 18 versions adds about 1 MB to a
+binary, the decoders of one version (a `versions/vNNN` package) about
+1 MB more, those of all versions about 4 MB (measured on darwin/arm64,
+docs/research/GSDML-CODEGEN.md).
+
+**The catalog.**
 go-profinet generates its GSDML types from an independently written catalog
 of the schema (`gsdml/schema/catalog.json`) and validates against it: the
 structure, attribute types and references that a device model relies on.
@@ -55,10 +92,15 @@ converts 129 of the 130 files. `gsdml.Validate` is not PI's GSDML
 checker, and a file it accepts may still fail PI's. Elements and attributes
 outside the catalog are kept verbatim and reported as unvalidated by
 `gsdml.Check`; its semantic rules are a small set, each with its basis
-(docs/GSDML.md), several of them local heuristics. A document may have at
+(docs/GSDML.md), several of them local heuristics. Its reference rule
+uses one table of every ID in the document, which misses IDs in elements
+the catalog does not model: one schema-valid V2.45 vendor file has 255
+references `Check` reports as unresolved. `CheckBytes` uses the schema's
+keyrefs, in their scopes, instead. A document may have at
 most 1 048 576 elements and a module at most 1440 submodules; `Check` lists
 at most 16 384 issues per severity (SECURITY.md lists every fixed bound). Schema versions after 2.45
-(2.46, 2.50) are not in the catalog: their schemas are members-only.
+(2.46, 2.50) are not in the catalog; `CheckBytes` validates V2.46
+documents against the V2.46 schema.
 The defaults of optional attributes come from public sources, not the
 XSDs: Ref BitOffset 0 and BitLength 1 from ISO 15745-4:2003/Amd 1:2006
 (docs/GSDML.md), not yet compared with the V2.3x/V2.4x XSDs. An empty

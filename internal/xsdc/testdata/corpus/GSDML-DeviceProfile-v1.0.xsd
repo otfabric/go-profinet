@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic test schema written for go-profinet (MIT): not a GSDML schema and no text of one. -->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:t="urn:test:dev" xmlns:p="urn:test:prim" targetNamespace="urn:test:dev" elementFormDefault="qualified" version="1.0">
+	<xsd:import namespace="urn:test:prim" schemaLocation="Prim-v1.0.xsd"/>
+	<xsd:element name="Root">
+		<xsd:complexType>
+			<xsd:sequence>
+				<xsd:element name="Items" type="t:ItemsT"/>
+				<xsd:element ref="t:Head" minOccurs="0" maxOccurs="unbounded"/>
+				<xsd:element ref="p:Text" minOccurs="0"/>
+				<xsd:any namespace="urn:test:ext" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+			</xsd:sequence>
+			<xsd:attribute name="Color" type="p:ColorT" default="Red"/>
+			<xsd:anyAttribute namespace="##other" processContents="skip"/>
+		</xsd:complexType>
+		<xsd:key name="ItemKey">
+			<xsd:selector xpath=".//t:Item"/>
+			<xsd:field xpath="@ID"/>
+		</xsd:key>
+		<xsd:keyref name="ItemRef" refer="t:ItemKey">
+			<xsd:selector xpath="t:Items/t:Ref | t:Items/*"/>
+			<xsd:field xpath="@Target"/>
+		</xsd:keyref>
+		<xsd:unique name="Uniq">
+			<xsd:selector xpath="t:Items/p:*"/>
+			<xsd:field xpath="."/>
+		</xsd:unique>
+	</xsd:element>
+	<xsd:complexType name="ItemsT">
+		<xsd:choice maxOccurs="unbounded">
+			<xsd:element name="Item" type="t:ItemT"/>
+			<xsd:element name="Ref">
+				<xsd:complexType>
+					<xsd:attribute name="Target" type="p:IdT" use="required"/>
+				</xsd:complexType>
+			</xsd:element>
+		</xsd:choice>
+	</xsd:complexType>
+	<xsd:complexType name="ItemT">
+		<xsd:complexContent>
+			<xsd:extension base="p:NamedT">
+				<xsd:sequence>
+					<xsd:element name="Value" type="t:ValueT" minOccurs="2" maxOccurs="3"/>
+					<xsd:group ref="t:Extra"/>
+				</xsd:sequence>
+				<xsd:attribute name="Bytes" type="p:ListT"/>
+				<xsd:attribute name="U" type="p:UnionT"/>
+			</xsd:extension>
+		</xsd:complexContent>
+	</xsd:complexType>
+	<xsd:group name="Extra">
+		<xsd:sequence>
+			<xsd:element name="Note" type="xsd:string" minOccurs="0" maxOccurs="1" default="none"/>
+		</xsd:sequence>
+	</xsd:group>
+	<xsd:complexType name="ValueT">
+		<xsd:simpleContent>
+			<xsd:extension base="p:ByteT">
+				<xsd:attribute name="Unit" type="xsd:token" fixed="s"/>
+			</xsd:extension>
+		</xsd:simpleContent>
+	</xsd:complexType>
+	<xsd:complexType name="RestrictedValueT">
+		<xsd:simpleContent>
+			<xsd:restriction base="t:ValueT">
+				<xsd:attribute name="Unit" type="xsd:token" use="required"/>
+			</xsd:restriction>
+		</xsd:simpleContent>
+	</xsd:complexType>
+	<xsd:complexType name="MixedT" mixed="true">
+		<xsd:sequence>
+			<xsd:any processContents="skip" minOccurs="0" maxOccurs="unbounded"/>
+		</xsd:sequence>
+	</xsd:complexType>
+	<xsd:element name="Head" type="t:HeadT" abstract="true"/>
+	<xsd:element name="SubA" type="t:HeadT" substitutionGroup="t:Head"/>
+	<xsd:element name="SubB" substitutionGroup="t:SubA"/>
+	<xsd:complexType name="HeadT">
+		<xsd:sequence>
+			<xsd:element name="Num" type="xsd:integer" minOccurs="0"/>
+			<xsd:element name="Dec" type="xsd:decimal" minOccurs="0"/>
+			<xsd:element name="Flt" type="xsd:double" minOccurs="0"/>
+			<xsd:element name="Big" type="xsd:unsignedLong" minOccurs="0"/>
+			<xsd:element name="Neg" type="xsd:short" minOccurs="0"/>
+			<xsd:element name="Ok" type="xsd:boolean" minOccurs="0"/>
+			<xsd:element name="Mixed" type="t:MixedT" minOccurs="0"/>
+			<xsd:element name="Anything" minOccurs="0"/>
+		</xsd:sequence>
+	</xsd:complexType>
+</xsd:schema>

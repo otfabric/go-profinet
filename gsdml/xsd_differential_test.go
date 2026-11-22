@@ -6,8 +6,9 @@ package gsdml_test
 
 // The differential test of Validate against the GSDML reference schemas
 // (docs/research/GSDML-SCHEMA-PROPOSAL.md, A3): every file is validated by
-// libxml2's xmllint against the schema version it names and by
-// gsdml.Validate, and the two must agree, except where
+// libxml2's xmllint against the schema version it names, by
+// gsdml.ValidateBytes, which must agree with xmllint on every file, and by
+// gsdml.Validate (the catalog's rules), which must agree except where
 // testdata/xsd-differential.json explains the difference by a known
 // finding. It needs xmllint and the schemas (make gsdml-schemas):
 //
@@ -102,7 +103,7 @@ func TestXSDDifferential(t *testing.T) {
 		}
 		files = append(files, corpus...)
 	}
-	var agree, explained, lenient, skipped int
+	var agree, explained, lenient, skipped, bytesAgree int
 	seenLenient := map[string]bool{}
 	for _, f := range files {
 		b, err := os.ReadFile(f)
@@ -134,6 +135,13 @@ func TestXSDDifferential(t *testing.T) {
 		}
 		sum := sha256.Sum256(b)
 		id := hex.EncodeToString(sum[:])
+		// ValidateBytes validates against the document's own schema
+		// version: it must agree with xmllint exactly, with no allowlist.
+		if berr := gsdml.ValidateBytes(b); schemaValid != (berr == nil) {
+			t.Errorf("%s (V%s): xmllint valid %v, ValidateBytes: %v\n%s", f, version, schemaValid, berr, firstLines(string(out), 3))
+		} else {
+			bytesAgree++
+		}
 		switch {
 		case schemaValid == (perr == nil && verr == nil):
 			agree++
@@ -177,6 +185,7 @@ func TestXSDDifferential(t *testing.T) {
 			t.Errorf("known finding %s (%q at %q) explains no difference any more: remove it", k.Finding, k.Message, k.Path)
 		}
 	}
+	t.Logf("ValidateBytes: %d of %d files with a schema version agree with xmllint", bytesAgree, len(files)-skipped)
 	t.Logf("%d files: %d agree, %d differ by known findings, %d the schema rejects and Validate accepts (known), %d name no schema version", len(files), agree, explained, lenient, skipped)
 }
 

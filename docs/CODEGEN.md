@@ -1,8 +1,18 @@
 # Code generation: the GSDML types
 
-The Go types of GSDML documents (`gsdml/zz_generated.go`, about 2600 lines
-for 83 elements) and their reference (`gsdml/SCHEMA.md`) are generated from
-one input, `gsdml/schema/catalog.json`, by `internal/cmd/gengsdml`.
+go-profinet has two generated GSDML layers:
+
+- **The catalog model** (`gsdml`): the Go types of the content a device
+  model needs (`gsdml/zz_generated.go`, about 2600 lines for 83 elements)
+  and their reference (`gsdml/SCHEMA.md`), generated from one input,
+  `gsdml/schema/catalog.json`, by `internal/cmd/gengsdml`. It is what
+  `ToModel`, `FromModel`, `Check` and `Validate` use. The rest of this
+  document up to [The generated schema model](#the-generated-schema-model)
+  is about it.
+- **The schema model** (`gsdml/typed`, `gsdml/versions/vNNN`): every type
+  of every reference schema version V1.0 to V2.46, with a decoder, an
+  encoder and a validator, generated from the schemas themselves by
+  `internal/cmd/gsdmlc` ([The generated schema model](#the-generated-schema-model)).
 
 ## Why a catalog, not the XSDs
 
@@ -118,6 +128,49 @@ path pattern, and for a requirement a newer version added, the version
 it starts with), `lenient` the schema-invalid files `Validate` accepts, by
 SHA-256. With a corpus, a known finding that explains nothing any more
 fails the test, so the list shrinks as the findings are fixed.
+
+## The generated schema model
+
+`internal/cmd/gsdmlc` reads the 18 DeviceProfile schemas of the checkout
+with what they import (`internal/xsdc`: a loader for the XML Schema 1.0
+constructs the GSDML schemas use, which fails on any other) and writes:
+
+| File | What |
+|---|---|
+| `gsdml/typed/zz_types.go` | a struct per complex type and variant, typed fields (`string`, `bool`, sized integers, `Integer`, `Decimal`, `float64`, enumerations, lists), `…OrDefault` accessors for schema defaults, and straight-line decode and encode methods (no reflection) |
+| `gsdml/typed/zz_tables.go` | the validation tables: simple types with every facet, patterns translated to RE2, complex types with their attribute uses and content automata (Glushkov, checked for Unique Particle Attribution at generation time), element declarations with substitution groups, wildcards and identity constraints, per version |
+| `gsdml/typed/zz_versions.go` | the decoder of each version's root |
+| `gsdml/versions/vNNN/zz_facade.go` | each version's names as aliases of the shared structs, its enumeration constants, `Parse`, `Decode`, `Validate` |
+| `gsdml/typed/zz_samples_test.go`, `gsdml/versions/vNNN/zz_facade_test.go` | a sample document for every struct, decoded, encoded and decoded again; each facade against its version |
+| `docs/GSDML-TYPED.md` | inventory, deduplication and evolution per version (names and counts, no schema text) |
+
+Deduplication: `xsdc.Analyze` partitions the (component, version) pairs by
+refinement (equal local signature, and the components they refer to in one
+class, recursively) at three levels. A struct is shared by every version
+whose type has the same Go representation (`ModuleItemT_V231` is the
+`ModuleItemT` of V2.31 and of each later version until it changes); the
+validation tables are shared where the full rules agree. The numbers are in
+docs/GSDML-TYPED.md and docs/research/GSDML-CODEGEN.md;
+`internal/xsdc`'s `TestReferenceSchemas` fails when they move.
+
+The generated files are committed, so building and testing need no
+schemas. With the checkout:
+
+```bash
+make gsdml-generate         # regenerate gsdml/typed, gsdml/versions and docs/GSDML-TYPED.md
+make gsdml-generate-check   # fail when the committed files differ (part of make gsdml-schemas-check)
+```
+
+What is copied from the schemas into the generated code is what a
+validator needs (names, types, facet values, enumeration values, patterns,
+content models); no documentation text of the schemas is.
+
+The schema model's differential test (`gsdml/typed/xsd_differential_test.go`,
+build tag `gsdmlxsd`) has no allowlist: every fixture against every
+version, every corpus file against its own, the hand-written mutants of
+`TestMutants`, 24 seeded mutants of each input, and the encoding of every
+valid input must get xmllint's verdict. The `gsdml` differential also
+requires `gsdml.ValidateBytes` to agree with xmllint on every file.
 
 ## Changing the catalog
 

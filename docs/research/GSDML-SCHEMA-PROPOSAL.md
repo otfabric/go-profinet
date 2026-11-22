@@ -135,8 +135,9 @@ coverage gaps.
 > from every schema version as the objective: generated types, codecs and
 > version-aware validators, deduplicated across versions, with no XSD at
 > run time. The volume of generated code is not an argument against it.
-> A separate proposal with measurements from the corpus replaces this
-> section. A1 to A4 stand; they are needed under either architecture.
+> [GSDML-CODEGEN.md](GSDML-CODEGEN.md) replaces this section, with the
+> measurements, and records B1 to B5 and C1 to C3 as executed. A1 to A4
+> stand; they are needed under either architecture.
 
 **Generated metadata, hand-written behaviour, in the existing pipeline.**
 The catalog-and-generator design is right for this repository; its inputs

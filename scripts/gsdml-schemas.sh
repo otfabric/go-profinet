@@ -14,10 +14,18 @@
 #   scripts/gsdml-schemas.sh dir      print the xsd/ directory, exit 1 when
 #                                     the schemas are not fetched
 #   scripts/gsdml-schemas.sh differential
-#                                     the differential test of
-#                                     gsdml.Validate against xmllint
-#                                     (gsdml/xsd_differential_test.go);
-#                                     GSDML_CORPUS adds a directory
+#                                     the differential tests against
+#                                     xmllint of gsdml.Validate and the
+#                                     generated validator of gsdml/typed
+#                                     (xsd_differential_test.go in each),
+#                                     and the measured deduplication of
+#                                     internal/xsdc; GSDML_CORPUS adds a
+#                                     directory of documents
+#   scripts/gsdml-schemas.sh generate [-check]
+#                                     generate gsdml/typed and
+#                                     gsdml/versions from the schemas
+#                                     (internal/cmd/gsdmlc); -check fails
+#                                     when the committed files differ
 #
 # GSDML_SCHEMAS is DIR, an existing checkout (default .gsdml-schemas);
 # GSDML_SCHEMAS_REF the commit to use (default below).
@@ -43,7 +51,12 @@ dir)
 	;;
 differential)
 	[ -f "$DIR/xsd/SHA256SUMS" ] || { echo "gsdml-schemas: no schemas in $DIR: run scripts/gsdml-schemas.sh fetch or set GSDML_SCHEMAS" >&2; exit 1; }
-	GSDML_SCHEMAS_XSD=$(cd "$DIR/xsd" && pwd) go test -count=1 -tags gsdmlxsd -run TestXSDDifferential ./gsdml
+	GSDML_SCHEMAS_XSD=$(cd "$DIR/xsd" && pwd) go test -count=1 -timeout 30m -tags gsdmlxsd -run 'TestXSDDifferential|TestReferenceSchemas' ./gsdml ./gsdml/typed ./internal/xsdc
+	;;
+generate)
+	[ -f "$DIR/xsd/SHA256SUMS" ] || { echo "gsdml-schemas: no schemas in $DIR: run scripts/gsdml-schemas.sh fetch or set GSDML_SCHEMAS" >&2; exit 1; }
+	shift
+	go run ./internal/cmd/gsdmlc -schemas "$DIR/xsd" "$@"
 	;;
 verify)
 	[ -f "$DIR/xsd/SHA256SUMS" ] || { echo "gsdml-schemas: no schemas in $DIR: run scripts/gsdml-schemas.sh fetch or set GSDML_SCHEMAS" >&2; exit 1; }
@@ -55,7 +68,7 @@ verify)
 	sh "$DIR/scripts/verify.sh" "$DIR/xsd"
 	;;
 *)
-	echo "usage: scripts/gsdml-schemas.sh fetch | verify | dir | differential" >&2
+	echo "usage: scripts/gsdml-schemas.sh fetch | verify | dir | differential | generate [-check]" >&2
 	exit 2
 	;;
 esac

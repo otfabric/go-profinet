@@ -19,6 +19,7 @@ interop-results/
 /examples/discovery/discovery
 /examples/gsdml/gsdml
 /examples/gsdmlimport/gsdmlimport
+/examples/gsdmltyped/gsdmltyped
 /examples/gsdx/gsdx
 /examples/hello/hello
 /examples/mrp/mrp
@@ -27,6 +28,7 @@ interop-results/
 /examples/records/records
 /examples/topology/topology
 /internal/cmd/gengsdml/gengsdml
+/internal/cmd/gsdmlc/gsdmlc
 /internal/cmd/l2bench/l2bench
 /interop/otfnode/otfnode
 

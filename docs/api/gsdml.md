@@ -77,6 +77,12 @@ const MaxRecordLength = 65535
 
 MaxRecordLength bounds the length of a parameter record ToModel builds.
 
+```go
+const RuleSchema = "schema"
+```
+
+RuleSchema: the document is not valid against the GSDML schema of the version it names (gsdml/typed, generated from PI's reference schemas and checked against xmllint), or CheckBytes could not apply one (an unvalidated issue then says why).
+
 ## Functions
 
 ### func DataItemSize
@@ -177,6 +183,14 @@ func Validate(doc *Document) error
 
 Validate checks the document against the catalog's structural and lexical rules, checks that every ID is unique and every reference (module, submodule, value item, graphic, category and text references) resolves, and that no submodule's IO data exceed an RT frame. It returns nil or a \*ValidationError with the errors; Check reports the warnings and the unvalidated content as well.
 
+### func ValidateBytes
+
+```go
+func ValidateBytes(data []byte) error
+```
+
+ValidateBytes reads a GSDML document and validates it as CheckBytes does: nil, a \*ValidationError with the errors, or the error of ParseBytes.
+
 ## Types
 
 ### type DataTypeContext
@@ -275,7 +289,10 @@ GenerateOptions tune FromModel.
 type Issue struct {
 	// Path is the element path, for example
 	// "ISO15745Profile/ProfileBody/DeviceIdentity".
-	Path    string `json:"path"`
+	Path string `json:"path"`
+	// Line is the line of the element's start tag, for the issues of
+	// RuleSchema; 0 when not known.
+	Line    int    `json:"line,omitempty"`
 	Message string `json:"message"`
 	// Severity grades the issue; Validate reports only errors.
 	Severity Severity `json:"severity"`
@@ -385,6 +402,18 @@ func Check(doc *Document) Report
 Check validates a document against the catalog (as Validate does) and the semantic rules, and lists the content it did not validate. Nothing it reports makes it PI's GSDML checker.
 
 The report is bounded: Check lists the first 16 384 issues of each severity, and one more issue of that severity with the rule "limit" then says how many it left out; a module reference gets at most eight warnings per slot list and rule and an interface at most eight per reduction ratio list, each followed by one that counts the rest; an ID in the path of an issue of the semantic rules is quoted up to 256 octets. The slot rules look at the slot numbers 0 to 65535: a list is warned about once for the values above them.
+
+#### func CheckBytes
+
+```go
+func CheckBytes(data []byte) (Report, error)
+```
+
+CheckBytes reads a GSDML document and checks it as Check does, with one difference: the structure (required and allowed elements and attributes, their order and number, lexical forms and facets, and the identity constraints, key, keyref and unique, in their scopes) is validated against the schema of the version the document names, by gsdml/typed, instead of the catalog's version-independent rules, and so are the references (the schema's keyrefs, in their scopes, replace the catalog's global ID table, which misses IDs in elements the catalog does not model). Those issues have the rule RuleSchema and the line of the element. The physical-limit and semantic rules of Check apply as before.
+
+A document that names no version typed has (none, or one newer than V2.46) is checked against the catalog, as Check does, and an unvalidated issue with the rule RuleSchema says so.
+
+The error is that of ParseBytes: the document is not well-formed or exceeds a limit. The original octets are validated, not a re-encoding: Marshal writes the catalog's form (defaults, the newest element order), which is not valid against every older version.
 
 #### func (Report) Count
 

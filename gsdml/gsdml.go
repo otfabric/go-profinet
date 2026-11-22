@@ -321,7 +321,10 @@ func collapseSpace(s string) string {
 type Issue struct {
 	// Path is the element path, for example
 	// "ISO15745Profile/ProfileBody/DeviceIdentity".
-	Path    string `json:"path"`
+	Path string `json:"path"`
+	// Line is the line of the element's start tag, for the issues of
+	// RuleSchema; 0 when not known.
+	Line    int    `json:"line,omitempty"`
 	Message string `json:"message"`
 	// Severity grades the issue; Validate reports only errors.
 	Severity Severity `json:"severity"`
@@ -380,6 +383,10 @@ type validator struct {
 	// unverified records that a DataType's legality was not decided.
 	version    string
 	unverified bool
+	// schema: the schema of the document's version decides structure
+	// (CheckBytes), so the catalog's structural and unknown-content
+	// issues are not listed.
+	schema bool
 }
 
 // room reports whether one more issue of severity s is listed, and
@@ -432,7 +439,7 @@ func (v *validator) where() string {
 }
 
 func (v *validator) report(format string, a ...any) {
-	if v.room(SeverityError) {
+	if !v.schema && v.room(SeverityError) {
 		v.issues = append(v.issues, Issue{Path: v.where(), Message: fmt.Sprintf(format, a...), Rule: RuleStructure})
 	}
 }

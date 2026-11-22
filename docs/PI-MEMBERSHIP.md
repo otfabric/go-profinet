@@ -16,8 +16,8 @@ with the official artefact) · **Unaffected**.
 
 | Area | Members-only artefact | Impact | Status | What we have instead |
 |------|----------------------|--------|--------|----------------------|
-| GSDML validation | GSDML XSDs (in the GSDML specification, PI order 2.352) | `gsdml.Validate` checks our own catalog of the schema, not the official XSDs. A file it accepts may fail an engineering tool's import, and a file it rejects may be valid | **Degraded** | an independent catalog (83 elements, versions 2.25–2.45); checked against all 18 schema versions (the maintainers' licensed copy): the modelled elements match V2.35 in structure, but 56 schema defaults are not recorded, requiredness does not follow the version, and `Validate` rejects 114 of 125 vendor files the XSDs accept, each by a known finding ([research/GSDML-SCHEMA-PROPOSAL.md](research/GSDML-SCHEMA-PROPOSAL.md)) |
-| GSDML coverage | the XSDs and the specification | elements outside the catalog are kept verbatim when a file is read and written, but are not modelled, validated or converted: `ChannelProcessAlarmList`, `UnitDiagTypeList`, `LogBookEntryList`, `SystemDefinedChannelDiagItem`, `ProfileChannelDiagItem`, profile-specific items, the XML signature, and everything added in GSDML 2.46 and 2.50 (I&M6/I&M7, 10BASE-T1L, ConformanceClass E, SXP, protocol policies, …) | **Degraded** | content is preserved, so round trips are lossless |
+| GSDML validation | GSDML XSDs (in the GSDML specification, PI order 2.352) | `gsdml.CheckBytes` validates against code generated from the maintainers' licensed copy of the XSDs (V1.0–V2.46, as TIA Portal V21 installs them), not from PI's specification package, and not with PI's checker; `gsdml.Validate` checks our own catalog of the schema | **Degraded** | the generated validator agrees with libxml2's xmllint on every file and mutant of the differential test (no allowlist) ([research/GSDML-CODEGEN.md](research/GSDML-CODEGEN.md)); the catalog's `Validate` rejects 114 of 125 vendor files the XSDs accept, each by a known finding ([research/GSDML-SCHEMA-PROPOSAL.md](research/GSDML-SCHEMA-PROPOSAL.md)) |
+| GSDML coverage | the XSDs and the specification | `gsdml/typed` models every element of V1.0 to V2.46; in the catalog model (`gsdml`, which `ToModel` uses), elements outside the catalog are kept verbatim when a file is read and written, but are not modelled, validated or converted: `ChannelProcessAlarmList`, `UnitDiagTypeList`, `LogBookEntryList`, `SystemDefinedChannelDiagItem`, `ProfileChannelDiagItem`, profile-specific items, the XML signature, and everything added in GSDML 2.46 and 2.50 (I&M6/I&M7, 10BASE-T1L, ConformanceClass E, SXP, protocol policies, …) | **Degraded** | content is preserved, so round trips are lossless |
 | GSDML semantic rules | the GSDML specification and PI's GSD Editor (checker) | the rules beyond the schema (for example "PNIO_Version ≥ V2.31 requires LLDP_NoD_Supported") are not checked; generated files have not been run through PI's checker | **Missing** | generated files and the synthetic fixtures (gsdml/testdata/fixtures) are parsed by profinet-py and connect; no engineering tool (CODESYS, TIA Portal) has imported them yet ([research/GSDML-TOOLS.md](research/GSDML-TOOLS.md)) |
 | GSDML file generation for products | the GSDML specification | `gsdml.FromModel` writes what our catalog knows; a product shipping a go-profinet-generated GSDML should have it checked with PI's GSD Editor | **Degraded** | |
 | GSDX container | GSDX Container Specification (PI order 2.752) | PI's part layout and rules are not applied; signatures are not verified; no `.gsdx` is produced | **Degraded** | `gsdml/gsdx` inspects the public OPC layer (ISO/IEC 29500-2): parts, content types, relationships, signature metadata, GSDML parts; round trips are lossless |
@@ -33,11 +33,10 @@ with the official artefact) · **Unaffected**.
 
 ## What would change with membership
 
-1. **Generate from the official XSDs.** Store PI's download location and
-   the sha256 of the specification package in a manifest; the code
-   generation step downloads it with a member's credentials (a CI secret)
-   or takes a local copy, checks the hash and generates. Only the generated
-   code is committed. The catalog remains a fallback.
+1. **Generate from the official XSDs.** The generator exists
+   (`internal/cmd/gsdmlc`, from a private copy of the schemas, checked by
+   SHA-256): membership would replace the copy with PI's specification
+   package and its sha256 in the manifest of the private repository.
 2. **Validate against the official XSDs** in CI, and run generated files
    through PI's GSD Editor.
 3. **Implement GSDX** (read, write, verify) and **MRCD** from their

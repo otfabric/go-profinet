@@ -210,6 +210,44 @@ generated files and connects with them (the interop suite).
 > Without PI membership the official XSDs are not available: see
 > [PI-MEMBERSHIP.md](PI-MEMBERSHIP.md) for what this means.
 
+### Against the file's own schema version
+
+For a file read from disk, `CheckBytes` and `ValidateBytes` validate the
+original octets against the schema of the version the file names in
+`xsi:schemaLocation` (V1.0 to V2.46), with the validator generated from the
+reference schemas ([CODEGEN.md](CODEGEN.md#the-generated-schema-model)):
+the elements, their order and number, attributes, values with every
+facet, defaults and fixed values, and the key, keyref and unique
+constraints in their scopes. These issues have the rule `schema` and a
+line. The `io-data-length` and warning rules below apply as well; the
+`structure`, `reference`, `unknown` and `schema-version` rules of the
+catalog do not, since the schema decides them.
+
+```go
+data, _ := os.ReadFile("GSDML-V2.35-Vendor-Device-20240101.xml")
+r, err := gsdml.CheckBytes(data) // err: not well-formed, or a limit
+for _, i := range r.Issues {
+	fmt.Println(i.Severity, i.Rule, i.Line, i) // error schema 42 ...: attribute DeviceID: "66" does not match the pattern ...
+}
+```
+
+A file that names no version, or one without a schema here (V2.5x), is
+checked against the catalog as `Check` checks it, with one unvalidated
+`schema` issue that says so. This agrees with libxml2's `xmllint` on every
+file of the differential test, and it is not PI's checker either.
+
+The typed model of a version is in `gsdml/typed` and `gsdml/versions/vNNN`:
+
+```go
+d, err := v246.Parse(data)             // validate against V2.46, then decode
+for _, dap := range d.Root.ProfileBody.ApplicationProcess.DeviceAccessPointList.DeviceAccessPointItem {
+	fmt.Println(dap.ID, dap.ModuleIdentNumber)
+}
+v, err := typed.Parse(data)            // the version the file names; v.SchemaVersion()
+```
+
+### Against the catalog
+
 `Check` grades every issue it finds as an **error**, a **warning** or
 **unvalidated**, and names the rule; `Validate` returns the errors only (a
 `*ValidationError`), so that warnings and unknown content do not fail a
@@ -244,13 +282,13 @@ gets at most eight warnings and a count, and one warning when it has more
 than 64 values. An ID longer than 256 octets is cut in the path of an
 issue.
 
-This is not PI's GSDML checker: it does not read the licensed schemas and
-checks only the semantic rules above, not those of the GSDML
-specification. GSDML 2.46 (I&M6 and I&M7 records) and 2.50 (the secure
+This is not PI's GSDML checker: it checks the catalog's rules and the
+semantic rules above, not those of the GSDML specification. GSDML 2.46 (I&M6 and I&M7 records) and 2.50 (the secure
 application classes SecureAccess and SecureRealtime instead of
 SecurityClass 2 and 3, conformance class E) are read like any newer
-version: their additions are kept and reported as unvalidated. The catalog
-is not extended with them: their schemas are PI members-only.
+version: their additions are kept and reported as unvalidated by `Check`
+(`CheckBytes` validates V2.46 files against the V2.46 schema). The catalog
+is not extended with them.
 
 ## Unknown content
 

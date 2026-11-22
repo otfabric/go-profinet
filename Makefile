@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: gsdml-schemas gsdml-schemas-verify gsdml-differential gsdml-schemas-check help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
+.PHONY: gsdml-schemas gsdml-schemas-verify gsdml-differential gsdml-generate gsdml-generate-check gsdml-schemas-check help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -41,7 +41,7 @@ build: ## Build the examples into ./bin
 	done
 
 # The self-contained examples: each starts both sides on a virtual network and exits by itself.
-RUN_EXAMPLES := quickstart discovery hello alarms gsdml records topology chaos gsdmlimport gsdx observability mrp
+RUN_EXAMPLES := quickstart discovery hello alarms gsdml records topology chaos gsdmlimport gsdx gsdmltyped observability mrp
 
 examples: ## Run the self-contained examples (each must exit successfully)
 	@for e in $(RUN_EXAMPLES); do \
@@ -117,10 +117,16 @@ gsdml-schemas: ## Fetch the GSDML reference schemas (private otfabric/profinet-g
 gsdml-schemas-verify: ## Check the fetched GSDML schemas: pinned commit, checksums, well-formedness, every DeviceProfile compiles (needs xmllint)
 	@sh scripts/gsdml-schemas.sh verify
 
-gsdml-differential: ## Validate the fixtures (and GSDML_CORPUS, a directory, if set) with xmllint and gsdml.Validate; fail on an unexplained difference
+gsdml-differential: ## Validate the fixtures (and GSDML_CORPUS, a directory, if set) with xmllint, gsdml.Validate and gsdml/typed; fail on any difference
 	@sh scripts/gsdml-schemas.sh differential
 
-gsdml-schemas-check: gsdml-schemas-verify gsdml-differential ## Everything that needs the GSDML schemas: verify them, the differential test, the committed registry and audit against them
+gsdml-generate: ## Generate gsdml/typed and gsdml/versions from the GSDML reference schemas (internal/cmd/gsdmlc)
+	@sh scripts/gsdml-schemas.sh generate
+
+gsdml-generate-check: ## Fail when gsdml/typed or gsdml/versions differ from what the reference schemas generate
+	@sh scripts/gsdml-schemas.sh generate -check
+
+gsdml-schemas-check: gsdml-schemas-verify gsdml-generate-check gsdml-differential ## Everything that needs the GSDML schemas: verify them, the generated code, the differential tests, the committed registry and audit against them
 	@sh scripts/gsdml-xsd-audit.sh -check
 
 generate: ## Generate the GSDML types and SCHEMA.md from gsdml/schema/catalog.json
