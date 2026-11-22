@@ -106,11 +106,18 @@ canonical), from the xsd:boolean forms true, false, 1 and 0; any other
 value fails with `ErrMalformed`. Every other DataType fails with
 `ErrUnsupported` (`no verified DefaultValue encoding for DataType Integer16_S`):
 
-- the `_S` types embed two status bits in the value (OPC 30144 v1.00
-  Table 17 gives the codes B, S, U, G and Table 58 the value ranges, such as
-  0–63 for Unsigned8_S, but neither the bit positions nor how the status is
-  written in a DefaultValue); Unsigned32_S and Integer32_S are not Ref
-  DataTypes in Table 58 at all;
+- the `_S` types: their binary layout is established, and the `pnio`
+  package encodes and decodes it (`pnio.EncodeUnsigned8S`,
+  `EncodeUnsigned16S`, `EncodeInteger16S`, `EncodeOctetStringS` and their
+  decoders; IEC 61158-5-10:2023 5.3.1.6.8–5.3.1.6.10 and 5.3.2.2, RIO for
+  Process Automation 3.132 Tables 8 and 9): the value above two status
+  bits (B 0, S 1, U 2, G 3), Integer16_S as 14-bit two's complement, and
+  OctetString_S as m value octets followed by 2·m octets of channel
+  statuses. How a DefaultValue writes the value and its status is not
+  (OPC 30144 Table 58 says "plus status B/S/U/G" without a grammar), nor
+  which status a parameter may carry, so a guess at either would write a
+  wrong record; Unsigned32_S and Integer32_S are not Ref DataTypes in
+  Table 58 and have no layout in any source the package has;
 - the composite types (`Float32+Status8`, `Unsigned8+Unsigned8`, …), the
   date and time types (`Date`, `TimeStamp`, …) and the PROFIdrive types
   (`N2`, `V2`, `X4`, …) have no public lexical form for a DefaultValue;

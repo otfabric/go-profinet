@@ -26,6 +26,28 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.13.0
+
+**Date:** 2026-11-22
+**Previous release:** v0.12.0
+
+Binary codecs of the data types with an embedded status. API: additive.
+
+### Added
+
+- pnio: `ValueStatus` (B, S, U, G) and the binary codecs of Unsigned8_S,
+  Unsigned16_S, Integer16_S and OctetString_S (`EncodeUnsigned8S`,
+  `DecodeUnsigned8S`, `EncodeUnsigned16S`, `DecodeUnsigned16S`,
+  `EncodeInteger16S`, `DecodeInteger16S`, `EncodeOctetStringS`,
+  `DecodeOctetStringS`), from IEC 61158-5-10:2023 5.3.1.6.8–5.3.1.6.10 and
+  5.3.2.2. A value out of range or a status above 3 is refused with
+  `ErrInvalidConfig`, not masked; an OctetString_S that is no multiple of
+  three octets is `ErrMalformed`, one of more than 65535 octets
+  `ErrResourceExhausted`. `gsdml.ToModel` still refuses these types as Ref
+  defaults: how GSDML writes their value and status is not established.
+
+---
+
 ## v0.12.0
 
 **Date:** 2026-11-21

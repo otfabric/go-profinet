@@ -64,6 +64,11 @@ a padding rule (OPC 30144 v1.00 Table 58 does not), so this is the
 package's policy; the lexical form of an OctetString DefaultValue (read as
 Const data, `"0x01,0x02"`) is likewise unverified, and a VisibleString
 default is not checked for characters outside its character set.
+The embedded-status codecs of `pnio` follow IEC 61158-5-10:2023, read in
+its indexed text (the PDF was not available), and RIO for Process
+Automation, PNO 3.132 V1.0 (2003); they encode the four status codes
+without judging the context (IEC marks the output-channel codes reserved).
+Integer32_S and Unsigned32_S have no codec: no source defines them.
 A Ref DefaultValue of a `_S`, composite, date and time, PROFIdrive (`N2`,
 `V2`, …) or F_MessageTrailer DataType is refused (`ErrUnsupported`): the
 status bit positions of the `_S` types and the lexical forms of the others
