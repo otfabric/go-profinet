@@ -132,7 +132,7 @@ l2-test: ## Run the real Layer 2 tests on a veth pair in a privileged container 
 # INTEROP_REF into PROFINET_INTEROP_DIR, unless that directory exists,
 # and builds every adapter image as profinet-interop-<adapter>:dev.
 INTEROP_REPO          ?= https://github.com/otfabric/profinet-interop.git
-INTEROP_REF           ?= v0.8.0
+INTEROP_REF           ?= v0.9.0
 PROFINET_INTEROP_DIR  ?= ../profinet-interop
 PROFINET_INTEROP_RESULTS ?= interop-results
 
@@ -150,8 +150,16 @@ test-interop: ## Run the interop suite against the profinet-interop images (need
 
 interop: test-interop ## Alias for test-interop
 
+# The go-profinet that ran, as profinet-interop's matrix (v0.9.0 and later)
+# records it: the nearest tag and the commit (a shallow checkout gives the
+# commit alone).
+SUT_VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+SUT_REVISION ?= $(shell git rev-parse HEAD 2>/dev/null)
+
 interop-matrix: ## Regenerate profinet-interop's matrix from the results of make test-interop
-	@$(MAKE) -C "$(PROFINET_INTEROP_DIR)" matrix RESULTS="$(abspath $(PROFINET_INTEROP_RESULTS))"
+	@$(MAKE) -C "$(PROFINET_INTEROP_DIR)" matrix RESULTS="$(abspath $(PROFINET_INTEROP_RESULTS))" \
+		SOURCE="go-profinet $(SUT_VERSION) against profinet-interop $(INTEROP_REF)" \
+		SUT_VERSION="$(SUT_VERSION)" SUT_REVISION="$(SUT_REVISION)"
 
 cross: ## Build every package for the supported platforms
 	@for p in linux/amd64 linux/arm64 linux/386 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64; do \
