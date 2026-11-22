@@ -74,9 +74,20 @@ nothing new.
   `scripts/gsdml-xsd-audit.sh` audit locally supplied schemas, following
   includes, and write a reproducible JSON report (docs/CODEGEN.md).
 
-### Changed
+### Breaking
 
-- `gsdml.CatalogSHA256` and `gsdml.DataTypes` change with the catalog.
+Consumer assessment: no direct consumer (profinetctl, profinet-interop's
+`own/go-profinet`) reads `CatalogSHA256` or `DataTypes`. profinetctl's
+`gsdml check` counts unvalidated issues, so its counts grow by one for a
+document of an unaudited version. Its test suite passes against this
+release.
+
+- `gsdml.CatalogSHA256` has a new value, and `gsdml.DataTypes` has three
+  more entries, because the catalog changed (gorelease reports the value
+  change as incompatible).
+- `gsdml.Check` reports a new `datatype-context` issue: a warning for a
+  forbidden DataType and one unvalidated issue for a document of an
+  unaudited version. `Validate` fails on nothing new.
 
 ---
 
