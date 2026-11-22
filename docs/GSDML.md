@@ -205,6 +205,12 @@ for i, f := range r.Fields {
 	fmt.Println(i, f.Name, f.DataType, f.ByteOffset, f.BitOffset, f.BitLength, f.Default, f.AllowedValues, f.Values)
 }
 rec, err := r.Encode(map[int]string{0: "250", 2: "2"}) // the default, with fields 0 and 2 set
+
+i, err := r.Field("R_Interval")      // by ID (V2.3 and later), else by a name only one field has
+err = r.SetUint(rec, i, 500)          // or SetInt, SetFloat, SetBool, SetString, SetBytes
+for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see below
+	fmt.Println(is.Severity, is.Rule, is.Path, is.Message)
+}
 ```
 
 - The submodules are those `ToModel` converts: the `VirtualSubmoduleList`
@@ -231,6 +237,42 @@ rec, err := r.Encode(map[int]string{0: "250", 2: "2"}) // the default, with fiel
   is compared exactly, in rational numbers, for the integer, float, Bit,
   BitArea and Boolean (0, 1) fields; on a string or OctetString field it is
   not interpreted, and `Set` fails with `ErrUnsupported`.
+  The whole list is parsed first, in the form of the schemas' pattern
+  (numbers `-?[0-9]+(\.[0-9]+)?([eE]-?[0-9]+)?`, single spaces), so a
+  malformed list is `ErrMalformed` whatever the value. A float is compared
+  as it is written, rounded to its DataType.
+- A field is plain data. `Set` writes it where its exported fields say
+  (`ByteOffset`, `BitOffset`, `BitLength`, `Length`, `DataType`), so a
+  record read back from its JSON, or changed by its caller, encodes as it
+  reads. A field whose `Length` or bits do not agree with its DataType is
+  refused with `ErrInvalidConfig`. `Encodable` is reported; `Set` decides
+  from the DataType.
+- `Field(key)` finds a field by its `ID`, which a Ref has from schema V2.3,
+  or else by its `Name` when only one field has it; a name two fields share
+  is `ErrInvalidConfig`. The typed setters (`SetUint`, `SetInt`,
+  `SetFloat`, `SetBool`, `SetString`, `SetBytes`) write a Go value as `Set`
+  writes its lexical form, and refuse a field of another DataType.
+- `Encode` refuses two given fields that share bits: which one would be
+  written last is not its choice.
+- `Check` reports, as `Issue`s with a severity:
+  - `parameter-layout` (error): a field or a Const outside the record, a
+    field whose Length or bits do not agree with its DataType, a Default
+    not of the record's length;
+  - `parameter-overlap` (warning): two fields, or a field and a Const,
+    that share bits. No source this package has says whether the GSDML
+    specification allows that, so it is not refused; the field written last
+    decides the bits;
+  - `parameter-default`: a DefaultValue that does not encode (error), or is
+    outside the field's own AllowedValues (warning);
+  - `parameter-allowed-values`: an AllowedValues not of the schemas' form
+    (error), or one that is not compared: on a string field, with more than
+    4096 values or an exponent beyond ±400 (unvalidated);
+  - `parameter-encoding` (unvalidated): a DataType without a verified
+    encoding.
+
+  `SubmoduleParameters` refuses a malformed layout or default already, so
+  for its records `Check` reports overlaps, AllowedValues and encodings.
+  `gsdml.Check` of a document does not run it.
 - `Changeable` and `Visible` are reported, not enforced: no source this
   package has says what a device or a tool must do with them (LIMITATIONS.md).
 

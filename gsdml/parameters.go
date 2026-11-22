@@ -3,9 +3,13 @@
 package gsdml
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/otfabric/go-profinet"
@@ -40,6 +44,11 @@ type ParameterConst struct {
 }
 
 // ParameterField is a field of a parameter record (a Ref).
+//
+// A field is plain data: Set writes it where its exported fields say, so
+// a ParameterRecord read back from its JSON, or changed by its caller,
+// encodes as it reads. Check reports a field whose Length or bits do not
+// agree with its DataType, and Set refuses it.
 //
 // BitOffset, BitLength, Changeable and Visible take the defaults of PI's
 // GSDML schemas when the file does not give them: BitOffset 0, BitLength 1,
@@ -78,10 +87,9 @@ type ParameterField struct {
 	Values []ParameterValue `json:"values,omitempty"`
 	// Encodable reports whether Set can write the field: false for a
 	// DataType without a verified encoding (the _S, composite, time and
-	// PROFIdrive types), as for a DefaultValue in ToModel.
+	// PROFIdrive types), as for a DefaultValue in ToModel. It is reported
+	// only: Set decides from DataType.
 	Encodable bool `json:"encodable"`
-
-	ref *Ref
 }
 
 // ParameterValue is an Assign of a ValueItem: a value and its text.
@@ -220,7 +228,7 @@ func (c *conv) parameterField(r *Ref) (ParameterField, error) {
 	off, _ := ParseUint32(r.ByteOffset)
 	t := DataType(r.DataType)
 	f := ParameterField{ID: r.ID, Name: c.text(r.TextID), DataType: t, ByteOffset: off,
-		Default: r.DefaultValue, AllowedValues: strings.TrimSpace(r.AllowedValues), ref: r}
+		Default: r.DefaultValue, AllowedValues: strings.TrimSpace(r.AllowedValues)}
 	var err error
 	if f.Changeable, err = parseBool(r.Changeable, false, true); err != nil {
 		return ParameterField{}, fmt.Errorf("gsdml: %w: Ref at %d Changeable: %v", profinet.ErrMalformed, off, err)
@@ -267,16 +275,47 @@ func (c *conv) valueTexts(id string) []ParameterValue {
 	return nil
 }
 
+// Field returns the index of the field with ID key, or else of the only
+// field with Name key. IDs exist from schema V2.3; a name is the text of
+// the primary language, and two fields can share one. It returns an
+// error matching profinet.ErrNotFound when no field has that ID or name,
+// and profinet.ErrInvalidConfig when several fields have that name and
+// none that ID.
+func (r *ParameterRecord) Field(key string) (int, error) {
+	for i := range r.Fields {
+		if r.Fields[i].ID != "" && r.Fields[i].ID == key {
+			return i, nil
+		}
+	}
+	found := -1
+	for i := range r.Fields {
+		if r.Fields[i].Name != key {
+			continue
+		}
+		if found >= 0 {
+			return -1, fmt.Errorf("gsdml: %w: record %d has several fields named %q: use an ID or an index", profinet.ErrInvalidConfig, r.Index, clip(key))
+		}
+		found = i
+	}
+	if found < 0 {
+		return -1, fmt.Errorf("gsdml: record %d field %q: %w", r.Index, clip(key), profinet.ErrNotFound)
+	}
+	return found, nil
+}
+
 // Set writes value into the field i of rec, a record of r's Length: in the
 // lexical form of a DefaultValue of the field's DataType ("12", "-3",
 // "1.5", "true", "0x01,0x02" for an OctetString, a string as it is). The
-// octets and bits outside the field are not changed.
+// octets and bits outside the field are not changed. SetUint, SetInt,
+// SetFloat, SetBool, SetString and SetBytes take Go values instead.
 //
 // It returns an error matching profinet.ErrInvalidConfig for a value that
-// does not fit the field or is outside its AllowedValues, and
-// profinet.ErrUnsupported for a field that is not Encodable or whose
-// AllowedValues this package does not compare (AllowedValues of a string,
-// an OctetString).
+// does not fit the field or is outside its AllowedValues, and for a field
+// whose Length or bits do not agree with its DataType;
+// profinet.ErrUnsupported for a DataType without a verified encoding, an
+// AllowedValues of a string or an OctetString (not compared) or beyond
+// what is compared (see Check); and profinet.ErrMalformed for an
+// AllowedValues that is not a SignedOrFloatValueListT.
 func (r *ParameterRecord) Set(rec []byte, i int, value string) error {
 	if i < 0 || i >= len(r.Fields) {
 		return fmt.Errorf("gsdml: %w: record %d has no field %d", profinet.ErrInvalidConfig, r.Index, i)
@@ -285,18 +324,19 @@ func (r *ParameterRecord) Set(rec []byte, i int, value string) error {
 		return fmt.Errorf("gsdml: %w: record %d of %d octets, its length is %d", profinet.ErrInvalidConfig, r.Index, len(rec), r.Length)
 	}
 	f := &r.Fields[i]
-	if !f.Encodable {
-		return fmt.Errorf("gsdml: %w: record %d field %q: no verified encoding for DataType %s", profinet.ErrUnsupported, r.Index, clip(f.Name), clip(string(f.DataType)))
+	ref, err := f.fieldRef()
+	if err != nil {
+		return fmt.Errorf("record %d field %q: %w", r.Index, clip(f.Name), err)
 	}
 	if err := f.allowed(value); err != nil {
 		return fmt.Errorf("record %d field %q: %w", r.Index, clip(f.Name), err)
 	}
 	// Into a copy: a value putRef refuses leaves rec as it was.
 	tmp := append([]byte(nil), rec...)
-	if err := putRef(tmp, f.ref, value, "value"); err != nil {
+	if err := putRef(tmp, ref, value, "value"); err != nil {
 		if errors.Is(err, profinet.ErrMalformed) {
-			// The file was checked when the record was described: what is
-			// refused now is the value.
+			// fieldRef checked the field: what is refused now is the value
+			// or the place of the field in the record.
 			err = fmt.Errorf("%w: %w", profinet.ErrInvalidConfig, err)
 		}
 		return fmt.Errorf("record %d field %q: %w", r.Index, clip(f.Name), err)
@@ -305,17 +345,77 @@ func (r *ParameterRecord) Set(rec []byte, i int, value string) error {
 	return nil
 }
 
+// SetUint writes v into the field i, an Unsigned8 to Unsigned64, a Bit or
+// a BitArea, as Set does.
+func (r *ParameterRecord) SetUint(rec []byte, i int, v uint64) error {
+	return r.setTyped(rec, i, "an unsigned integer", strconv.FormatUint(v, 10), DataTypeUnsigned8, DataTypeUnsigned16, DataTypeUnsigned32, DataTypeUnsigned64, DataTypeBit, DataTypeBitArea)
+}
+
+// SetInt writes v into the field i, an Integer8 to Integer64, as Set does.
+func (r *ParameterRecord) SetInt(rec []byte, i int, v int64) error {
+	return r.setTyped(rec, i, "a signed integer", strconv.FormatInt(v, 10), DataTypeInteger8, DataTypeInteger16, DataTypeInteger32, DataTypeInteger64)
+}
+
+// SetFloat writes v into the field i, a Float32 or a Float64, as Set does.
+// For a Float32, v is rounded to the nearest Float32, and AllowedValues is
+// compared with the rounded value, the one written.
+func (r *ParameterRecord) SetFloat(rec []byte, i int, v float64) error {
+	return r.setTyped(rec, i, "a float", strconv.FormatFloat(v, 'g', -1, 64), DataTypeFloat32, DataTypeFloat64)
+}
+
+// SetBool writes v into the field i, a Boolean, as Set does.
+func (r *ParameterRecord) SetBool(rec []byte, i int, v bool) error {
+	return r.setTyped(rec, i, "a boolean", strconv.FormatBool(v), DataTypeBoolean)
+}
+
+// SetString writes v into the field i, a VisibleString or a UTF8String,
+// as Set does: zero-padded to the field's Length, and refused when longer.
+func (r *ParameterRecord) SetString(rec []byte, i int, v string) error {
+	return r.setTyped(rec, i, "a string", v, DataTypeVisibleString, DataTypeUTF8String)
+}
+
+// SetBytes writes v into the field i, an OctetString, as Set does:
+// zero-padded to the field's Length, and refused when longer.
+func (r *ParameterRecord) SetBytes(rec []byte, i int, v []byte) error {
+	return r.setTyped(rec, i, "octets", formatOctets(v), DataTypeOctetString)
+}
+
+// setTyped checks that the field i has one of the DataTypes ts and sets
+// it to value. A Go value of the wrong kind is refused with
+// profinet.ErrInvalidConfig, rather than read as a lexical form.
+func (r *ParameterRecord) setTyped(rec []byte, i int, kind, value string, ts ...DataType) error {
+	if i >= 0 && i < len(r.Fields) && !slices.Contains(ts, r.Fields[i].DataType) {
+		f := &r.Fields[i]
+		return fmt.Errorf("gsdml: %w: record %d field %q is a %s, not %s", profinet.ErrInvalidConfig, r.Index, clip(f.Name), clip(string(f.DataType)), kind)
+	}
+	return r.Set(rec, i, value)
+}
+
 // Encode builds the record from its Default with the values of the fields
 // given by their index set, as Set does. It returns an error matching
-// profinet.ErrUnsupported when the record has no Default.
+// profinet.ErrUnsupported when the record has no Default, and
+// profinet.ErrInvalidConfig when its Default is not of its Length or two
+// of the given fields share bits: which one would be written last is not
+// a choice Encode makes.
 func (r *ParameterRecord) Encode(values map[int]string) ([]byte, error) {
 	if r.Default == nil {
 		return nil, fmt.Errorf("gsdml: %w: record %d: a field has no verified encoding, so the record has no default", profinet.ErrUnsupported, r.Index)
 	}
+	if len(r.Default) != int(r.Length) {
+		return nil, fmt.Errorf("gsdml: %w: record %d: default of %d octets, its length is %d", profinet.ErrInvalidConfig, r.Index, len(r.Default), r.Length)
+	}
+	spans := make([]span, 0, len(values))
 	for i := range values {
 		if i < 0 || i >= len(r.Fields) {
 			return nil, fmt.Errorf("gsdml: %w: record %d has no field %d", profinet.ErrInvalidConfig, r.Index, i)
 		}
+		if s, ok := r.Fields[i].span(i); ok {
+			spans = append(spans, s)
+		}
+	}
+	if o := overlaps(spans); len(o) > 0 {
+		a, b := &r.Fields[o[0][0]], &r.Fields[o[0][1]]
+		return nil, fmt.Errorf("gsdml: %w: record %d: fields %q and %q share bits", profinet.ErrInvalidConfig, r.Index, clip(a.Name), clip(b.Name))
 	}
 	rec := append([]byte(nil), r.Default...)
 	// In field order, so that the result does not depend on the map's.
@@ -329,45 +429,318 @@ func (r *ParameterRecord) Encode(values map[int]string) ([]byte, error) {
 	return rec, nil
 }
 
-// allowed checks a value against the field's AllowedValues
-// (SignedOrFloatValueListT: values and ranges "lo..hi" separated by
-// spaces). The comparison is exact, in rational numbers, so an Unsigned64
-// or a Float64 is compared without rounding.
+// fieldRef returns the Ref Set writes the field through, built from the
+// field's exported fields. It returns an error matching
+// profinet.ErrUnsupported for a DataType without a verified encoding, and
+// profinet.ErrInvalidConfig for a Length or bits that do not agree with
+// the DataType.
+func (f *ParameterField) fieldRef() (*Ref, error) {
+	r := &Ref{ByteOffset: strconv.FormatUint(uint64(f.ByteOffset), 10), DataType: string(f.DataType)}
+	switch {
+	case f.DataType == DataTypeBit || f.DataType == DataTypeBitArea:
+		if f.Length != 0 || f.BitLength == 0 || (f.DataType == DataTypeBit && f.BitLength != 1) || int(f.BitOffset)+int(f.BitLength) > 8 {
+			return nil, fmt.Errorf("gsdml: %w: %s at %d.%d of %d bits and length %d", profinet.ErrInvalidConfig, f.DataType, f.ByteOffset, f.BitOffset, f.BitLength, f.Length)
+		}
+		r.BitOffset = strconv.Itoa(int(f.BitOffset))
+		r.BitLength = strconv.Itoa(int(f.BitLength))
+	case !refDefaultEncoded[f.DataType]:
+		return nil, fmt.Errorf("gsdml: %w: no verified encoding for DataType %s", profinet.ErrUnsupported, clip(string(f.DataType)))
+	case isStringType(f.DataType):
+		if f.Length < 1 || f.Length > math.MaxUint16 || f.BitOffset != 0 || f.BitLength != 0 {
+			return nil, fmt.Errorf("gsdml: %w: %s at %d of length %d", profinet.ErrInvalidConfig, f.DataType, f.ByteOffset, f.Length)
+		}
+		r.Length = strconv.Itoa(f.Length)
+	default:
+		// Every other encoded DataType has a fixed size.
+		if n, _ := DataItemSize(r.DataType, ""); n != f.Length || f.BitOffset != 0 || f.BitLength != 0 {
+			return nil, fmt.Errorf("gsdml: %w: %s at %d of length %d, its size is %d", profinet.ErrInvalidConfig, f.DataType, f.ByteOffset, f.Length, n)
+		}
+	}
+	return r, nil
+}
+
+// span is the bits [lo, hi) of a record a field or a Const takes; item is
+// the index of the field, or -1-k for the Const k.
+type span struct {
+	lo, hi uint64
+	item   int
+}
+
+// span returns the bits of the field i; ok is false for a field without a
+// size (a DataType without a verified encoding), or one that does not
+// agree with its DataType.
+func (f *ParameterField) span(i int) (span, bool) {
+	if _, err := f.fieldRef(); err != nil {
+		return span{}, false
+	}
+	lo := uint64(f.ByteOffset) * 8
+	if f.DataType == DataTypeBit || f.DataType == DataTypeBitArea {
+		lo += uint64(f.BitOffset)
+		return span{lo, lo + uint64(f.BitLength), i}, true
+	}
+	return span{lo, lo + uint64(f.Length)*8, i}, true
+}
+
+// overlaps returns pairs of items that share bits: each item that starts
+// before the end of an earlier one is paired with the earlier one that
+// ends last, so every overlapping item is reported once.
+func overlaps(spans []span) [][2]int {
+	s := slices.Clone(spans)
+	slices.SortStableFunc(s, func(a, b span) int { return cmp.Compare(a.lo, b.lo) })
+	var out [][2]int
+	for i := 1; i < len(s); i++ {
+		if s[i].lo < s[i-1].hi {
+			out = append(out, [2]int{s[i-1].item, s[i].item})
+		}
+		if s[i].hi < s[i-1].hi {
+			// Keep the one that ends last in front of the next.
+			s[i] = span{s[i].lo, s[i-1].hi, s[i-1].item}
+		}
+	}
+	return out
+}
+
+// Rules of the issues ParameterRecord.Check reports.
+const (
+	// RuleParameterLayout: a field or a Const outside the record, a field
+	// whose Length or bits do not agree with its DataType, or a Default
+	// not of the record's Length (an error).
+	RuleParameterLayout = "parameter-layout"
+	// RuleParameterOverlap: two fields, or a field and a Const, share bits
+	// (a warning: no source this package has states whether the GSDML
+	// specification allows it; the field written last decides the bits).
+	RuleParameterOverlap = "parameter-overlap"
+	// RuleParameterDefault: a DefaultValue that does not encode (an error),
+	// or is outside the field's AllowedValues (a warning: consistency of
+	// the file's own declarations).
+	RuleParameterDefault = "parameter-default"
+	// RuleParameterAllowedValues: an AllowedValues that is not a
+	// SignedOrFloatValueListT (an error), or one this package does not
+	// compare (unvalidated).
+	RuleParameterAllowedValues = "parameter-allowed-values"
+	// RuleParameterEncoding: a field whose DataType has no verified
+	// encoding (unvalidated).
+	RuleParameterEncoding = "parameter-encoding"
+)
+
+// maxRecordIssues is the number of issues Check lists for one record;
+// one more issue with the rule "limit" counts those beyond it.
+const maxRecordIssues = 1024
+
+// Check reports what makes the record unfit to build records from, beyond
+// the schema: see the RuleParameter rules. SubmoduleParameters already
+// refuses a malformed layout or a DefaultValue that does not encode, so for
+// its records Check reports overlaps, AllowedValues, and fields without a
+// verified encoding; it checks a record from elsewhere (its JSON) in full.
+// The issues' Path is "ParameterRecordDataItem[index]/Ref[i]" or
+// ".../Const[k]", with i and k counted from 0.
+func (r *ParameterRecord) Check() []Issue {
+	path := fmt.Sprintf("ParameterRecordDataItem[%d]", r.Index)
+	var out []Issue
+	more := 0
+	add := func(p string, s Severity, rule, format string, args ...any) {
+		if len(out) == maxRecordIssues {
+			more++
+			return
+		}
+		out = append(out, Issue{Path: p, Message: fmt.Sprintf(format, args...), Severity: s, Rule: rule})
+	}
+	if r.Default != nil && len(r.Default) != int(r.Length) {
+		add(path, SeverityError, RuleParameterLayout, "default of %d octets, the record's length is %d", len(r.Default), r.Length)
+	}
+	bits := uint64(r.Length) * 8
+	var spans []span
+	for k, c := range r.Consts {
+		p := fmt.Sprintf("%s/Const[%d]", path, k)
+		if !within(c.ByteOffset, len(c.Data), int(r.Length)) {
+			add(p, SeverityError, RuleParameterLayout, "%d octets at %d beyond the record of %d", len(c.Data), c.ByteOffset, r.Length)
+			continue
+		}
+		lo := uint64(c.ByteOffset) * 8
+		spans = append(spans, span{lo, lo + uint64(len(c.Data))*8, -1 - k})
+	}
+	for i := range r.Fields {
+		f := &r.Fields[i]
+		p := fmt.Sprintf("%s/Ref[%d]", path, i)
+		if _, err := f.fieldRef(); err != nil {
+			if errors.Is(err, profinet.ErrUnsupported) {
+				add(p, SeverityUnvalidated, RuleParameterEncoding, "DataType %s has no verified encoding: the field cannot be set", clip(string(f.DataType)))
+			} else {
+				add(p, SeverityError, RuleParameterLayout, "%v", err)
+			}
+			continue
+		}
+		s, _ := f.span(i)
+		if s.hi > bits {
+			add(p, SeverityError, RuleParameterLayout, "field %q beyond the record of %d octets", clip(f.Name), r.Length)
+			continue
+		}
+		spans = append(spans, s)
+		ranges, aerr := parseAllowedValues(f.AllowedValues)
+		switch {
+		case errors.Is(aerr, profinet.ErrMalformed):
+			add(p, SeverityError, RuleParameterAllowedValues, "AllowedValues %q is not a list of numbers and ranges", clip(f.AllowedValues))
+		case aerr != nil:
+			add(p, SeverityUnvalidated, RuleParameterAllowedValues, "%v", aerr)
+		case f.AllowedValues != "" && isStringType(f.DataType):
+			add(p, SeverityUnvalidated, RuleParameterAllowedValues, "AllowedValues of a %s is not compared", f.DataType)
+		}
+		scratch := make([]byte, r.Length)
+		ref, _ := f.fieldRef()
+		if err := putRef(scratch, ref, f.Default, "default"); err != nil {
+			add(p, SeverityError, RuleParameterDefault, "field %q: %v", clip(f.Name), err)
+			continue
+		}
+		if aerr == nil && f.AllowedValues != "" && !isStringType(f.DataType) {
+			if v, ok := f.numeric(f.Default); ok && !inRanges(v, ranges) {
+				add(p, SeverityWarning, RuleParameterDefault, "DefaultValue %q of field %q is not in its AllowedValues %q", clip(f.Default), clip(f.Name), clip(f.AllowedValues))
+			}
+		}
+	}
+	for _, o := range overlaps(spans) {
+		add(path, SeverityWarning, RuleParameterOverlap, "%s and %s share bits", r.itemName(o[0]), r.itemName(o[1]))
+	}
+	if more > 0 {
+		out = append(out, Issue{Path: path, Severity: SeverityWarning, Rule: ruleLimit,
+			Message: fmt.Sprintf("%d more issues are not listed: Check lists the first %d of a record", more, maxRecordIssues)})
+	}
+	return out
+}
+
+// itemName names a field or a Const of a span in an issue.
+func (r *ParameterRecord) itemName(item int) string {
+	if item < 0 {
+		return fmt.Sprintf("Const[%d]", -1-item)
+	}
+	return fmt.Sprintf("Ref[%d] %q", item, clip(r.Fields[item].Name))
+}
+
+// allowed checks a value against the field's AllowedValues. The whole list
+// is parsed first, so a malformed list is refused whatever the value. The
+// comparison is exact, in rational numbers, so an Unsigned64 or a Float64
+// is compared without rounding; a float is compared as it is written,
+// rounded to its DataType.
 func (f *ParameterField) allowed(value string) error {
 	if f.AllowedValues == "" {
 		return nil
 	}
+	if isStringType(f.DataType) {
+		return fmt.Errorf("gsdml: %w: AllowedValues of a %s is not compared", profinet.ErrUnsupported, f.DataType)
+	}
+	ranges, err := parseAllowedValues(f.AllowedValues)
+	if err != nil {
+		return err
+	}
 	v, ok := f.numeric(value)
 	if !ok {
-		if isStringType(f.DataType) {
-			return fmt.Errorf("gsdml: %w: AllowedValues of a %s is not compared", profinet.ErrUnsupported, f.DataType)
+		return fmt.Errorf("gsdml: %w: %s value %q", profinet.ErrInvalidConfig, clip(string(f.DataType)), clip(value))
+	}
+	if !inRanges(v, ranges) {
+		return fmt.Errorf("gsdml: %w: value %q is not in AllowedValues %q", profinet.ErrInvalidConfig, clip(value), clip(f.AllowedValues))
+	}
+	return nil
+}
+
+// valueRange is a value or a range "lo..hi" of an AllowedValues.
+type valueRange struct{ lo, hi *big.Rat }
+
+func inRanges(v *big.Rat, ranges []valueRange) bool {
+	for _, r := range ranges {
+		if v.Cmp(r.lo) >= 0 && v.Cmp(r.hi) <= 0 {
+			return true
 		}
-		return fmt.Errorf("gsdml: %w: %s value %q", profinet.ErrInvalidConfig, f.DataType, clip(value))
 	}
-	toks := strings.Fields(f.AllowedValues)
-	if len(toks) > maxAllowedValues {
-		return fmt.Errorf("gsdml: %w: AllowedValues of more than %d values", profinet.ErrUnsupported, maxAllowedValues)
+	return false
+}
+
+// maxAllowedExponent bounds the exponent of a number of an AllowedValues:
+// a Float64 is below 1e309 and above 1e-325, so a larger exponent decides
+// nothing a smaller one does not, and would cost memory to compute.
+const maxAllowedExponent = 400
+
+// parseAllowedValues parses an AllowedValues as the schemas' pattern of
+// SignedOrFloatValueListT writes it (the same in V1.0 to V2.46): numbers
+// -?[0-9]+(\.[0-9]+)?([eE]-?[0-9]+)? and ranges "lo..hi" of them,
+// separated by single spaces. An empty one is no list (nil). It returns
+// an error matching profinet.ErrMalformed for another form, and
+// profinet.ErrUnsupported for more than maxAllowedValues values or an
+// exponent beyond maxAllowedExponent.
+func parseAllowedValues(s string) ([]valueRange, error) {
+	if s == "" {
+		return nil, nil
 	}
-	for _, tok := range toks {
+	if strings.Count(s, " ") >= maxAllowedValues {
+		return nil, fmt.Errorf("gsdml: %w: AllowedValues of more than %d values", profinet.ErrUnsupported, maxAllowedValues)
+	}
+	var out []valueRange
+	for tok := range strings.SplitSeq(s, " ") {
 		lo, hi, isRange := strings.Cut(tok, "..")
 		if !isRange {
 			hi = lo
 		}
-		a, okA := new(big.Rat).SetString(lo)
-		b, okB := new(big.Rat).SetString(hi)
-		if !okA || !okB {
-			return fmt.Errorf("gsdml: %w: AllowedValues %q", profinet.ErrMalformed, clip(f.AllowedValues))
+		a, err := parseAllowedNumber(lo)
+		if err != nil {
+			return nil, fmt.Errorf("gsdml: %w: AllowedValues %q", err, clip(s))
 		}
-		if v.Cmp(a) >= 0 && v.Cmp(b) <= 0 {
-			return nil
+		b, err := parseAllowedNumber(hi)
+		if err != nil {
+			return nil, fmt.Errorf("gsdml: %w: AllowedValues %q", err, clip(s))
 		}
+		out = append(out, valueRange{a, b})
 	}
-	return fmt.Errorf("gsdml: %w: value %q is not in AllowedValues %q", profinet.ErrInvalidConfig, clip(value), clip(f.AllowedValues))
+	return out, nil
 }
 
-// numeric returns a value of a numeric or Boolean field as a number:
-// false and true are 0 and 1. ok is false for the other types and for a
-// value that is no number.
+// parseAllowedNumber parses -?[0-9]+(\.[0-9]+)?([eE]-?[0-9]+)?. big.Rat
+// reads more forms (hexadecimal, fractions, "_"), so the form is checked
+// here first.
+func parseAllowedNumber(s string) (*big.Rat, error) {
+	i := 0
+	digits := func() int {
+		n := 0
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+			n++
+		}
+		return n
+	}
+	if i < len(s) && s[i] == '-' {
+		i++
+	}
+	ok := digits() > 0
+	if ok && i < len(s) && s[i] == '.' {
+		i++
+		ok = digits() > 0
+	}
+	if ok && i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && s[i] == '-' {
+			i++
+		}
+		start := i
+		if ok = digits() > 0; ok {
+			// Compared as a number of digits first, so that a long exponent
+			// is not parsed.
+			e := strings.TrimLeft(s[start:i], "0")
+			if n, err := strconv.Atoi(e); len(e) > 4 || (err == nil && n > maxAllowedExponent) {
+				return nil, fmt.Errorf("%w: exponent beyond %d", profinet.ErrUnsupported, maxAllowedExponent)
+			}
+		}
+	}
+	if !ok || i != len(s) {
+		return nil, profinet.ErrMalformed
+	}
+	r, ok := new(big.Rat).SetString(s)
+	if !ok {
+		return nil, profinet.ErrMalformed
+	}
+	return r, nil
+}
+
+// numeric returns a value of a numeric or Boolean field as a number, as
+// putRef writes it: false and true are 0 and 1, and a float is rounded to
+// its DataType. ok is false for the other types and for a value that is
+// no number, a NaN or an infinity.
 func (f *ParameterField) numeric(value string) (*big.Rat, bool) {
 	s := strings.TrimSpace(value)
 	if isStringType(f.DataType) {
@@ -384,6 +757,16 @@ func (f *ParameterField) numeric(value string) (*big.Rat, bool) {
 		}
 		return new(big.Rat), true
 	case DataTypeFloat32, DataTypeFloat64:
+		size := 32
+		if f.DataType == DataTypeFloat64 {
+			size = 64
+		}
+		v, err := strconv.ParseFloat(s, size)
+		if err != nil {
+			return nil, false
+		}
+		r := new(big.Rat).SetFloat64(v)
+		return r, r != nil
 	default:
 		// Integers as putRef reads them: decimal, or hexadecimal "0x".
 		if u, err := parseUint(s, 64); err == nil {
@@ -394,9 +777,6 @@ func (f *ParameterField) numeric(value string) (*big.Rat, bool) {
 		}
 		return nil, false
 	}
-	// A float that SetString cannot read ("NaN", "Inf") is not in any range.
-	r, ok := new(big.Rat).SetString(s)
-	return r, ok
 }
 
 // isStringType reports the encodable types whose value is no number.

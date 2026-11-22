@@ -135,8 +135,13 @@ UTF8String or OctetString Ref default longer than its Length
 (`gsdml.ToModel`, and `gsdml.SubmoduleParameters` for the same records); a
 value that does not fit its parameter field or is outside its AllowedValues
 (`gsdml.ParameterRecord.Set` and `Encode`, `ErrInvalidConfig`, the record
-left as it was), and a field without a verified encoding or an
-AllowedValues on a string field (`ErrUnsupported`); a
+left as it was), as well as a field whose Length or bits do not agree with
+its DataType, a Go value of another kind than the field's DataType (the
+typed setters), two values for fields that share bits, or a name two
+fields share (`ParameterRecord.Field`); a field without a verified encoding
+or an AllowedValues on a string field, with more than 4096 values or an
+exponent beyond ±400 (`ErrUnsupported`); an AllowedValues that is not a
+SignedOrFloatValueListT (`ErrMalformed`); a
 PDRealData record whose MultipleBlockHeaders nest more than four deep. The same element, size and depth bounds (256 levels) apply to
 `typed.ParseNode` and everything in `gsdml/typed` that reads a document;
 there, a document that is not namespace-well-formed (an undeclared
