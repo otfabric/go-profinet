@@ -26,6 +26,51 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.15.0
+
+**Date:** 2026-11-22
+**Previous release:** v0.14.1
+
+## Summary
+
+GSDML parameter records described field by field, and built from chosen
+values: the first part of the GSDML-aware parameterization. Nothing writes
+records on its own; a controller still writes the records of
+`DeviceConfig.Parameters`.
+
+## Changes
+
+### Added
+
+- **`gsdml.SubmoduleParameters(doc, dapID, moduleIdent, submoduleIdent)`**
+  describes the parameter records of a submodule, the ones `ToModel`
+  converts, as `[]gsdml.ParameterRecord`.
+  - Per record: index, name, length, TransferSequence, Consts, and the
+    default octets `ToModel` builds (nil when a field has no verified
+    encoding).
+  - Per field (`ParameterField`): name, DataType, byte offset, bit offset
+    and bit length, size, DefaultValue and AllowedValues as written,
+    Changeable and Visible, the texts of its ValueItem, and whether it can
+    be encoded. Absent BitOffset, BitLength, Changeable and Visible take
+    the defaults of PI's schemas V1.0 to V2.46: 0, 1, true, true.
+- **`ParameterRecord.Set(rec, field, value)`** writes one field into a
+  record, and **`Encode(values)`** builds a record from its default.
+  - The encoder is the one `ToModel` uses for defaults; the other octets
+    and bits are kept.
+  - A value that does not fit, or is outside AllowedValues, fails with
+    `ErrInvalidConfig` and leaves the record unchanged.
+  - A record with a field that has no verified encoding is refused with
+    `ErrUnsupported` rather than built without it.
+
+### Changed
+
+- The errors of a Ref default that does not parse name the value rather
+  than the default where the value is not one, and are clipped to 256
+  characters like the package's other messages. The error identities are
+  unchanged.
+
+---
+
 ## v0.14.1
 
 **Date:** 2026-11-22

@@ -380,6 +380,125 @@ type Node struct {
 
 Node is an XML element the catalog does not define, kept verbatim.
 
+### type ParameterConst
+
+```go
+type ParameterConst struct {
+	ByteOffset uint32 `json:"byte_offset"`
+	Data       []byte `json:"data"`
+}
+```
+
+ParameterConst is a Const of a parameter record: octets at an offset.
+
+### type ParameterField
+
+```go
+type ParameterField struct {
+	// ID is the Ref's ID, when it has one (from V2.3).
+	ID string `json:"id,omitempty"`
+	// Name is the text of TextId in the primary language, or TextId when
+	// the file has no such text.
+	Name     string   `json:"name"`
+	DataType DataType `json:"data_type"`
+	// ByteOffset is the offset of the field in the record. For Bit and
+	// BitArea, BitOffset is the first bit in that octet (0 the least
+	// significant) and BitLength the number of bits; they are 0 for the
+	// other types.
+	ByteOffset uint32 `json:"byte_offset"`
+	BitOffset  uint8  `json:"bit_offset,omitempty"`
+	BitLength  uint8  `json:"bit_length,omitempty"`
+	// Length is the size of the field in octets: 0 for Bit and BitArea,
+	// and for a DataType without a known size.
+	Length int `json:"length,omitempty"`
+	// Default and AllowedValues are as the file writes them; AllowedValues
+	// is empty when the file does not restrict the value.
+	Default       string `json:"default"`
+	AllowedValues string `json:"allowed_values,omitempty"`
+	// Changeable and Visible are reported, not enforced: Set writes a
+	// field that is not Changeable. No source this package has states
+	// what a device or a tool does with them (LIMITATIONS.md).
+	Changeable bool `json:"changeable"`
+	Visible    bool `json:"visible"`
+	// Values are the texts the file's ValueItem (ValueItemTarget) assigns
+	// to values, in its order.
+	Values []ParameterValue `json:"values,omitempty"`
+	// Encodable reports whether Set can write the field: false for a
+	// DataType without a verified encoding (the _S, composite, time and
+	// PROFIdrive types), as for a DefaultValue in ToModel.
+	Encodable bool `json:"encodable"`
+
+}
+```
+
+ParameterField is a field of a parameter record (a Ref).
+
+BitOffset, BitLength, Changeable and Visible take the defaults of PI's GSDML schemas when the file does not give them: BitOffset 0, BitLength 1, Changeable and Visible true. These are the defaults of the Ref of a ParameterRecordDataItem in every schema V1.0 to V2.46 (ValueItemReferenceT in V1.0 to V2.1, ParameterRecordDataT/Ref in V2.2 and V2.25, RecordDataRefT from V2.3).
+
+### type ParameterRecord
+
+```go
+type ParameterRecord struct {
+	Index pnio.Index `json:"index"`
+	// Name is the text of the record's Name in the primary language.
+	Name   string `json:"name,omitempty"`
+	Length uint16 `json:"length"`
+	// TransferSequence is the order the record is written in; 0, the
+	// schema default, when the file does not give one.
+	TransferSequence uint16 `json:"transfer_sequence"`
+	// Default is the record as ToModel builds it (model.Record.Default):
+	// zeros, the Const octets, then every field's DefaultValue. It is nil
+	// when a field has no encoding this package has verified; Encode then
+	// refuses the record.
+	Default []byte           `json:"default,omitempty"`
+	Consts  []ParameterConst `json:"consts,omitempty"`
+	Fields  []ParameterField `json:"fields"`
+}
+```
+
+ParameterRecord describes a parameter record of a submodule as its GSDML file declares it (a ParameterRecordDataItem): its fields, its constant octets and its default value. Unlike model.Record it keeps what a value of a field must be, so that a record can be built from chosen values.
+
+#### func SubmoduleParameters
+
+```go
+func SubmoduleParameters(doc *Document, dapID string, moduleIdent, submoduleIdent uint32) ([]ParameterRecord, error)
+```
+
+SubmoduleParameters describes the parameter records of a submodule: the submodule with ident number submoduleIdent of the device access point dapID (the first one when empty), when moduleIdent is the DAP's ModuleIdentNumber, or of the module with that ident number that the DAP can use. These are the submodules and records ToModel converts.
+
+It returns an error matching profinet.ErrNotFound when the DAP, the module or the submodule does not exist, and profinet.ErrMalformed for a record ToModel refuses as malformed. A field without a verified encoding is not an error: it is not Encodable, and its record has no Default.
+
+#### func (ParameterRecord) Encode
+
+```go
+func (r *ParameterRecord) Encode(values map[int]string) ([]byte, error)
+```
+
+Encode builds the record from its Default with the values of the fields given by their index set, as Set does. It returns an error matching profinet.ErrUnsupported when the record has no Default.
+
+#### func (ParameterRecord) Set
+
+```go
+func (r *ParameterRecord) Set(rec []byte, i int, value string) error
+```
+
+Set writes value into the field i of rec, a record of r's Length: in the lexical form of a DefaultValue of the field's DataType ("12", "-3", "1.5", "true", "0x01,0x02" for an OctetString, a string as it is). The octets and bits outside the field are not changed.
+
+It returns an error matching profinet.ErrInvalidConfig for a value that does not fit the field or is outside its AllowedValues, and profinet.ErrUnsupported for a field that is not Encodable or whose AllowedValues this package does not compare (AllowedValues of a string, an OctetString).
+
+### type ParameterValue
+
+```go
+type ParameterValue struct {
+	// Content is the value, as the file writes it.
+	Content string `json:"content"`
+	// Text is the text of its TextId in the primary language.
+	Text string `json:"text"`
+}
+```
+
+ParameterValue is an Assign of a ValueItem: a value and its text.
+
 ### type Report
 
 ```go

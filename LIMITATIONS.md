@@ -103,7 +103,9 @@ at most 16 384 issues per severity (SECURITY.md lists every fixed bound). Schema
 documents against the V2.46 schema.
 The defaults of optional attributes come from public sources, not the
 XSDs: Ref BitOffset 0 and BitLength 1 from ISO 15745-4:2003/Amd 1:2006
-(docs/GSDML.md), not yet compared with the V2.3x/V2.4x XSDs. An empty
+(docs/GSDML.md). The reference schemas V1.0 to V2.46 give a parameter
+record's Ref the same two, and Changeable and Visible true, the defaults
+`SubmoduleParameters` reports. An empty
 optional attribute (`BitLength=""`) is told from an absent one only in a
 parsed document, and only until it is encoded: encoding omits it. A BitArea Ref must lie in
 one octet (BitOffset + BitLength ≤ 8), although the 2006 definition allows
@@ -131,6 +133,17 @@ says "plus status" without a grammar, and no corpus file uses one), so a
 record with such a Ref does not convert. That a Boolean DefaultValue is
 written true, false, 1 or 0 is the xsd:boolean form, not verified against
 the GSDML specification.
+**Parameter records** (`SubmoduleParameters`, `ParameterRecord.Set`,
+`Encode`): a field is written with the encoder of `ToModel`'s defaults, so
+the same DataTypes are refused and the same policies apply (zero padding,
+the OctetString form, hexadecimal integers). `Changeable` and `Visible` are
+reported, not enforced: the schemas declare them without saying what a
+device or a tool does with them. `AllowedValues` is compared for numeric,
+Bit, BitArea and Boolean fields only. Overlapping fields are not detected:
+setting one changes the octets of the other. A default outside its own
+`AllowedValues` is accepted, as `ToModel` accepts it. The golden octets of
+the tests are derived by hand from the encodings; no engineering tool or
+captured parameter write has confirmed them.
 DataType legality by context is known for the 18 versions from V1.0 to
 V2.46. The evidence is the schemas as TIA Portal V21 installs them, a
 reserialised copy without XML comments rather than PI's specification

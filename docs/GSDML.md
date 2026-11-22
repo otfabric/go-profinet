@@ -191,6 +191,52 @@ it.
 A controller connects with `controller.DeviceConfig{Model: m}`; plug further
 modules of the catalog into `m.Slots` first (profinetctl's `--plug`).
 
+### Parameter records
+
+`ToModel` keeps a record's index, length and default octets
+(`model.Record`). `SubmoduleParameters` describes the records of one
+submodule with what a value of each field must be, so that a record can be
+built from chosen values:
+
+```go
+recs, err := gsdml.SubmoduleParameters(doc, "DAP_1", 0x50, 0x51) // DAP, module and submodule ident numbers
+r := recs[0]
+for i, f := range r.Fields {
+	fmt.Println(i, f.Name, f.DataType, f.ByteOffset, f.BitOffset, f.BitLength, f.Default, f.AllowedValues, f.Values)
+}
+rec, err := r.Encode(map[int]string{0: "250", 2: "2"}) // the default, with fields 0 and 2 set
+```
+
+- The submodules are those `ToModel` converts: the `VirtualSubmoduleList`
+  of the device access point (when the module ident number is the DAP's)
+  or of a module the DAP can use (`UseableModules`).
+- `Default` is the record `ToModel` builds. It is nil when a field has a
+  DataType without a verified encoding (the `_S`, composite, time and
+  PROFIdrive types above): the field is described, but not `Encodable`,
+  and `Encode` refuses the record rather than build it without that field.
+- A field's `BitOffset`, `BitLength`, `Changeable` and `Visible` take the
+  defaults of PI's schemas when the file does not give them: 0, 1, true
+  and true. These are the defaults of a parameter record's Ref in every
+  schema V1.0 to V2.46 (`ValueItemReferenceT` in V1.0 to V2.1,
+  `ParameterRecordDataT/Ref` in V2.2 and V2.25, `RecordDataRefT` from
+  V2.3).
+- `Values` are the texts of the field's `ValueItem` (`ValueItemTarget`):
+  the `Assign` of each value, for a tool to show and to offer.
+- `Set` writes one value into a record, in the lexical form of a
+  DefaultValue, with the encoder `ToModel` uses for defaults. The other
+  octets, and the other bits of a Bit or BitArea octet, are not changed. A
+  value that does not fit the field, or is outside its `AllowedValues`,
+  fails with `ErrInvalidConfig` and leaves the record as it was.
+  `AllowedValues` (values and `lo..hi` ranges, `SignedOrFloatValueListT`)
+  is compared exactly, in rational numbers, for the integer, float, Bit,
+  BitArea and Boolean (0, 1) fields; on a string or OctetString field it is
+  not interpreted, and `Set` fails with `ErrUnsupported`.
+- `Changeable` and `Visible` are reported, not enforced: no source this
+  package has says what a device or a tool must do with them (LIMITATIONS.md).
+
+Nothing writes these records on its own: a controller writes the records of
+`controller.DeviceConfig.Parameters`, as before.
+
 ## Writing
 
 ```go
