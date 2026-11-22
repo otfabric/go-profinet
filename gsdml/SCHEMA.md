@@ -17,7 +17,7 @@ and attributes a document has beyond these are kept and written back.
 | `Boolean` | true or false (also 1 or 0). One of: `true`, `false`, `1`, `0`. |
 | `ConformanceClass` | The PROFINET conformance class. One of: `A`, `B`, `C`, `D`. |
 | `Consistency` | The consistency of IO data. One of: `Item consistency`, `All items consistency`. |
-| `DataType` | The data type of a DataItem or Ref. 52 values. |
+| `DataType` | The data type of a DataItem or Ref. 55 values. |
 | `ID` | An identifier unique in the document. |
 | `IDRef` | A reference to an ID. |
 | `Language` | An ISO 639-1 language code. |

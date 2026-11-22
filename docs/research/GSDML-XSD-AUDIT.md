@@ -2,8 +2,8 @@
 
 Which `DataType` values each GSDML schema version allows in each element
 context, from five schema versions, compared with go-profinet's catalog
-(`gsdml/schema/catalog.json`). This is an audit of evidence. It changes no
-behaviour of the library; the proposal at the end does.
+(`gsdml/schema/catalog.json`). This is an audit of evidence. The library applies it as described in
+"Legality in the catalog and generator" below.
 
 The machine-readable report is [gsdml-xsd-audit.json](gsdml-xsd-audit.json).
 `scripts/gsdml-xsd-audit.sh` fetches the schemas, checks their SHA-256 and
@@ -117,52 +117,45 @@ The legality of a value in any of these versions must not be inferred from
 V2.2 or V2.35. Finding 2 shows that a value present on both sides of a gap
 may still have been removed and added again.
 
-## Proposal: legality in the catalog and generator
+## Legality in the catalog and generator
 
-This is not implemented by this change. It extends the existing pipeline
-rather than adding a second source of truth:
+Implemented after this audit, in the existing pipeline rather than as a
+second source of truth:
 
-1. **Catalog.** Add a `dataTypeLegality` section to
-   `gsdml/schema/catalog.json`:
+1. **Catalog.** `gsdml/schema/catalog.json` has a `dataTypeLegality`
+   section:
    - context names, each mapped to its `Parent/Element` occurrences (`io`,
      `parameter`, `unitDiag`, `extChannel`, `processAlarm`);
-   - one exact value set per audited version and context, each citing its
-     evidence (this report and the root document's SHA-256).
+   - one exact value set per audited version and context;
+   - the values a set cannot decide (`unverified`: V2.0's
+     `"F_MessageTrailer5Byte "`).
 
-   A version that has no set is unverified. There are no `introducedIn`
-   fields. `gengsdml -audit` already produces the sets, so the catalog can
-   be checked against a report mechanically.
-2. **Generated code.** Generate a legality function from the catalog:
+   It has no `introducedIn` field. A gengsdml test checks every set against
+   this report, so neither can change alone.
+2. **Generated code.** The generator writes the tables, and
+   `gsdml.DataTypeLegality` reads them. It is tri-state: allowed,
+   forbidden or unverified. Any version without a set is unverified,
+   including versions newer than the newest set.
 
-   ```text
-   legality(version, context, DataType) -> allowed | forbidden | unverified
-   ```
-
-   It is tri-state. It returns unverified for any version without a set,
-   including versions newer than the newest set. Its exported name is for
-   the implementing change.
-
-   This keeps the following separate, each as it is today: the public
-   vocabulary (`DataType` constants), sizing (`DataItemSize`), binary codecs
-   (`pnio`), lexical parsing (`applyRef`) and DefaultValue capability
-   (`refDefaultEncoded`).
+   This keeps the following separate, each as it was: the vocabulary
+   (`DataTypes`), sizing (`DataItemSize`), binary codecs (`pnio`), lexical
+   parsing and DefaultValue capability (`ToModel`).
 3. **Vocabulary.**
-   - Add `UnicodeString8`, `61131_STRING` and `61131_WSTRING` as constants.
-     They have no size or encoding until a source gives one.
-   - Keep `Float64+Status8`, `Integer32_S`, `Unsigned32_S` and `UTF8String`,
-     documented as found in no audited schema. Removing exported constants
-     on this evidence alone would break callers.
-4. **Check.** Report each DataItem and Ref DataType against the legality
-   function for the document's schema version:
-   - forbidden in a verified version is a `SeverityError` finding;
-   - an unverified version is a `SeverityUnvalidated` finding, once per
-     document, using the existing version rule's style.
-5. **Validate and ToModel.** Leave them unchanged:
-   - `Validate` stays structural (forward compatibility: a newer document
-     is kept and inspected).
-   - `ToModel` keeps refusing by encoding capability, not legality.
-6. **CLI.** profinetctl's `gsdml check` surfaces the new findings through
-   the existing rules, with no new flags.
+   - `UnicodeString8`, `61131_STRING` and `61131_WSTRING` are constants,
+     with no size.
+   - `Float64+Status8`, `Integer32_S`, `Unsigned32_S` and `UTF8String` stay,
+     documented as found in no audited schema.
+4. **Check** (rule `datatype-context`) covers the IO DataItem and the
+   parameter Ref, the contexts the catalog models:
+   - a value forbidden by an audited version is a warning, because the
+     evidence is third-party copies, so `Validate`, which fails on errors,
+     does not change;
+   - a document of an unverified version, or with no version, gets one
+     unvalidated issue.
+5. **ToModel** is unchanged: it refuses by size and encoding, not by
+   legality.
+6. **CLI.** profinetctl's `gsdml check` lists the rule's issues like any
+   other.
 
 ## Tables
 

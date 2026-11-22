@@ -75,12 +75,17 @@ status bit positions of the `_S` types and the lexical forms of the others
 are not in a public source (OPC 30144 v1.00 Tables 17 and 58 give the
 status codes and ranges only), so a record with such a Ref does not
 convert. That a Boolean DefaultValue is written true, false, 1 or 0 is
-the xsd:boolean form, not verified against the GSDML specification. The
-catalog's single DataType enumeration does not match the per-context
-enumerations of the V2.35 XSD (it lists Float64+Status8, Integer32_S,
-Unsigned32_S and UTF8String, which V2.35 does not, and lacks
-UnicodeString8, 61131_STRING and 61131_WSTRING), so `Validate` checks a
-DataType against neither its context nor its schema version.
+the xsd:boolean form, not verified against the GSDML specification. DataType legality by context is known only for V1.0, V2.0, V2.1, V2.2 and
+V2.35. The evidence is third-party copies of those schemas, not PI's files
+(docs/research/GSDML-XSD-AUDIT.md), so `Check` warns about a forbidden
+value and `Validate` does not fail on it. Every other version is unverified,
+V2.25 to V2.34 and V2.4 to V2.45 among them, and nothing is inferred
+across versions. The unit diagnosis, channel diagnosis and process alarm
+contexts are not modelled, so they are not checked.
+Float64+Status8, Integer32_S, Unsigned32_S and UTF8String are in no
+audited schema and their source is not recorded. UnicodeString8,
+61131_STRING and 61131_WSTRING have no known size, so a submodule or record
+that uses one does not convert.
 A document type declaration with an internal subset is refused
 (`ErrUnsupported`): its attribute defaults and entities are not applied, so
 the document is not read at all rather than read differently.

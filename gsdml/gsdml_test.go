@@ -304,7 +304,9 @@ func TestDataItemSizes(t *testing.T) {
 	for _, dt := range DataTypes {
 		n, err := DataItemSize(string(dt), "4")
 		switch dt {
-		case DataTypeBit, DataTypeBitArea:
+		// Bits have no octet size; the string types V2.35 added have no
+		// layout in a source the package has (their size is not guessed).
+		case DataTypeBit, DataTypeBitArea, DataTypeUnicodeString8, DataType61131STRING, DataType61131WSTRING:
 			if err == nil {
 				t.Errorf("%s has a size", dt)
 			}

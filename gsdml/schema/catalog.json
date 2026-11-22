@@ -28,7 +28,7 @@
       "Unsigned8_S", "OctetString_S", "Unsigned16_S", "Integer16_S", "Integer32_S", "Unsigned32_S",
       "N2", "N4", "V2", "L2", "R2", "T2", "T4", "D2", "E2", "C4", "X2", "X4", "Unipolar2.16",
       "OctetString2+Unsigned8", "UTF8String", "F_MessageTrailer4Byte", "F_MessageTrailer5Byte",
-      "TimeStamp", "TimeStampDifference", "TimeStampDifferenceShort"]},
+      "TimeStamp", "TimeStampDifference", "TimeStampDifferenceShort", "UnicodeString8", "61131_STRING", "61131_WSTRING"]},
     "Consistency": {"doc": "The consistency of IO data.", "enum": ["Item consistency", "All items consistency"]},
     "StartupMode": {"doc": "The startup modes of an interface.", "pattern": "^(Legacy|Advanced)(;(Legacy|Advanced))*$"},
     "RTClasses": {"doc": "RT classes separated by blanks or semicolons.", "pattern": "^RT_CLASS_(1|2|3|UDP|STREAM_HI|STREAM_LO)([\\s;]+RT_CLASS_(1|2|3|UDP|STREAM_HI|STREAM_LO))*$"},
@@ -36,6 +36,50 @@
     "NetloadClass": {"doc": "The netload robustness class.", "enum": ["I", "II", "III"]},
     "MainFamily": {"doc": "The main device family.", "enum": ["General", "Drives", "Switching Devices", "I/O", "Valves", "Controllers", "HMI", "Encoders", "NC/RC", "Gateway", "PLCs", "Ident Systems", "PA Profiles", "Network Components", "Sensors"]},
     "Language": {"doc": "An ISO 639-1 language code.", "pattern": "^[a-z]{2}(-[A-Za-z]{2})?$"}
+  },
+  "dataTypeLegality": {
+    "doc": "Which DataType values each audited GSDML schema version allows in each context. Exact sets per version, derived from third-party copies of the schemas (docs/research/GSDML-XSD-AUDIT.md); a version without a set is unverified. gengsdml checks these sets against docs/research/gsdml-xsd-audit.json.",
+    "evidence": "docs/research/gsdml-xsd-audit.json",
+    "contexts": {
+      "io": ["Input/DataItem", "Output/DataItem"],
+      "parameter": ["ParameterRecordDataItem/Ref", "Request/Ref"],
+      "unitDiag": ["UnitDiagTypeItem/Ref", "ProfileUnitDiagTypeItem/Ref"],
+      "extChannel": ["ExtChannelAddValue/DataItem"],
+      "processAlarm": ["ProcessAlarmReasonAddValue/DataItem"]
+    },
+    "versions": {
+      "1.0": {
+        "io": ["Date", "Float32", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "parameter": ["Bit", "BitArea", "Integer16", "Integer32", "Integer64", "Integer8", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8"],
+        "unitDiag": ["Bit", "BitArea", "Integer16", "Integer32", "Integer64", "Integer8", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8"]
+      },
+      "2.0": {
+        "io": ["Date", "F_MessageTrailer4Byte", "Float32", "Float32+Status8", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "parameter": ["Bit", "BitArea", "Integer16", "Integer32", "Integer64", "Integer8", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8"],
+        "unitDiag": ["Bit", "BitArea", "Integer16", "Integer32", "Integer64", "Integer8", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8"]
+      },
+      "2.1": {
+        "io": ["Date", "F_MessageTrailer4Byte", "F_MessageTrailer5Byte", "Float32", "Float32+Status8", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "parameter": ["Bit", "BitArea", "Date", "Float32", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "unitDiag": ["Bit", "BitArea", "Date", "Float32", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "extChannel": ["Float32", "Integer16", "Integer32", "Integer8", "OctetString", "TimeDifference without date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned8", "VisibleString"]
+      },
+      "2.2": {
+        "io": ["Date", "F_MessageTrailer4Byte", "F_MessageTrailer5Byte", "Float32", "Float32+Status8", "Float32+Unsigned8", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "Unsigned8+Unsigned8", "VisibleString"],
+        "parameter": ["Bit", "BitArea", "Date", "Float32", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "unitDiag": ["Bit", "BitArea", "Date", "Float32", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "NetworkTime", "NetworkTimeDifference", "OctetString", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "extChannel": ["Float32", "Integer16", "Integer32", "Integer8", "OctetString", "TimeDifference without date indication", "TimeOfDay without date indication", "Unsigned16", "Unsigned32", "Unsigned8", "VisibleString"]
+      },
+      "2.35": {
+        "io": ["61131_STRING", "61131_WSTRING", "Boolean", "C4", "D2", "Date", "E2", "F_MessageTrailer4Byte", "F_MessageTrailer5Byte", "Float32", "Float32+Status8", "Float32+Unsigned8", "Float64", "Integer16", "Integer16_S", "Integer32", "Integer64", "Integer8", "L2", "N2", "N4", "NetworkTime", "NetworkTimeDifference", "OctetString", "OctetString2+Unsigned8", "OctetString_S", "R2", "T2", "T4", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "TimeStamp", "TimeStampDifference", "TimeStampDifferenceShort", "UnicodeString8", "Unipolar2.16", "Unsigned16", "Unsigned16_S", "Unsigned32", "Unsigned64", "Unsigned8", "Unsigned8+Unsigned8", "Unsigned8_S", "V2", "VisibleString", "X2", "X4"],
+        "parameter": ["61131_STRING", "61131_WSTRING", "Bit", "BitArea", "Boolean", "C4", "D2", "Date", "E2", "Float32", "Float32+Unsigned8", "Float64", "Integer16", "Integer16_S", "Integer32", "Integer64", "Integer8", "L2", "N2", "N4", "NetworkTime", "NetworkTimeDifference", "OctetString", "OctetString2+Unsigned8", "OctetString_S", "R2", "T2", "T4", "TimeDifference with date indication", "TimeDifference without date indication", "TimeOfDay with date indication", "TimeOfDay without date indication", "TimeStamp", "TimeStampDifference", "TimeStampDifferenceShort", "UnicodeString8", "Unipolar2.16", "Unsigned16", "Unsigned16_S", "Unsigned32", "Unsigned64", "Unsigned8", "Unsigned8+Unsigned8", "Unsigned8_S", "V2", "VisibleString", "X2", "X4"],
+        "unitDiag": ["Bit", "BitArea", "Float32", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "OctetString", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8", "VisibleString"],
+        "extChannel": ["Float32", "Integer16", "Integer32", "Integer8", "Unsigned16", "Unsigned32", "Unsigned8"],
+        "processAlarm": ["Float32", "Float64", "Integer16", "Integer32", "Integer64", "Integer8", "Unsigned16", "Unsigned32", "Unsigned64", "Unsigned8"]
+      }
+    },
+    "unverified": {"2.0": {"io": ["F_MessageTrailer5Byte"]}},
+    "unverifiedDoc": "Values a set cannot decide: V2.0's copy enumerates \"F_MessageTrailer5Byte \" with a trailing space, significant on its xsd:string base."
   },
   "elements": [
     {"name": "ISO15745Profile", "doc": "The document root.", "children": ["ProfileHeader", "ProfileBody"]},

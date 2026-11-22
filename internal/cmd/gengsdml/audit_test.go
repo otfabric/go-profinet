@@ -141,3 +141,92 @@ func TestAuditErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestLegalityMatchesAudit: the catalog's legality sets are the committed
+// audit report's, context by context, so neither can change alone.
+func TestLegalityMatchesAudit(t *testing.T) {
+	c, _, err := load("../../../gsdml/schema/catalog.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := c.DataTypeLegality
+	raw, err := os.ReadFile(filepath.Join("../../..", l.Evidence))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r auditReport
+	if err := json.Unmarshal(raw, &r); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Versions) != len(l.Versions) {
+		t.Fatalf("report versions %d, catalog %d", len(r.Versions), len(l.Versions))
+	}
+	for _, v := range r.Versions {
+		sets := l.Versions[v.Version]
+		if sets == nil {
+			t.Fatalf("catalog has no set for %s", v.Version)
+		}
+		covered := 0
+		for ctx, uses := range l.Contexts {
+			for _, use := range uses {
+				for _, rc := range v.Contexts {
+					if rc.Parent+"/"+rc.Element != use {
+						continue
+					}
+					covered++
+					var want, ws []string
+					for _, x := range v.Types[rc.Type].Values {
+						if strings.TrimSpace(x) == x {
+							want = append(want, x)
+						} else {
+							ws = append(ws, strings.TrimSpace(x))
+						}
+					}
+					if !reflect.DeepEqual(sets[ctx], want) {
+						t.Errorf("%s %s (%s): catalog %v, report %v", v.Version, ctx, use, sets[ctx], want)
+					}
+					if !reflect.DeepEqual(l.Unverified[v.Version][ctx], ws) {
+						t.Errorf("%s %s: unverified %v, report %v", v.Version, ctx, l.Unverified[v.Version][ctx], ws)
+					}
+				}
+			}
+		}
+		if covered != len(v.Contexts) {
+			t.Errorf("%s: %d of %d report contexts mapped to a catalog context", v.Version, covered, len(v.Contexts))
+		}
+	}
+}
+
+func TestLegalityChecks(t *testing.T) {
+	const head = `{"root": "A", "simpleTypes": {"DataType": {"enum": ["X", "Y"]}}, "elements": [{"name": "A"}], "dataTypeLegality": `
+	bad := []string{
+		`{"contexts": {"Bad": ["P/E"]}}`,
+		`{"contexts": {"io": []}}`,
+		`{"contexts": {"io": ["P/E"]}, "versions": {"v2": {"io": ["X"]}}}`,
+		`{"contexts": {"io": ["P/E"]}, "versions": {"2.0": {"other": ["X"]}}}`,
+		`{"contexts": {"io": ["P/E"]}, "versions": {"2.0": {"io": ["Z"]}}}`,
+		`{"contexts": {"io": ["P/E"]}, "unverified": {"2.0": {"io": ["Z"]}}}`,
+		`{"contexts": {"io": ["P/E"]}, "versions": {"2.0": {"io": ["X"]}}, "unverified": {"2.0": {"io": ["X"]}}}`,
+	}
+	dir := t.TempDir()
+	p := filepath.Join(dir, "c.json")
+	for i, b := range bad {
+		_ = os.WriteFile(p, []byte(head+b+"}"), 0o600)
+		if _, _, err := load(p); err == nil {
+			t.Errorf("%d: accepted %s", i, b)
+		}
+	}
+	_ = os.WriteFile(p, []byte(`{"root": "A", "elements": [{"name": "A"}], "dataTypeLegality": {"contexts": {"io": ["P/E"]}}}`), 0o600)
+	if _, _, err := load(p); err == nil {
+		t.Error("legality without a DataType type")
+	}
+	_ = os.WriteFile(p, []byte(head+`{"evidence": "e", "contexts": {"io": ["P/E"]}, "versions": {"2.0": {"io": ["X"]}}, "unverified": {"2.0": {"io": ["Y"]}}}}`), 0o600)
+	c, raw, err := load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := generateGo(c, raw)
+	if err != nil || !bytes.Contains(src, []byte(`"2.0": {`)) || !bytes.Contains(src, []byte(`"io": {"Y": true}`)) {
+		t.Fatalf("%v\n%s", err, src)
+	}
+}

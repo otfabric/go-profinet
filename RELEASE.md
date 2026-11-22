@@ -31,7 +31,12 @@ section ending with a `---` line and no `---` line inside a section.
 **Date:** 2026-11-22
 **Previous release:** v0.12.0
 
-Binary codecs of the data types with an embedded status. API: additive.
+## Summary
+
+Binary codecs of the data types with an embedded status, and GSDML DataType
+legality by schema version and context, taken from an audit of five schema
+versions. API: additive. `Check` reports more, but `Validate` fails on
+nothing new.
 
 ### Added
 
@@ -45,6 +50,33 @@ Binary codecs of the data types with an embedded status. API: additive.
   three octets is `ErrMalformed`, one of more than 65535 octets
   `ErrResourceExhausted`. `gsdml.ToModel` still refuses these types as Ref
   defaults: how GSDML writes their value and status is not established.
+- **Legality.** `gsdml.DataTypeLegality(version, context, DataType)` answers
+  allowed, forbidden or unverified, together with `DataTypeContext` (`io`,
+  `parameter`, `unitDiag`, `extChannel`, `processAlarm`), `Legality` and
+  `DataTypeLegalityVersions`.
+  - Only V1.0, V2.0, V2.1, V2.2 and V2.35 are decided, each by its exact
+    set. Every other version is unverified, and nothing is inferred
+    between versions.
+  - The sets come from third-party copies of the schemas
+    (docs/research/GSDML-XSD-AUDIT.md).
+- **New Check rule `datatype-context`.**
+  - An IO DataItem or parameter Ref whose DataType the audited schema of
+    the document's version forbids there is a warning.
+  - A document of an unaudited version, or with no version, gets one
+    unvalidated issue, so most current documents (V2.4x) now report one
+    more unvalidated issue.
+- **New DataType constants.** `DataTypeUnicodeString8`, `DataType61131STRING`
+  and `DataType61131WSTRING` (V2.35).
+  - `Validate` now accepts them; it used to refuse them as unknown values.
+  - They have no size, so `ToModel` refuses a submodule or record that uses
+    one with `ErrUnsupported`.
+- **Schema audit tooling.** `gengsdml -audit` and
+  `scripts/gsdml-xsd-audit.sh` audit locally supplied schemas, following
+  includes, and write a reproducible JSON report (docs/CODEGEN.md).
+
+### Changed
+
+- `gsdml.CatalogSHA256` and `gsdml.DataTypes` change with the catalog.
 
 ---
 
