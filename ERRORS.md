@@ -143,7 +143,9 @@ version does not have, or a value that does not parse as its type. As
 `ErrUnsupported`: a GSDML document whose document type declaration has an
 internal subset (`gsdml.Parse`, `typed.ParseNode`; docs/GSDML.md); a Ref whose DataType has no
 verified DefaultValue encoding, such as `Integer16_S`, `TimeStamp` or `N2`
-(`gsdml.ToModel`; docs/GSDML.md).
+(`gsdml.ToModel`; docs/GSDML.md); a parameter record of no octets in a
+model generated for PNIO_Version V2.31 or later, whose schemas require a
+`Const` or a `Ref` in every `ParameterRecordDataItem` (`gsdml.FromModel`).
 
 The block encoders of `pnio` and `alarm.PDU.AppendPayload` return no error;
 given a length that does not fit, they panic with an error matching

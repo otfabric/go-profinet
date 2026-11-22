@@ -26,6 +26,36 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.14.1
+
+**Date:** 2026-11-22
+**Previous release:** v0.14.0
+
+## Summary
+
+`gsdml.FromModel` writes files the schemas accept for parameter records
+without a default value.
+
+## Changes
+
+### Fixed
+
+- **`gsdml.FromModel`**: a parameter record without a default value is
+  now written with a `Const` of zeros. Before, its
+  `ParameterRecordDataItem` had no `Const`.
+  - From V2.31 the schemas require a `Const` or a `Ref` there. The file
+    `FromModel` writes by default names V2.35, so it was not valid
+    against its own schema: `gsdml.CheckBytes`, profinetctl's
+    `gsdml validate` and xmllint reported it.
+  - The value is unchanged. `model.Record` defines a missing default as
+    zeros, and `ToModel` reads a record without a `Const` as zeros too.
+- **`gsdml.FromModel`**: a parameter record of no octets is refused with
+  `ErrUnsupported` when generating for V2.31 or later. Those versions
+  have no valid form for it, because a `Const` holds at least one octet
+  of the record. Earlier versions still write it without a `Const`.
+
+---
+
 ## v0.14.0
 
 **Date:** 2026-11-22

@@ -741,6 +741,9 @@ func FromModel(m *model.Device, opts GenerateOptions) (*Document, error) {
 	if opts.PNIOVersion == "" {
 		opts.PNIOVersion = "V2.35"
 	}
+	if err := recordsDescribable(m, opts.PNIOVersion); err != nil {
+		return nil, err
+	}
 	dns := opts.DNSCompatibleName
 	if dns == "" {
 		dns = dnsName(m.Identity.TypeOfStation)
@@ -910,6 +913,35 @@ func (g *gen) text(id, value string) string {
 	return id
 }
 
+// recordsDescribable refuses a parameter record of no octets for
+// PNIO_Version V2.31 and later: their schemas require a Const or a Ref in
+// every ParameterRecordDataItem, and a Const has at least one octet
+// within the record.
+func recordsDescribable(m *model.Device, version string) error {
+	if versionNumber(version) < 231 {
+		return nil
+	}
+	check := func(subs []model.Submodule) error {
+		for _, s := range subs {
+			for _, r := range s.Records {
+				if r.Length == 0 {
+					return fmt.Errorf("gsdml: %w: record %s of submodule %#x has no octets, which %s cannot describe", profinet.ErrUnsupported, r.Index, s.IdentNumber, version)
+				}
+			}
+		}
+		return nil
+	}
+	if err := check(m.DAP.Submodules); err != nil {
+		return err
+	}
+	for _, mt := range m.ModuleTypes() {
+		if err := check(mt.Submodules); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (g *gen) submodule(id string, s *model.Submodule) *VirtualSubmoduleItem {
 	vs := &VirtualSubmoduleItem{ID: id, SubmoduleIdentNumber: hex32(s.IdentNumber), MayIssueProcessAlarm: "true", IOData: &IOData{},
 		ModuleInfo: &ModuleInfo{Name: &Name{TextID: g.text(id+"_Name", nonEmpty(s.Name, id))}, InfoText: &InfoText{TextID: g.text(id+"_Info", nonEmpty(s.Info, s.Name))}}}
@@ -924,8 +956,16 @@ func (g *gen) submodule(id string, s *model.Submodule) *VirtualSubmoduleItem {
 		for _, r := range s.Records {
 			pr := &ParameterRecordDataItem{Index: strconv.Itoa(int(r.Index)), Length: strconv.Itoa(int(r.Length)),
 				Name: &Name{TextID: g.text(fmt.Sprintf("%s_R%d", id, r.Index), nonEmpty(r.Name, fmt.Sprintf("Record %d", r.Index)))}}
-			if len(r.Default) > 0 {
-				pr.Consts = []*Const{{ByteOffset: "0", Data: formatOctets(r.Default)}}
+			// Every record gets its value as a Const: from V2.31 the
+			// schemas require at least one Const or Ref, and a record
+			// without a default is zeros (model.Record), which is also
+			// what the parser makes of a record without a Const.
+			if r.Length > 0 {
+				def := r.Default
+				if len(def) == 0 {
+					def = make([]byte, r.Length)
+				}
+				pr.Consts = []*Const{{ByteOffset: "0", Data: formatOctets(def)}}
 			}
 			vs.RecordDataList.ParameterRecordDataItems = append(vs.RecordDataList.ParameterRecordDataItems, pr)
 		}
