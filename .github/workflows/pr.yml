@@ -50,9 +50,17 @@ jobs:
       contents: read
     uses: ./.github/workflows/kernel-mrp.yml
 
+  gsdml-schemas:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/gsdml-schemas.yml
+    secrets: inherit
+
   required:
     name: OT Fabric Required Checks
-    needs: [changes, docs, ci, interop, kernel-mrp]
+    needs: [changes, docs, ci, interop, kernel-mrp, gsdml-schemas]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -61,4 +69,4 @@ jobs:
         with:
           needs: ${{ toJSON(needs) }}
           required: changes docs
-          required-for-code: ci interop kernel-mrp
+          required-for-code: ci interop kernel-mrp gsdml-schemas

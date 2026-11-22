@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSHA256 is the SHA-256 of the catalog the types were generated from.
-const CatalogSHA256 = "288ef027b32944ced2dcdb9e37eb883568dcec31d0d4f3e358f6d07c73ae1d4f"
+const CatalogSHA256 = "5a68f204067e91dddff48c32d4fe0fc0ba066755fdfa3fb36d705b1aa59a7f2d"
 
 // Namespace is the XML namespace of GSDML documents.
 const Namespace = "http://www.profibus.com/GSDML/2003/11/DeviceProfile"
@@ -24,13 +24,13 @@ var simpleTypes = map[string]simpleType{
 	"ConformanceClass": {doc: "The PROFINET conformance class.", enum: map[string]bool{"A": true, "B": true, "C": true, "D": true}},
 	"Consistency":      {doc: "The consistency of IO data.", enum: map[string]bool{"Item consistency": true, "All items consistency": true}},
 	"DataType":         {doc: "The data type of a DataItem or Ref.", enum: map[string]bool{"Bit": true, "BitArea": true, "Boolean": true, "Integer8": true, "Integer16": true, "Integer32": true, "Integer64": true, "Unsigned8": true, "Unsigned16": true, "Unsigned32": true, "Unsigned64": true, "Float32": true, "Float64": true, "Date": true, "TimeOfDay with date indication": true, "TimeOfDay without date indication": true, "TimeDifference with date indication": true, "TimeDifference without date indication": true, "NetworkTime": true, "NetworkTimeDifference": true, "VisibleString": true, "OctetString": true, "Unsigned8+Unsigned8": true, "Float32+Unsigned8": true, "Float32+Status8": true, "Float64+Status8": true, "Unsigned8_S": true, "OctetString_S": true, "Unsigned16_S": true, "Integer16_S": true, "Integer32_S": true, "Unsigned32_S": true, "N2": true, "N4": true, "V2": true, "L2": true, "R2": true, "T2": true, "T4": true, "D2": true, "E2": true, "C4": true, "X2": true, "X4": true, "Unipolar2.16": true, "OctetString2+Unsigned8": true, "UTF8String": true, "F_MessageTrailer4Byte": true, "F_MessageTrailer5Byte": true, "TimeStamp": true, "TimeStampDifference": true, "TimeStampDifferenceShort": true, "UnicodeString8": true, "61131_STRING": true, "61131_WSTRING": true, "Unsigned16+Unsigned8": true, "Integer16+Unsigned8": true, "Unsigned32+Unsigned8": true, "Integer32+Unsigned8": true}},
-	"ID":               {doc: "An identifier unique in the document.", pattern: regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_.\\-]*$")},
-	"IDRef":            {doc: "A reference to an ID.", pattern: regexp.MustCompile("^[A-Za-z_][A-Za-z0-9_.\\-]*$")},
+	"ID":               {doc: "An identifier (xsd:token in every schema version, so it may contain spaces).", collapse: true},
+	"IDRef":            {doc: "A reference to an ID (xsd:token, compared after collapsing white space).", collapse: true},
 	"Language":         {doc: "An ISO 639-1 language code.", pattern: regexp.MustCompile("^[a-z]{2}(-[A-Za-z]{2})?$")},
 	"MainFamily":       {doc: "The main device family.", enum: map[string]bool{"General": true, "Drives": true, "Switching Devices": true, "I/O": true, "Valves": true, "Controllers": true, "HMI": true, "Encoders": true, "NC/RC": true, "Gateway": true, "PLCs": true, "Ident Systems": true, "PA Profiles": true, "Network Components": true, "Sensors": true}},
 	"NetloadClass":     {doc: "The netload robustness class.", enum: map[string]bool{"I": true, "II": true, "III": true}},
 	"RTClasses":        {doc: "RT classes separated by blanks or semicolons.", pattern: regexp.MustCompile("^RT_CLASS_(1|2|3|UDP|STREAM_HI|STREAM_LO)([\\s;]+RT_CLASS_(1|2|3|UDP|STREAM_HI|STREAM_LO))*$")},
-	"SoftwareRelease":  {doc: "A software release such as V1.2.3.", pattern: regexp.MustCompile("^\\S+$")},
+	"SoftwareRelease":  {doc: "A software release such as V1.2.3 (xsd:token: \"V 1.2.3\" is valid too).", collapse: true},
 	"StartupMode":      {doc: "The startup modes of an interface.", pattern: regexp.MustCompile("^(Legacy|Advanced)(;(Legacy|Advanced))*$")},
 	"TokenList":        {doc: "Tokens separated by blanks or semicolons.", pattern: regexp.MustCompile("^[^\\s;]*([\\s;]+[^\\s;]+)*$")},
 	"Unsigned16":       {doc: "0..65535 in decimal or 0x hexadecimal.", uintBits: 16},
@@ -2188,7 +2188,7 @@ type InterfaceSubmoduleItem struct {
 	XMLName xml.Name `xml:"InterfaceSubmoduleItem"`
 	// ID is the attribute ID (ID, required).
 	ID string `xml:"ID,attr"`
-	// SubslotNumber is the attribute SubslotNumber (Unsigned16).
+	// SubslotNumber is the attribute SubslotNumber (Unsigned16, default 32768 when absent).
 	SubslotNumber string `xml:"SubslotNumber,attr,omitempty"`
 	// TextID is the attribute TextId (IDRef, required).
 	TextID string `xml:"TextId,attr"`
@@ -2227,6 +2227,15 @@ type InterfaceSubmoduleItem struct {
 	// Unknown holds the child elements the catalog does not define,
 	// preserved (and written after the known ones).
 	Unknown []*Node `xml:",any"`
+}
+
+// subslotNumberOrDefault returns SubslotNumber, or its default "32768" when it is absent; "" when
+// the document gave it empty.
+func (x *InterfaceSubmoduleItem) subslotNumberOrDefault() string {
+	if x.SubslotNumber == "" && !emptyIn(x.empty, "SubslotNumber") {
+		return "32768"
+	}
+	return x.SubslotNumber
 }
 
 // trackedInterfaceSubmoduleItem lists the attributes of InterfaceSubmoduleItem whose emptiness parsing records.

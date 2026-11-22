@@ -1,7 +1,8 @@
 # GSDML schemas as an engineering asset: assessment and proposal
 
-Status: proposal, 2026-11-22. Nothing here is implemented beyond what
-"Done" lists. Where it needs a maintainer decision, it says so.
+Status: proposal, 2026-11-22; A1 to A4 implemented the same day.
+Nothing else here is implemented beyond what "Done" lists. Where it needs
+a maintainer decision, it says so.
 
 ## Done
 
@@ -17,6 +18,11 @@ Status: proposal, 2026-11-22. Nothing here is implemented beyond what
   `gsdml/schema/xsd-registry.json`: per version its files, sizes,
   checksums, namespaces, revision dates and imports, ordered by GSDML
   number (2.35 < 2.4 < 2.41), and what the catalog claims for it.
+- **A1 to A4** (below): IDs, ID references and `SoftwareRelease` are
+  `xsd:token`; `ToModel` takes the `SubslotNumber` default; the
+  differential test of `Validate` against xmllint
+  (`make gsdml-differential`) and `make gsdml-schemas-check`, which the
+  GSDML schemas workflow runs with `OTFABRIC_READ_TOKEN`.
 - **DataType legality** for all 18 versions
   ([GSDML-XSD-AUDIT.md](GSDML-XSD-AUDIT.md)), with V2.46's four new
   composites in the vocabulary.
@@ -32,10 +38,10 @@ against the schema version its `xsi:schemaLocation` names, and by
 version from V2.0 to V2.46 (V2.3: 19 files, V2.33: 18, V2.46: 1); 3 files
 name no version.
 
-| Result | Files |
+| Result | Files (after A1) |
 |---|---|
-| xmllint valid, `Validate` passes | 7 |
-| xmllint valid, `Validate` fails | **118** |
+| xmllint valid, `Validate` passes | 7 (11) |
+| xmllint valid, `Validate` fails | **118** (114, all by findings 2, 3, 6 and 11) |
 | xmllint invalid, `Validate` passes | 1 |
 | xmllint invalid, `Validate` fails | 1 |
 | no schema version named | 3 |
@@ -45,7 +51,7 @@ name no version.
 are false in almost every case. `ToModel` is not affected: it does not use
 `Validate`. The causes, by the number of files each one hits:
 
-1. **ID and IDRef are too narrow (97 files).** The catalog types `ID` and
+1. **ID and IDRef are too narrow (97 files; fixed by A1).** The catalog types `ID` and
    `IDRef` as `^[A-Za-z_][A-Za-z0-9_.\-]*$`. Every schema version types
    them as `base:IdT` and `base:RefIdT`, restrictions of `xsd:token`, which
    allow spaces: `"DAP 1"`, `"DIM IO"`, `"IRC5 Robot"` are legal. Relaxing
@@ -85,7 +91,7 @@ are false in almost every case. `ToModel` is not affected: it does not use
    `InterfaceSubmoduleItem/@SubslotNumber` 32768, …). The statement "0
    differences against v2.35" in LIMITATIONS.md and PI-MEMBERSHIP.md did
    not hold against this copy; both now say what `-xsd` reports.
-5. **A confirmed defect from finding 4.** A document that omits the
+5. **A confirmed defect from finding 4 (fixed by A2).** A document that omits the
    optional `InterfaceSubmoduleItem/@SubslotNumber` passes `Validate`, but
    `ToModel` fails with `malformed: SubslotNumber ""`; V2.35 says an absent
    value is 32768. The other defaults are read in the model as the
@@ -97,7 +103,7 @@ are false in almost every case. `ToModel` is not affected: it does not use
    `SystemDefinedChannelDiagItem` and `ProfileChannelDiagItem`; the
    catalog requires `ChannelDiagItem`, so a list of profile items only is
    rejected. The catalog's child notation has no choice.
-7. **Token values are not collapsed.** `SoftwareRelease/@Value` has the
+7. **Token values are not collapsed (fixed by A1).** `SoftwareRelease/@Value` has the
    pattern `^\S+$` in the catalog; the schema types it `TokenParameterT`
    (`xsd:token`), so `"V 11.7.0"` and `"V  1  2  1"` are valid (4 files).
 8. **One lenient case.** A V2.4 file with character content in
@@ -113,12 +119,24 @@ are false in almost every case. `ToModel` is not affected: it does not use
    schemas' "obsolete" annotations are not in it (finding of
    [GSDML-XSD-AUDIT.md](GSDML-XSD-AUDIT.md)). Any tool reading notes from
    it reads none.
+11. **A required attribute given empty is reported missing (3 files).**
+   `Text Value=""`, `OrderNumber Value=""` and `GraphicItem
+   GraphicFile=""` are valid (an empty `xsd:string` or `xsd:token`), but
+   `Validate` reports "missing required attribute". The differential
+   test found it after A1.
 
-Findings 1, 2, 3, 6 and 7 make `Validate` reject valid files. Finding 5 makes
-`ToModel` reject a valid file. These are correctness defects, not
+Findings 1, 2, 3, 6, 7 and 11 make `Validate` reject valid files.
+Finding 5 makes `ToModel` reject a valid file. These are correctness defects, not
 coverage gaps.
 
 ## Architecture recommendation
+
+> **Superseded (2026-11-22).** The maintainer set complete generation
+> from every schema version as the objective: generated types, codecs and
+> version-aware validators, deduplicated across versions, with no XSD at
+> run time. The volume of generated code is not an argument against it.
+> A separate proposal with measurements from the corpus replaces this
+> section. A1 to A4 stand; they are needed under either architecture.
 
 **Generated metadata, hand-written behaviour, in the existing pipeline.**
 The catalog-and-generator design is right for this repository; its inputs
@@ -188,10 +206,11 @@ is measured against the schemas. Cost: small (the harness used for this
 assessment). Run time: test only. Security: xmllint runs with `--nonet`
 on local files. Priority: 1.
 
-**A4. Committed derived facts are checked.** `scripts/gsdml-xsd-audit.sh
--check` already compares the registry and the audit with the schemas.
-Add it, with `gsdml-schemas-verify`, to a Make target the maintainer runs
-before a release (`make gsdml-schemas-check`). Priority: 2.
+**A4. Committed derived facts are checked.** `make gsdml-schemas-check`
+runs `gsdml-schemas-verify`, the differential test and
+`scripts/gsdml-xsd-audit.sh -check` (the registry and the audit against
+the schemas); the GSDML schemas workflow runs it on pull requests and
+weekly. Priority: 2. Done.
 
 ### Category B: strategic improvements
 
@@ -311,22 +330,16 @@ obsolescence must come from another source or not at all.
 
 ## What can be done now, and what needs a decision
 
-Can be done now, each as its own PR with a RELEASE.md entry:
+Done: A1 to A4. CI reads the private schemas with the organisation's
+`OTFABRIC_READ_TOKEN` (decided 2026-11-22); the job skips with a notice on
+pull requests from forks and Dependabot, which have no secrets.
 
-1. A1 (ID, IDRef and token types) with synthetic regression fixtures.
-2. A2 (SubslotNumber default).
-3. A3 (differential test behind a build tag, with an allowlist that names
-   each remaining disagreement and its finding).
-4. A4 (a Make target that checks the committed facts against the schemas).
+Can be done next without a decision: finding 11 (an empty required
+attribute is present, not missing), which needs only the existing empty
+attribute tracking applied to required attributes.
 
 Needs a maintainer decision:
 
-- **CI access to the private schemas.** A read-only token or deploy key as
-  a repository secret would let a scheduled or manually started job run
-  `gsdml-schemas-verify`, the audit check and the differential test. It
-  must never run on pull requests from forks. Without it, these checks
-  stay local, and the committed facts are checked only when the
-  maintainer runs them.
 - **The vendor corpus.** The 130 files are vendors' copyright and cannot
   be committed. A private corpus repository (as for SCL,
   otfabric/iec61850-scl-corpus) would make the differential test

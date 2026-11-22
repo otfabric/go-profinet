@@ -6,8 +6,8 @@
   "simpleTypes": {
     "string": {"doc": "Any text."},
     "token": {"doc": "A token without leading or trailing blanks.", "pattern": "^\\S(.*\\S)?$"},
-    "ID": {"doc": "An identifier unique in the document.", "pattern": "^[A-Za-z_][A-Za-z0-9_.\\-]*$"},
-    "IDRef": {"doc": "A reference to an ID.", "pattern": "^[A-Za-z_][A-Za-z0-9_.\\-]*$"},
+    "ID": {"doc": "An identifier (xsd:token in every schema version, so it may contain spaces).", "whiteSpace": "collapse"},
+    "IDRef": {"doc": "A reference to an ID (xsd:token, compared after collapsing white space).", "whiteSpace": "collapse"},
     "Unsigned8": {"doc": "0..255 in decimal or 0x hexadecimal.", "uint": 8},
     "Unsigned16": {"doc": "0..65535 in decimal or 0x hexadecimal.", "uint": 16},
     "Unsigned32": {"doc": "0..4294967295 in decimal or 0x hexadecimal.", "uint": 32},
@@ -17,7 +17,7 @@
     "ValueList": {"doc": "Unsigned values and ranges separated by blanks: \"1..4 6\".", "pattern": "^\\s*[0-9]+(\\.\\.[0-9]+)?(\\s+[0-9]+(\\.\\.[0-9]+)?)*\\s*$"},
     "TokenList": {"doc": "Tokens separated by blanks or semicolons.", "pattern": "^[^\\s;]*([\\s;]+[^\\s;]+)*$"},
     "Version": {"doc": "A version of the form V<major>.<minor>.", "pattern": "^V[0-9]+\\.[0-9]+$"},
-    "SoftwareRelease": {"doc": "A software release such as V1.2.3.", "pattern": "^\\S+$"},
+    "SoftwareRelease": {"doc": "A software release such as V1.2.3 (xsd:token: \"V 1.2.3\" is valid too).", "whiteSpace": "collapse"},
     "DataType": {"doc": "The data type of a DataItem or Ref.", "enum": [
       "Bit", "BitArea", "Boolean", "Integer8", "Integer16", "Integer32", "Integer64",
       "Unsigned8", "Unsigned16", "Unsigned32", "Unsigned64", "Float32", "Float64",
@@ -231,7 +231,7 @@
     {"name": "F_ParameterRecordDataItem", "doc": "PROFIsafe parameters; preserved, not interpreted.", "attrs": ["F_ParamDescCRC:Unsigned16!", "Index:Unsigned16!", "TransferSequence:Unsigned16"]},
     {"name": "SystemDefinedSubmoduleList", "children": ["InterfaceSubmoduleItem+", "PortSubmoduleItem*"]},
     {"name": "InterfaceSubmoduleItem", "doc": "The interface submodule (subslot 0x8000) with the RT properties.", "attrs": [
-      "ID:ID!", "SubslotNumber:Unsigned16", "TextId:IDRef!", "SubmoduleIdentNumber:Unsigned32Hex!", "SupportedRT_Classes:RTClasses",
+      "ID:ID!", "SubslotNumber:Unsigned16=32768", "TextId:IDRef!", "SubmoduleIdentNumber:Unsigned32Hex!", "SupportedRT_Classes:RTClasses",
       "SupportedProtocols:TokenList~", "DCP_HelloSupported:Boolean", "PTP_BoundarySupported:Boolean",
       "DCP_BoundarySupported:Boolean", "DelayMeasurementSupported:Boolean", "IsochroneModeSupported:Boolean", "Writeable_IM_Records:ValueList",
       "NetworkComponentDiagnosisSupported:Boolean", "MulticastBoundarySupported:Boolean"],

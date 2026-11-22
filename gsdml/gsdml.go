@@ -302,6 +302,19 @@ type simpleType struct {
 	pattern  *regexp.Regexp
 	enum     map[string]bool
 	uintBits int
+	// collapse: an xsd:token type, whose value is collapseSpace of the
+	// attribute.
+	collapse bool
+}
+
+// collapseSpace applies the xsd:token white space rule: runs of the XML
+// white space characters (space, tab, CR, LF) become one space, and
+// leading and trailing ones are removed. Other Unicode spaces stay.
+func collapseSpace(s string) string {
+	if !strings.ContainsAny(s, " \t\r\n") {
+		return s
+	}
+	return strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r == ' ' || r == '\t' || r == '\r' || r == '\n' }), " ")
 }
 
 // Issue is a problem Validate found.
@@ -488,6 +501,9 @@ func (v *validator) attr(name, value, typ string, required bool) {
 		return
 	}
 	t := simpleTypes[typ]
+	if t.collapse {
+		value = collapseSpace(value)
+	}
 	switch {
 	case t.enum != nil && !t.enum[value]:
 		v.report("attribute %s: %q is not a %s", name, value, typ)
@@ -684,8 +700,9 @@ func (doc *Document) Text(id string) string {
 	if pl == nil {
 		return id
 	}
+	id = collapseSpace(id)
 	for i, t := range pl.Texts {
-		if t.TextID == id {
+		if collapseSpace(t.TextID) == id {
 			if textVisits != nil {
 				textVisits(i + 1)
 			}

@@ -13,6 +13,11 @@
 #                                     without network
 #   scripts/gsdml-schemas.sh dir      print the xsd/ directory, exit 1 when
 #                                     the schemas are not fetched
+#   scripts/gsdml-schemas.sh differential
+#                                     the differential test of
+#                                     gsdml.Validate against xmllint
+#                                     (gsdml/xsd_differential_test.go);
+#                                     GSDML_CORPUS adds a directory
 #
 # GSDML_SCHEMAS is DIR, an existing checkout (default .gsdml-schemas);
 # GSDML_SCHEMAS_REF the commit to use (default below).
@@ -36,6 +41,10 @@ dir)
 	[ -f "$DIR/xsd/SHA256SUMS" ] || exit 1
 	echo "$DIR/xsd"
 	;;
+differential)
+	[ -f "$DIR/xsd/SHA256SUMS" ] || { echo "gsdml-schemas: no schemas in $DIR: run scripts/gsdml-schemas.sh fetch or set GSDML_SCHEMAS" >&2; exit 1; }
+	GSDML_SCHEMAS_XSD=$(cd "$DIR/xsd" && pwd) go test -count=1 -tags gsdmlxsd -run TestXSDDifferential ./gsdml
+	;;
 verify)
 	[ -f "$DIR/xsd/SHA256SUMS" ] || { echo "gsdml-schemas: no schemas in $DIR: run scripts/gsdml-schemas.sh fetch or set GSDML_SCHEMAS" >&2; exit 1; }
 	if [ -d "$DIR/.git" ]; then
@@ -46,7 +55,7 @@ verify)
 	sh "$DIR/scripts/verify.sh" "$DIR/xsd"
 	;;
 *)
-	echo "usage: scripts/gsdml-schemas.sh fetch | verify | dir" >&2
+	echo "usage: scripts/gsdml-schemas.sh fetch | verify | dir | differential" >&2
 	exit 2
 	;;
 esac

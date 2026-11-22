@@ -54,6 +54,10 @@ type simpleType struct {
 	Pattern string   `json:"pattern"`
 	Enum    []string `json:"enum"`
 	Uint    int      `json:"uint"`
+	// WhiteSpace "collapse" is the xsd:token rule: runs of XML white space
+	// become one space and leading and trailing ones go, before the
+	// pattern and enumeration apply and before values are compared.
+	WhiteSpace string `json:"whiteSpace"`
 }
 
 type element struct {
@@ -231,6 +235,9 @@ func checkValue(t simpleType, v string) error {
 	if len(t.Enum) > 0 && !slices.Contains(t.Enum, v) {
 		return fmt.Errorf("%q is not in the enumeration", v)
 	}
+	if t.WhiteSpace == "collapse" {
+		v = strings.Join(strings.FieldsFunc(v, func(r rune) bool { return r == ' ' || r == '\t' || r == '\r' || r == '\n' }), " ")
+	}
 	if t.Pattern != "" && !regexp.MustCompile(t.Pattern).MatchString(v) {
 		return fmt.Errorf("%q does not match %s", v, t.Pattern)
 	}
@@ -305,6 +312,9 @@ func (c *catalog) check() error {
 		return fmt.Errorf("root %s is not defined", c.Root)
 	}
 	for n, t := range c.SimpleTypes {
+		if t.WhiteSpace != "" && t.WhiteSpace != "collapse" {
+			return fmt.Errorf("simple type %s: whiteSpace %q (only \"collapse\")", n, t.WhiteSpace)
+		}
 		if t.Pattern != "" {
 			if _, err := regexp.Compile(t.Pattern); err != nil {
 				return fmt.Errorf("type %s: %w", n, err)
@@ -402,6 +412,9 @@ func generateGo(c *catalog, raw []byte) ([]byte, error) {
 		}
 		if t.Uint > 0 {
 			p(", uintBits: %d", t.Uint)
+		}
+		if t.WhiteSpace == "collapse" {
+			p(", collapse: true")
 		}
 		p("},\n")
 	}

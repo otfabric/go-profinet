@@ -44,12 +44,14 @@ used only locally. Against V2.35 the modelled elements and attributes
 match in structure, but the catalog records none of the 56 schema defaults
 of those attributes, and its requiredness is V2.35's for every version.
 `Validate` is stricter than the schemas: of 125 public vendor files that
-`xmllint` accepts against their own schema version, it rejects 118, for
-IDs with spaces (the schemas' IDs are `xsd:token`), IDs it takes as unique
-across the document (the schemas scope uniqueness), and attributes that
-older versions do not require
-(docs/research/GSDML-SCHEMA-PROPOSAL.md). `ToModel` converts 129 of the
-130 files. `gsdml.Validate` is not PI's GSDML
+`xmllint` accepts against their own schema version, it rejects 114 (118
+before IDs became `xsd:token`), for IDs it takes as unique across the
+document (the schemas scope uniqueness), attributes and elements that
+older versions do not require, a choice of `ChannelDiagList` items it
+takes as one required item, and required attributes given empty, which
+it reports missing. `make gsdml-differential` checks that these are the
+only differences (docs/research/GSDML-SCHEMA-PROPOSAL.md). `ToModel`
+converts 129 of the 130 files. `gsdml.Validate` is not PI's GSDML
 checker, and a file it accepts may still fail PI's. Elements and attributes
 outside the catalog are kept verbatim and reported as unvalidated by
 `gsdml.Check`; its semantic rules are a small set, each with its basis

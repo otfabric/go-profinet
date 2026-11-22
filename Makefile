@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: gsdml-schemas gsdml-schemas-verify help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
+.PHONY: gsdml-schemas gsdml-schemas-verify gsdml-differential gsdml-schemas-check help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -116,6 +116,12 @@ gsdml-schemas: ## Fetch the GSDML reference schemas (private otfabric/profinet-g
 
 gsdml-schemas-verify: ## Check the fetched GSDML schemas: pinned commit, checksums, well-formedness, every DeviceProfile compiles (needs xmllint)
 	@sh scripts/gsdml-schemas.sh verify
+
+gsdml-differential: ## Validate the fixtures (and GSDML_CORPUS, a directory, if set) with xmllint and gsdml.Validate; fail on an unexplained difference
+	@sh scripts/gsdml-schemas.sh differential
+
+gsdml-schemas-check: gsdml-schemas-verify gsdml-differential ## Everything that needs the GSDML schemas: verify them, the differential test, the committed registry and audit against them
+	@sh scripts/gsdml-xsd-audit.sh -check
 
 generate: ## Generate the GSDML types and SCHEMA.md from gsdml/schema/catalog.json
 	@go generate ./gsdml

@@ -96,11 +96,28 @@ make gsdml-schemas          # clone it at the pinned commit into .gsdml-schemas/
 make gsdml-schemas-verify   # pinned commit, no local changes, checksums, well-formed, every DeviceProfile compiles
 ```
 
+```bash
+make gsdml-differential     # gsdml.Validate against xmllint on the fixtures (GSDML_CORPUS=DIR adds files)
+make gsdml-schemas-check    # verify, the differential test, and the committed registry and audit against the schemas
+```
+
 `scripts/gsdml-schemas.sh` holds the pinned commit (`GSDML_SCHEMAS_REF`
-overrides it); `GSDML_SCHEMAS` points at another checkout. The verify step
-needs libxml2's `xmllint` and runs it with `--nonet`: every import resolves
-in the checkout. Fetching needs read access to the private repository, so
-these targets are not part of `make check` or of CI.
+overrides it); `GSDML_SCHEMAS` points at another checkout. The checks need
+libxml2's `xmllint` and run it with `--nonet`: every import resolves in
+the checkout. Fetching needs read access to the private repository, so
+these targets are not part of `make check`; the GSDML schemas workflow
+(`.github/workflows/gsdml-schemas.yml`) runs `make gsdml-schemas
+gsdml-schemas-check` on pull requests and weekly with
+`OTFABRIC_READ_TOKEN`.
+
+The differential test (`gsdml/xsd_differential_test.go`, build tag
+`gsdmlxsd`) fails on any difference between xmllint and `Validate` that
+`gsdml/testdata/xsd-differential.json` does not explain: `known` lists
+the findings that explain an error on a schema-valid file (a message and
+path pattern, and for a requirement a newer version added, the version
+it starts with), `lenient` the schema-invalid files `Validate` accepts, by
+SHA-256. With a corpus, a known finding that explains nothing any more
+fails the test, so the list shrinks as the findings are fixed.
 
 ## Changing the catalog
 

@@ -64,6 +64,31 @@ registry of those schema files. API: additive (four DataType constants).
   gsdml-schemas-verify` checks it (checksums, well-formedness, every
   DeviceProfile compiles under `xmllint --nonet`). Both need access to the
   private repository and are not part of `make check`.
+- **Differential test.** `make gsdml-differential` validates every
+  fixture, and a local corpus (`GSDML_CORPUS`), with xmllint and with
+  `Validate`, and fails on a difference that
+  `gsdml/testdata/xsd-differential.json` does not explain by a known
+  finding. `make gsdml-schemas-check` runs it with the schema
+  verification and the check of the committed registry and audit; the
+  GSDML schemas workflow runs that on pull requests and weekly, with
+  `OTFABRIC_READ_TOKEN` (it skips with a notice where there are no
+  secrets).
+
+## Fixed
+
+- **IDs and ID references are `xsd:token`,** as in every GSDML schema
+  version: `Validate` accepts `"DAP 1"`, `"DIM IO"` and other IDs with
+  spaces, and compares IDs, references and text IDs after collapsing
+  white space (`"A  B"` and `"A B"` are the same ID, a duplicate if both
+  are declared). `SoftwareRelease` takes the same rule (`"V 11.7.0"`).
+  `ToModel` and `Document.Text` resolve references the same way. Of 125
+  public vendor files the schema accepts, `Validate` used to reject 118
+  and rejects 114: the rest are known findings, listed in
+  docs/research/GSDML-SCHEMA-PROPOSAL.md.
+- **`ToModel` takes an absent `InterfaceSubmoduleItem/@SubslotNumber` as
+  32768,** the default of every schema version from V2.1 (V2.0 fixes it
+  at 32768). It refused such a document with `ErrMalformed`. An empty
+  attribute is still refused.
 
 ## Changed
 
@@ -74,9 +99,9 @@ registry of those schema files. API: additive (four DataType constants).
 
 - LIMITATIONS.md and docs/PI-MEMBERSHIP.md no longer say the catalog has
   "0 differences against v2.35": `gengsdml -xsd` reports 56 schema
-  defaults it does not record. They now also state that `Validate`
-  rejects 118 of 125 public vendor files that xmllint accepts against
-  their own schema version (docs/research/GSDML-SCHEMA-PROPOSAL.md).
+  defaults it does not record. They now also state which schema-valid
+  files `Validate` still rejects, and why
+  (docs/research/GSDML-SCHEMA-PROPOSAL.md).
 
 ---
 

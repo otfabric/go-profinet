@@ -1,0 +1,18 @@
+{
+  "known": [
+    {"finding": "2: uniqueness is global, the schemas scope it", "message": "^ID \".*\" already used at "},
+    {"finding": "3: requiredness ignores the version", "path": "^DeviceAccessPointItem$", "message": "^missing required attribute DeviceAccessSupported$", "before": "2.25"},
+    {"finding": "3: requiredness ignores the version", "path": "^DeviceAccessPointItem$", "message": "^missing required attribute PNIO_Version$", "before": "2.3"},
+    {"finding": "3: requiredness ignores the version", "path": "^DeviceAccessPointItem$", "message": "^missing required attribute CheckDeviceID_Allowed$", "before": "2.31"},
+    {"finding": "3: requiredness ignores the version", "path": "^DeviceAccessPointItem$", "message": "^missing required attribute NameOfStationNotTransferable$", "before": "2.31"},
+    {"finding": "3: requiredness ignores the version", "path": "^(Virtual)?SubmoduleItem$", "message": "^missing required attribute MayIssueProcessAlarm$", "before": "2.32"},
+    {"finding": "3: requiredness ignores the version", "path": "^(Interface|Port)SubmoduleItem$", "message": "^missing required attribute ID$", "before": "2.25"},
+    {"finding": "3: requiredness ignores the version", "path": "^VirtualSubmoduleItem$", "message": "^missing required element ModuleInfo$", "before": "2.2"},
+    {"finding": "6: a choice is modelled as a requirement", "path": "^ChannelDiagList$", "message": "^missing required element ChannelDiagItem$"},
+    {"finding": "11: a required attribute given empty is reported missing", "path": "^(Text|OrderNumber|GraphicItem)$", "message": "^missing required attribute (Value|GraphicFile)$"}
+  ],
+  "lenient": {
+    "59854c0c054cb75a07342aec748760cce4f4e4a0b09f47f373580d4466a7af07": "testdata/otf-fixture-latin1.xml: vendor extension content (vnd:*) on purpose; Validate keeps it as unvalidated",
+    "a23f04f0be4c47d4b31cefb05d09c8b6ea2a8c99fa90ea117335e3daadcd2b11": "finding 8: character content in ModuleItemRef and Text, elements of empty content"
+  }
+}
