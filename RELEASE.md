@@ -40,6 +40,10 @@ TransferSequence, without writing anything.
 
 The rules from ISO 15745-4:2003/Amd 1:2006, Annex D are as the
 maintainer's review states them; the amendment is not in this repository.
+Siemens, "Creating a Device Description (GSD) file for PROFINET devices —
+Getting Started", 02/2024, A5E51228963-AC, states two of them as well:
+Consts must not overlap (§15.1), and a Ref's values are given by its
+ValueItemTarget and AllowedValues, or else only by its DataType (§15.2).
 
 ## Changes
 
@@ -76,6 +80,14 @@ maintainer's review states them; the amendment is not in this repository.
   ValueItem's values, and a ValueItem value that is no value of the
   field's DataType, as errors; a default outside the ValueItem's values as
   a warning.
+- Each ValueItem value is checked with the field's own encoder, so its
+  DataType and width: 300 is no value of an Unsigned8, -1 none of an
+  unsigned field, 2 none of a one-bit field (a `Check` error).
+- **`ParameterField.ValueItem`** keeps the ValueItemTarget, and
+  **`ValueItemMissing`** says it names no ValueItem of the file. Such a
+  field's permitted values are not known: `Set` refuses every value with
+  `ErrMalformed`, `Check` reports an error and `PlanParameters` refuses
+  the record, where before the field took any value of its DataType.
 - Two Consts that share octets are an error of `Check` (D.4.7.3), no
   longer a warning.
 - `ParameterRecord.Check` no longer warns about a field over a Const:

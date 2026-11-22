@@ -85,8 +85,19 @@ type ParameterField struct {
 	// value for it (Table D.31). Visible is not used.
 	Changeable bool `json:"changeable"`
 	Visible    bool `json:"visible"`
+	// ValueItem is the Ref's ValueItemTarget, the ID of a ValueItem of
+	// the file; empty when the Ref has none.
+	ValueItem string `json:"value_item,omitempty"`
+	// ValueItemMissing reports a ValueItemTarget that names no ValueItem
+	// of the file. The field's permitted values are then not known: Set
+	// refuses a value for it and Check reports it, rather than taking the
+	// field as unrestricted.
+	ValueItemMissing bool `json:"value_item_missing,omitempty"`
 	// Values are the texts the file's ValueItem (ValueItemTarget) assigns
-	// to values, in its order.
+	// to values, in its order. Without AllowedValues they are the
+	// permitted values; with neither, the DataType alone limits the value
+	// (Siemens, GSDML Getting Started V1.10, 02/2024, section 15.2;
+	// Table D.31 of ISO 15745-4:2003/Amd 1:2006, Annex D).
 	Values []ParameterValue `json:"values,omitempty"`
 	// Encodable reports whether Set can write the field: false for a
 	// DataType without a verified encoding (the _S, composite, time and
@@ -255,27 +266,35 @@ func (c *conv) parameterField(r *Ref) (ParameterField, error) {
 		}
 		f.Encodable = refDefaultEncoded[t]
 	}
-	f.Values = c.valueTexts(r.ValueItemTarget)
+	if f.ValueItem = collapseSpace(r.ValueItemTarget); f.ValueItem != "" {
+		var found bool
+		f.Values, found = c.valueTexts(f.ValueItem)
+		f.ValueItemMissing = !found
+	}
 	return f, nil
 }
 
-// valueTexts returns the assignments of the ValueItem with ID id.
-func (c *conv) valueTexts(id string) []ParameterValue {
+// valueTexts returns the assignments of the ValueItem with ID id; found is
+// false when the file has no such ValueItem. A ValueItem without
+// Assignments is found and has none.
+func (c *conv) valueTexts(id string) (out []ParameterValue, found bool) {
 	ap := c.doc.ProfileBody.ApplicationProcess
-	if id = collapseSpace(id); id == "" || ap.ValueList == nil {
-		return nil
+	if ap.ValueList == nil {
+		return nil, false
 	}
 	for _, vi := range ap.ValueList.ValueItems {
-		if collapseSpace(vi.ID) != id || vi.Assignments == nil {
+		if collapseSpace(vi.ID) != id {
 			continue
 		}
-		var out []ParameterValue
+		if vi.Assignments == nil {
+			return nil, true
+		}
 		for _, a := range vi.Assignments.Assigns {
 			out = append(out, ParameterValue{Content: a.Content, Text: c.text(a.TextID)})
 		}
-		return out
+		return out, true
 	}
-	return nil
+	return nil, false
 }
 
 // Field returns the index of the field with ID key, or else of the only
@@ -329,7 +348,8 @@ func (r *ParameterRecord) Field(key string) (int, error) {
 // profinet.ErrUnsupported for a DataType without a verified encoding, an
 // AllowedValues of a string or an OctetString (not compared) or beyond
 // what is compared (see Check); and profinet.ErrMalformed for an
-// AllowedValues that is not a SignedOrFloatValueListT.
+// AllowedValues that is not a SignedOrFloatValueListT, and for every value
+// of a field whose ValueItemTarget names no ValueItem (ValueItemMissing).
 func (r *ParameterRecord) Set(rec []byte, i int, value string) error {
 	if i < 0 || i >= len(r.Fields) {
 		return fmt.Errorf("gsdml: %w: record %d has no field %d", profinet.ErrInvalidConfig, r.Index, i)
@@ -569,8 +589,9 @@ const (
 	// declarations).
 	RuleParameterDefault = "parameter-default"
 	// RuleParameterAllowedValues: an AllowedValues that is not a
-	// SignedOrFloatValueListT, a ValueItem value that is no value of the
-	// field's DataType, or an AllowedValues that is not a subset of the
+	// SignedOrFloatValueListT, a ValueItemTarget that names no ValueItem, a
+	// ValueItem value that the field cannot hold (its DataType and width),
+	// or an AllowedValues that is not a subset of the
 	// values of the field's ValueItem (errors; Table D.31), or an
 	// AllowedValues this package does not compare (unvalidated).
 	RuleParameterAllowedValues = "parameter-allowed-values"
@@ -663,11 +684,14 @@ func (r *ParameterRecord) Check() []Issue {
 		if aerr == nil && f.AllowedValues != "" && !isStringType(f.DataType) && !f.inAllowed(f.Default, ranges) {
 			add(i, SeverityWarning, RuleParameterDefault, "DefaultValue %q of field %q is not in its AllowedValues %q", clip(f.Default), clip(f.Name), clip(f.AllowedValues))
 		}
+		if f.ValueItemMissing {
+			add(i, SeverityError, RuleParameterAllowedValues, "field %q: ValueItemTarget %q names no ValueItem of the file", clip(f.Name), clip(f.ValueItem))
+		}
 		if f.AllowedValues == "" && len(f.Values) > 0 && !f.assigned(f.Default) {
 			add(i, SeverityWarning, RuleParameterDefault, "DefaultValue %q of field %q is not one of the values of its ValueItem", clip(f.Default), clip(f.Name))
 		}
 		if aerr == nil {
-			for _, msg := range f.valueItemIssues(ranges) {
+			for _, msg := range f.valueItemIssues(ranges, ref, scratch) {
 				add(i, SeverityError, RuleParameterAllowedValues, "field %q: %s", clip(f.Name), msg)
 			}
 		}
@@ -722,6 +746,9 @@ func (r *ParameterRecord) itemName(item int) string {
 // is compared without rounding; a float at the precision of its DataType
 // (inAllowed).
 func (f *ParameterField) allowed(value string) error {
+	if f.ValueItemMissing {
+		return fmt.Errorf("gsdml: %w: ValueItemTarget %q names no ValueItem: the field's permitted values are not known", profinet.ErrMalformed, clip(f.ValueItem))
+	}
 	if f.AllowedValues == "" {
 		if len(f.Values) > 0 && !f.assigned(value) {
 			// Without AllowedValues, the values a ValueItem assigns are
@@ -780,21 +807,27 @@ const maxSubsetValues = 1 << 16
 // value of its DataType, and, with an AllowedValues, the allowed values the
 // ValueItem does not assign: AllowedValues must be a subset of the values
 // of the ValueItem (Table D.31). It returns the messages.
-func (f *ParameterField) valueItemIssues(ranges []valueRange) []string {
-	if len(f.Values) == 0 || isStringType(f.DataType) {
+//
+// Each Content is written through the field's encoder into scratch, a
+// record of the field's record, so that it is checked for the field's type
+// and width as Set checks a value: 300 is no Unsigned8, -1 no unsigned
+// value, 2 no Bit.
+func (f *ParameterField) valueItemIssues(ranges []valueRange, ref *Ref, scratch []byte) []string {
+	if len(f.Values) == 0 {
 		return nil
 	}
 	var out []string
 	set := make(map[string]bool, len(f.Values))
 	for _, a := range f.Values {
-		c, ok := f.numeric(a.Content)
-		if !ok {
-			out = append(out, fmt.Sprintf("ValueItem value %q is not a %s", clip(a.Content), f.DataType))
+		if err := putRef(scratch, ref, a.Content, "ValueItem value"); err != nil {
+			out = append(out, fmt.Sprintf("ValueItem value %q is no value of the field: %v", clip(a.Content), err))
 			continue
 		}
-		set[c.RatString()] = true
+		if c, ok := f.numeric(a.Content); ok {
+			set[c.RatString()] = true
+		}
 	}
-	if f.AllowedValues == "" {
+	if f.AllowedValues == "" || isStringType(f.DataType) {
 		return out
 	}
 	for _, r := range ranges {

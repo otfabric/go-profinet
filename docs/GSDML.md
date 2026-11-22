@@ -227,8 +227,15 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
   schema V1.0 to V2.46 (`ValueItemReferenceT` in V1.0 to V2.1,
   `ParameterRecordDataT/Ref` in V2.2 and V2.25, `RecordDataRefT` from
   V2.3).
-- `Values` are the texts of the field's `ValueItem` (`ValueItemTarget`):
-  the `Assign` of each value, for a tool to show and to offer.
+- `Values` are the texts of the field's `ValueItem` (`ValueItemTarget`,
+  kept in `ValueItem`): the `Assign` of each value, for a tool to show and
+  to offer. A ValueItemTarget that names no ValueItem of the file sets
+  `ValueItemMissing`: the field's permitted values are then not known, so
+  `Set` refuses every value with `ErrMalformed` and `Check` reports an
+  error, rather than taking the field as unrestricted. Siemens, "Creating a
+  Device Description (GSD) file for PROFINET devices — Getting Started",
+  02/2024, A5E51228963-AC, §15.2: without ValueItemTarget and
+  AllowedValues "the value range is limited only by the data type".
 - `Set` writes one value into a record, in the lexical form of a
   DefaultValue, with the encoder `ToModel` uses for defaults. The other
   octets, and the other bits of a Bit or BitArea octet, are not changed. A
@@ -293,7 +300,8 @@ for _, is := range r.Check() {        // overlaps, AllowedValues, encodings: see
     DefaultValue outside the field's own AllowedValues or, without them,
     not a value of its ValueItem (warnings);
   - `parameter-allowed-values`: an AllowedValues not of the schemas' form,
-    a ValueItem value that is no value of the DataType, an AllowedValues
+    a ValueItemTarget that names no ValueItem, a ValueItem value that the
+    field's encoder refuses (its DataType and width), an AllowedValues
     that is not a subset of the ValueItem's values (errors), or one that is
     not compared: on a string field, with more than
     4096 values, a mantissa of more than 128 digits or an exponent beyond
