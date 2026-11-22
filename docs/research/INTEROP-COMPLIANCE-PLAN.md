@@ -198,11 +198,14 @@ package in §14.
 ### D6 — record structure checks missing (robustness, P3)
 
 - **Problems:**
-  - Overlapping Const and Ref areas are not detected.
+  - Overlapping Const and Ref areas: `ParameterRecord.Check` reports
+    them (a warning; whether the specification allows them is not
+    known), and `Encode` refuses values for two overlapping fields.
+    `gsdml.Check` of a document does not report them yet.
   - AllowedValues and ValueItem are not used by ToModel, so a default
     outside AllowedValues is accepted. `SubmoduleParameters` reports
-    both, and `ParameterRecord.Set` refuses a value outside
-    AllowedValues; the defaults themselves are still not checked.
+    both, `ParameterRecord.Set` refuses a value outside AllowedValues, and
+    `ParameterRecord.Check` warns about a default outside them.
   - A BitArea cannot span octets. That matches Table D.31 as we read it
     (VERIFIED against the issue #74 research); re-check it against the
     V2.4x XSD.

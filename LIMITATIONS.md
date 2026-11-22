@@ -139,9 +139,14 @@ the same DataTypes are refused and the same policies apply (zero padding,
 the OctetString form, hexadecimal integers). `Changeable` and `Visible` are
 reported, not enforced: the schemas declare them without saying what a
 device or a tool does with them. `AllowedValues` is compared for numeric,
-Bit, BitArea and Boolean fields only. Overlapping fields are not detected:
-setting one changes the octets of the other. A default outside its own
-`AllowedValues` is accepted, as `ToModel` accepts it. The golden octets of
+Bit, BitArea and Boolean fields only. Fields that share bits, with each
+other or with a Const, are reported by `ParameterRecord.Check` as a
+warning, not refused: no source this package has says whether the GSDML
+specification allows it. `Encode` refuses two given values for such
+fields; `Set` of one changes the bits of the other. A default outside its
+own `AllowedValues` is a warning of `Check`; `ToModel` and `Encode` keep
+it. `Field` falls back to a field's name, which is the text of the primary
+language, when the file's Refs have no IDs (before V2.3). The golden octets of
 the tests are derived by hand from the encodings; no engineering tool or
 captured parameter write has confirmed them.
 DataType legality by context is known for the 18 versions from V1.0 to

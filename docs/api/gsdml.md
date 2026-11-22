@@ -60,6 +60,32 @@ const (
 Rules of the issues. The catalog rules come from the independent catalog; the semantic rules each state their basis.
 
 ```go
+const (
+	// RuleParameterLayout: a field or a Const outside the record, a field
+	// whose Length or bits do not agree with its DataType, or a Default
+	// not of the record's Length (an error).
+	RuleParameterLayout = "parameter-layout"
+	// RuleParameterOverlap: two fields, or a field and a Const, share bits
+	// (a warning: no source this package has states whether the GSDML
+	// specification allows it; the field written last decides the bits).
+	RuleParameterOverlap = "parameter-overlap"
+	// RuleParameterDefault: a DefaultValue that does not encode (an error),
+	// or is outside the field's AllowedValues (a warning: consistency of
+	// the file's own declarations).
+	RuleParameterDefault = "parameter-default"
+	// RuleParameterAllowedValues: an AllowedValues that is not a
+	// SignedOrFloatValueListT (an error), or one this package does not
+	// compare (unvalidated).
+	RuleParameterAllowedValues = "parameter-allowed-values"
+	// RuleParameterEncoding: a field whose DataType has no verified
+	// encoding (unvalidated).
+	RuleParameterEncoding = "parameter-encoding"
+)
+```
+
+Rules of the issues ParameterRecord.Check reports.
+
+```go
 const MaxDocumentSize = 64 << 20
 ```
 
@@ -425,13 +451,15 @@ type ParameterField struct {
 	Values []ParameterValue `json:"values,omitempty"`
 	// Encodable reports whether Set can write the field: false for a
 	// DataType without a verified encoding (the _S, composite, time and
-	// PROFIdrive types), as for a DefaultValue in ToModel.
+	// PROFIdrive types), as for a DefaultValue in ToModel. It is reported
+	// only: Set decides from DataType.
 	Encodable bool `json:"encodable"`
-
 }
 ```
 
 ParameterField is a field of a parameter record (a Ref).
+
+A field is plain data: Set writes it where its exported fields say, so a ParameterRecord read back from its JSON, or changed by its caller, encodes as it reads. Check reports a field whose Length or bits do not agree with its DataType, and Set refuses it.
 
 BitOffset, BitLength, Changeable and Visible take the defaults of PI's GSDML schemas when the file does not give them: BitOffset 0, BitLength 1, Changeable and Visible true. These are the defaults of the Ref of a ParameterRecordDataItem in every schema V1.0 to V2.46 (ValueItemReferenceT in V1.0 to V2.1, ParameterRecordDataT/Ref in V2.2 and V2.25, RecordDataRefT from V2.3).
 
@@ -468,13 +496,29 @@ SubmoduleParameters describes the parameter records of a submodule: the submodul
 
 It returns an error matching profinet.ErrNotFound when the DAP, the module or the submodule does not exist, and profinet.ErrMalformed for a record ToModel refuses as malformed. A field without a verified encoding is not an error: it is not Encodable, and its record has no Default.
 
+#### func (ParameterRecord) Check
+
+```go
+func (r *ParameterRecord) Check() []Issue
+```
+
+Check reports what makes the record unfit to build records from, beyond the schema: see the RuleParameter rules. SubmoduleParameters already refuses a malformed layout or a DefaultValue that does not encode, so for its records Check reports overlaps, AllowedValues, and fields without a verified encoding; it checks a record from elsewhere (its JSON) in full. The issues' Path is "ParameterRecordDataItem\[index]/Ref\[i]" or ".../Const\[k]", with i and k counted from 0.
+
 #### func (ParameterRecord) Encode
 
 ```go
 func (r *ParameterRecord) Encode(values map[int]string) ([]byte, error)
 ```
 
-Encode builds the record from its Default with the values of the fields given by their index set, as Set does. It returns an error matching profinet.ErrUnsupported when the record has no Default.
+Encode builds the record from its Default with the values of the fields given by their index set, as Set does. It returns an error matching profinet.ErrUnsupported when the record has no Default, and profinet.ErrInvalidConfig when its Default is not of its Length or two of the given fields share bits: which one would be written last is not a choice Encode makes.
+
+#### func (ParameterRecord) Field
+
+```go
+func (r *ParameterRecord) Field(key string) (int, error)
+```
+
+Field returns the index of the field with ID key, or else of the only field with Name key. IDs exist from schema V2.3; a name is the text of the primary language, and two fields can share one. It returns an error matching profinet.ErrNotFound when no field has that ID or name, and profinet.ErrInvalidConfig when several fields have that name and none that ID.
 
 #### func (ParameterRecord) Set
 
@@ -482,9 +526,57 @@ Encode builds the record from its Default with the values of the fields given by
 func (r *ParameterRecord) Set(rec []byte, i int, value string) error
 ```
 
-Set writes value into the field i of rec, a record of r's Length: in the lexical form of a DefaultValue of the field's DataType ("12", "-3", "1.5", "true", "0x01,0x02" for an OctetString, a string as it is). The octets and bits outside the field are not changed.
+Set writes value into the field i of rec, a record of r's Length: in the lexical form of a DefaultValue of the field's DataType ("12", "-3", "1.5", "true", "0x01,0x02" for an OctetString, a string as it is). The octets and bits outside the field are not changed. SetUint, SetInt, SetFloat, SetBool, SetString and SetBytes take Go values instead.
 
-It returns an error matching profinet.ErrInvalidConfig for a value that does not fit the field or is outside its AllowedValues, and profinet.ErrUnsupported for a field that is not Encodable or whose AllowedValues this package does not compare (AllowedValues of a string, an OctetString).
+It returns an error matching profinet.ErrInvalidConfig for a value that does not fit the field or is outside its AllowedValues, and for a field whose Length or bits do not agree with its DataType; profinet.ErrUnsupported for a DataType without a verified encoding, an AllowedValues of a string or an OctetString (not compared) or beyond what is compared (see Check); and profinet.ErrMalformed for an AllowedValues that is not a SignedOrFloatValueListT.
+
+#### func (ParameterRecord) SetBool
+
+```go
+func (r *ParameterRecord) SetBool(rec []byte, i int, v bool) error
+```
+
+SetBool writes v into the field i, a Boolean, as Set does.
+
+#### func (ParameterRecord) SetBytes
+
+```go
+func (r *ParameterRecord) SetBytes(rec []byte, i int, v []byte) error
+```
+
+SetBytes writes v into the field i, an OctetString, as Set does: zero-padded to the field's Length, and refused when longer.
+
+#### func (ParameterRecord) SetFloat
+
+```go
+func (r *ParameterRecord) SetFloat(rec []byte, i int, v float64) error
+```
+
+SetFloat writes v into the field i, a Float32 or a Float64, as Set does. For a Float32, v is rounded to the nearest Float32, and AllowedValues is compared with the rounded value, the one written.
+
+#### func (ParameterRecord) SetInt
+
+```go
+func (r *ParameterRecord) SetInt(rec []byte, i int, v int64) error
+```
+
+SetInt writes v into the field i, an Integer8 to Integer64, as Set does.
+
+#### func (ParameterRecord) SetString
+
+```go
+func (r *ParameterRecord) SetString(rec []byte, i int, v string) error
+```
+
+SetString writes v into the field i, a VisibleString or a UTF8String, as Set does: zero-padded to the field's Length, and refused when longer.
+
+#### func (ParameterRecord) SetUint
+
+```go
+func (r *ParameterRecord) SetUint(rec []byte, i int, v uint64) error
+```
+
+SetUint writes v into the field i, an Unsigned8 to Unsigned64, a Bit or a BitArea, as Set does.
 
 ### type ParameterValue
 

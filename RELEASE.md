@@ -26,6 +26,67 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.16.0
+
+**Date:** 2026-11-22
+**Previous release:** v0.15.0
+
+## Summary
+
+The parameter records of v0.15.0 hardened before a parameterization plan
+and profinetctl build on them: a described field is plain data that
+encodes as it reads, also after a JSON round trip; records are checked as
+a whole (layout, overlaps, defaults against AllowedValues); fields are
+found by ID or name and set from Go values.
+
+## Changes
+
+### Added
+
+- **`ParameterRecord.Check()`** reports what makes a record unfit to
+  build records from, as `[]gsdml.Issue` with the new rules
+  `parameter-layout`, `parameter-overlap`, `parameter-default`,
+  `parameter-allowed-values` and `parameter-encoding`
+  (`RuleParameter*`). Fields that share bits, with each other or with a
+  Const, are a warning: whether the GSDML specification allows them is
+  not known (LIMITATIONS.md).
+- **`ParameterRecord.Field(key)`** finds a field by ID, or by a name only
+  one field has.
+- **Typed setters** `SetUint`, `SetInt`, `SetFloat`, `SetBool`,
+  `SetString` and `SetBytes` write a Go value as `Set` writes its lexical
+  form, and refuse a field of another DataType with `ErrInvalidConfig`.
+
+### Fixed
+
+- `Set` and `Encode` of a `ParameterRecord` read back from JSON
+  dereferenced a nil pointer: a field kept the GSDML Ref it was described
+  from in an unexported field, which JSON drops. A field is now encoded
+  from its exported fields only.
+- `Set` accepted a value that matched an early value of an AllowedValues
+  whose later values were malformed. The whole list is parsed first.
+
+### Breaking
+
+Consumer assessment: v0.15.0, which added these types, was released the
+same day; no otfabric consumer uses them yet (profinetctl and
+profinet-interop do not call `SubmoduleParameters`). gorelease reports no
+incompatible API change; the changes are in behaviour:
+
+- `Set` writes a field where its exported `ByteOffset`, `BitOffset`,
+  `BitLength`, `Length` and `DataType` say, rather than where the file's
+  Ref said; a field whose Length or bits do not agree with its DataType
+  is refused with `ErrInvalidConfig`. `Encodable` is reported only.
+- An AllowedValues is read in the form of the schemas' pattern only: a
+  hexadecimal, fractional or `+`-signed value, or a separator other than
+  one space, is `ErrMalformed`; an exponent beyond ±400 or more than 4096
+  values is `ErrUnsupported`.
+- A Float32 value is compared with AllowedValues after it is rounded to a
+  Float32, the value written.
+- `Encode` refuses values for two fields that share bits
+  (`ErrInvalidConfig`), and a Default not of the record's Length.
+
+---
+
 ## v0.15.0
 
 **Date:** 2026-11-22
