@@ -70,6 +70,14 @@ registry of those schema files. API: additive (four DataType constants).
 - `gsdml.CatalogSHA256` changes with the catalog (as in v0.13.0, a
   consumer that compares it with a stored value sees a new one).
 
+## Corrected documentation
+
+- LIMITATIONS.md and docs/PI-MEMBERSHIP.md no longer say the catalog has
+  "0 differences against v2.35": `gengsdml -xsd` reports 56 schema
+  defaults it does not record. They now also state that `Validate`
+  rejects 118 of 125 public vendor files that xmllint accepts against
+  their own schema version (docs/research/GSDML-SCHEMA-PROPOSAL.md).
+
 ---
 
 ## v0.13.0
