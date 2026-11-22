@@ -137,9 +137,11 @@ value that does not fit its parameter field or is outside its AllowedValues
 (`gsdml.ParameterRecord.Set` and `Encode`, `ErrInvalidConfig`, the record
 left as it was), as well as a field whose Length or bits do not agree with
 its DataType, a Go value of another kind than the field's DataType (the
-typed setters), two values for fields that share bits, or a name two
-fields share (`ParameterRecord.Field`); a field without a verified encoding
-or an AllowedValues on a string field, with more than 4096 values or an
+typed setters), two values for fields that share bits, a Const outside
+the record or a field Default that does not encode (`Encode`), or a name
+two fields share or an ID two fields have (`ParameterRecord.Field`); a
+field without a verified encoding or an AllowedValues on a string field,
+with more than 4096 values, a mantissa of more than 128 digits or an
 exponent beyond ±400 (`ErrUnsupported`); an AllowedValues that is not a
 SignedOrFloatValueListT (`ErrMalformed`); a
 PDRealData record whose MultipleBlockHeaders nest more than four deep. The same element, size and depth bounds (256 levels) apply to
