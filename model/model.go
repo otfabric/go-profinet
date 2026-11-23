@@ -57,7 +57,8 @@ const maxRecordOctets = 16 << 20
 
 // Record is a parameter record of a submodule.
 type Record struct {
-	// Index is the record index, 0..0x7FFF for user records.
+	// Index is the record index: 0..0x7FFF for user records, 0xB000..0xBFFF
+	// for the records of a profile (pnio.Index.IsSubmoduleRecordIndex).
 	Index pnio.Index `json:"index"`
 	// Name names the record in GSDML.
 	Name string `json:"name,omitempty"`
@@ -369,8 +370,8 @@ func (d *Device) Validate() error {
 			}
 			idx := map[pnio.Index]bool{}
 			for _, r := range s.Records {
-				if !r.Index.IsUserIndex() {
-					err = bad("slot %d subslot %d: record index %s outside 0..0x7FFF", m.slot, s.Subslot, r.Index)
+				if !r.Index.IsSubmoduleRecordIndex() {
+					err = bad("slot %d subslot %d: record index %s outside 0..0x7FFF and 0xB000..0xBFFF", m.slot, s.Subslot, r.Index)
 				}
 				if idx[r.Index] {
 					err = bad("slot %d subslot %d: record index %s twice", m.slot, s.Subslot, r.Index)

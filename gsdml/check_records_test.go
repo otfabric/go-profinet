@@ -97,4 +97,15 @@ func TestCheckRecords(t *testing.T) {
 	if len(issuesOf(rep, RuleRecordIndex, SeverityWarning)) != 1 || len(issuesOf(rep, RuleParameterRecord, SeverityError)) != 0 {
 		t.Fatalf("index %v", rep.Issues)
 	}
+	// A record of the profile range 0xB000-0xBFFF: no record-index
+	// warning, and the record rules apply to it as to a user record.
+	rep = check(append(sequenced, `<ParameterRecordDataItem Index="2"`, `<ParameterRecordDataItem Index="0xB600"`)...)
+	if len(issuesOf(rep, RuleRecordIndex, SeverityWarning)) != 0 || rep.Err() != nil {
+		t.Fatalf("index 0xB600 %v", rep.Issues)
+	}
+	is = issuesOf(check(append(sequenced, `<ParameterRecordDataItem Index="1" Length="4">`, `<ParameterRecordDataItem Index="46592" Length="4">`,
+		`ValueItemTarget="V_MODE"`, `ValueItemTarget="V_NONE"`)...), RuleParameterAllowedValues, SeverityError)
+	if len(is) != 1 || !strings.HasPrefix(is[0].Path, sub+"/RecordDataList/ParameterRecordDataItem[46592]/Ref[") {
+		t.Fatalf("0xB600 ValueItem %v", is)
+	}
 }

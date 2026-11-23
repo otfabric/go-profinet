@@ -133,7 +133,7 @@ func (d *Device) readRecordData(ctx context.Context, a *ar, q pnio.ReadReq) ([]b
 		return b, nil
 	default:
 	}
-	if q.Index.IsUserIndex() {
+	if q.Index.IsSubmoduleRecordIndex() {
 		d.mu.Lock()
 		v, ok := d.records[recKey{q.Slot, q.Subslot, q.Index}]
 		v = append([]byte(nil), v...)
@@ -225,7 +225,7 @@ func (d *Device) writeRecordData(ctx context.Context, a *ar, q pnio.WriteReq, da
 	if handled, err := d.writeMRP(q, data); handled {
 		return err
 	}
-	if !q.Index.IsUserIndex() {
+	if !q.Index.IsSubmoduleRecordIndex() {
 		return errInvalidIndex
 	}
 	if r, ok := sm.Record(q.Index); ok {

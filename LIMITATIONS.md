@@ -36,6 +36,18 @@ Restrictions:
 - The API is an address only. No profile is implemented: what IO-Link
   (0x4E01) or another profile defines for its submodules, records or
   diagnoses is the application's.
+- A submodule's records may use the user range 0x0000–0x7FFF and the
+  profile range of a subslot, 0xB000–0xBFFF (Wireshark's PNIO dissector:
+  "Reserved for Profiles (subslot specific)"; IEC 61158-6-10 not read).
+  A record there is a plain parameter record: the model's Length, Default
+  and ReadOnly, written at Connect like a user record. No profile's
+  protocol is implemented, PROFIdrive's parameter access (0xB02E, 0xB02F)
+  included: a Handler implements it. The other ranges Wireshark reserves
+  for profiles (slot 0xD000–0xDFFF, AR 0xEC00–0xEFFF, API 0xF400–0xF7FF,
+  device 0xFC00–0xFFFF) are not a submodule's records and stay refused in
+  a model. No independent device accepts a record of 0xB000–0xBFFF: the
+  evidence is tshark's decoding of the wire format and go-profinet's own
+  controller and device.
 - A subslot number is unique in its slot whatever the API
   (`model.Device.Validate`), so the device can find a submodule by slot and
   subslot; a device that numbers subslots per API cannot be modelled.

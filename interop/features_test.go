@@ -402,6 +402,12 @@ func TestCodecDecoders(t *testing.T) {
 		add(ipv4UDP(dst, src, [4]byte{10, 0, 0, 2}, [4]byte{10, 0, 0, 1}, rpc.Port, 49152,
 			rpcPDU(rpc.TypeResponse, pnio.OpRead, pnio.AppendNDRResponse(nil, binary.LittleEndian, pnio.Status{}, pnio.DefaultArgsMaximum, append(rr.Append(nil), r.data...)))))
 	}
+	// A Write of a record of the profile range 0xB000-0xBFFF (0xB600, the
+	// master configuration of the IO-Link Wireless masters' GSDML files)
+	// in API 0x4E01, its 16 octets the last of the frame.
+	wp := pnio.WriteReq{Seq: 21, ARUUID: car.AR.ARUUID, API: apiIOL, Slot: 1, Subslot: 2, Index: 0xB600, Length: uint32(len(profileRecord))}
+	add(ipv4UDP(src, dst, [4]byte{10, 0, 0, 1}, [4]byte{10, 0, 0, 2}, 49152, rpc.Port,
+		rpcPDU(rpc.TypeRequest, pnio.OpWrite, pnio.AppendNDRRequest(nil, binary.LittleEndian, pnio.DefaultArgsMaximum, append(wp.Append(nil), profileRecord...)))))
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -413,6 +419,33 @@ func TestCodecDecoders(t *testing.T) {
 	e.expect("tshark fields codecs.pcap: APIData (0xF821) NumberOfAPIs 2, APIs 0x00000000 and 0x00004e01",
 		len(fr) == 1 && slices.Equal(fr[0].Fields["pn_io.number_of_apis"], []string{"2"}) &&
 			slices.Equal(fr[0].Fields["pn_io.api"], []string{"0x00000000", "0x00000000", "0x00004e01"}), "%+v", fr)
+	// The values tshark decodes from the Write of 0xB600: the header's
+	// API, slot, subslot, index and RecordDataLength, and the record data
+	// as user data of the profile range (pn.user_data, which Wireshark's
+	// dissector gives for 0xB000-0xBFFF; its value is the string "data").
+	// The filter matches the frame only if its last 16 octets are the
+	// record's: tshark 4.0 has no raw-octets operator for a field.
+	fr = e.tsharkFields("codecs.pcap", "pn_io.index == 0xb600 && frame[-16:] == "+colonHex(profileRecord),
+		"pn_io.api", "pn_io.slot_nr", "pn_io.subslot_nr", "pn_io.index", "pn_io.record_data_length", "pn.user_data")
+	e.expect("tshark fields codecs.pcap: Write of profile record 0xB600 in API 0x00004e01, slot 1, subslot 2, RecordDataLength 16, its 16 octets as profile user data",
+		len(fr) == 1 && slices.Equal(fr[0].Fields["pn_io.api"], []string{"0x00004e01"}) &&
+			slices.Equal(fr[0].Fields["pn_io.slot_nr"], []string{"0x0001"}) && slices.Equal(fr[0].Fields["pn_io.subslot_nr"], []string{"0x0002"}) &&
+			slices.Equal(fr[0].Fields["pn_io.index"], []string{"0xb600"}) && slices.Equal(fr[0].Fields["pn_io.record_data_length"], []string{"16"}) &&
+			slices.Equal(fr[0].Fields["pn.user_data"], []string{"data"}), "%+v", fr)
+}
+
+// profileRecord is the data of the Write of 0xB600 in codecs.pcap: the
+// defaults of the master configuration record of an IO-Link Wireless
+// master's GSDML file (0x80 0x01, MasterID 1, ..., PairingTimeout 5).
+var profileRecord = []byte{0x80, 0x01, 0x01, 0x10, 0xFF, 0xFF, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xF0, 0xFF, 0x00, 0x05}
+
+// colonHex writes octets as a display filter's byte string: "80:01:...".
+func colonHex(b []byte) string {
+	s := make([]string, len(b))
+	for i, c := range b {
+		s[i] = fmt.Sprintf("%02x", c)
+	}
+	return strings.Join(s, ":")
 }
 
 // writeFrames writes Ethernet frames, padded to the minimum size, into a

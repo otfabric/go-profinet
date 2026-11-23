@@ -66,6 +66,7 @@ against (see [the matrix](#interop-matrix)).
 | Record | Read | Write | Interop |
 |--------|:---:|:---:|---------|
 | User records of the model (0x0000–0x7FFF), application records (Handler) | ✅ | ✅ | p-net, pnio-rs, profinet-py |
+| Profile records of the model (0xB000–0xBFFF), application records (Handler) | ✅ | ✅ | none: tshark decodes a Write of 0xB600 in API 0x4E01 with its values (`TestCodecDecoders`, profinet-interop v0.11.0 `fields`); p-net hands the application indexes up to 0x7FFF only, by its source (`pf_fspm_cm_read_ind`, `pf_cmwrr_write`: `PF_IDX_USER_MAX`), so it answers a read of 0xB600 with invalid index (not run) |
 | ReadImplicit (no AR) | ✅ | n/a | profinet-py, p-net |
 | WriteMultiple (0xE040) | ✅ | ✅ | p-net |
 | I&M0 (0xAFF0), I&M1–4 (0xAFF1–0xAFF4), I&M0FilterData (0xF840) | ✅ | ✅ (I&M1–4) | p-net, pnio-rs, profinet-py |

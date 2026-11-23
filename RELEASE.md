@@ -26,6 +26,74 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.22.0
+
+**Date:** 2026-11-23
+**Previous release:** v0.21.0
+
+## Summary
+
+Parameter records in the profile range 0xB000–0xBFFF, the record indexes
+of a subslot that Wireshark's PNIO dissector classifies as "Reserved for
+Profiles (subslot specific)": a model and a GSDML file may have them,
+the controller writes them at Connect, the device serves and writes them,
+and the Handler gets the ones the model does not have, as it gets user
+records. Three IO-Link Wireless master GSDML files of the corpus (six
+device access points) declare records at 0xB600, 0xB701–0xB703 and 0xB900;
+`ToModel` refused them, it converts them now. The interop suite checks the
+values tshark decodes from a Write of 0xB600 in API 0x4E01, against
+profinet-interop v0.11.0; no independent device accepts such a record.
+
+## Changes
+
+### Added
+
+- **`pnio.Index.IsSubslotProfileIndex`** (0xB000–0xBFFF) and
+  **`pnio.Index.IsSubmoduleRecordIndex`** (the user range or the profile
+  range: the indexes of a submodule's own records). `IsUserIndex` is
+  unchanged: the two categories stay apart.
+
+### Changed
+
+- **`model.Device.Validate`** accepts a record in 0xB000–0xBFFF; an index
+  in 0x8000–0xAFFF or 0xC000–0xFFFF is still refused, with the message
+  "outside 0..0x7FFF and 0xB000..0xBFFF".
+- **`gsdml.ToModel`** converts a `ParameterRecordDataItem` of the profile
+  range (Length, Consts, Refs, defaults, as a user record); one of the
+  other ranges above 0x7FFF is still `ErrMalformed`. `FromModel` writes
+  it.
+- **`gsdml.Check`**: the `record-index` warning is for a record outside
+  both ranges; the record rules (`parameter-record`, ValueItems,
+  TransferSequence, ...) now also check the records of the profile range,
+  which they skipped.
+- **Device**: a model record of the profile range is served by a read
+  and written like a user record (ReadOnly refuses, Length is checked, the
+  Handler is told with `Modeled`); a read or write of an index of the
+  range the model lacks goes to the Handler. Records in other ranges and
+  the device's own records (I&M, identification, diagnosis, ...) behave as
+  before.
+- The GSDML corpus run counts a converted DAP with a record of the
+  profile range under "converted" in its fidelity table.
+
+### Breaking
+
+Consumer assessment: a model or a GSDML file without records in
+0xB000–0xBFFF, and a Handler that ignores those indexes, see no change.
+
+- **`device.Handler.WriteRecord`** is called for a write of an index in
+  0xB000–0xBFFF that is not a model record; the device answered it
+  "invalid index" without calling the Handler. `NopHandler` still answers
+  "invalid index". A Handler that accepts every write it gets now also
+  accepts those.
+- **Accepted input**: a model with a record in 0xB000–0xBFFF, which
+  `Validate` refused, is valid, and a GSDML file with one, which `ToModel`
+  refused as malformed, converts: its records are written at Connect.
+- **`gsdml.Check`** of such a file has no `record-index` warning, and
+  may have record errors it did not report (the rules ran only on user
+  records).
+
+---
+
 ## v0.21.0
 
 **Date:** 2026-11-23

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/otfabric/go-profinet"
+	"github.com/otfabric/go-profinet/pnio"
 )
 
 // Severity grades an issue of a GSDML document.
@@ -85,7 +86,8 @@ const (
 	// controller cannot tell them apart (local heuristic).
 	RuleIdentNumber = "ident-number"
 	// RuleRecordIndex: a parameter record outside the user index range
-	// 0x0000-0x7FFF (the range of record indexes a device defines).
+	// 0x0000-0x7FFF and the profile range 0xB000-0xBFFF (the record
+	// indexes of a submodule, pnio.Index.IsSubmoduleRecordIndex).
 	RuleRecordIndex = "record-index"
 	// RuleSubslot: an interface or port submodule outside 0x8000-0x8FFF,
 	// the subslots PROFINET reserves for them (as p-net and pnio-rs number
@@ -312,8 +314,8 @@ func (v *validator) checkSubmodules(path func() string, items []*VirtualSubmodul
 		}
 		if sm.RecordDataList != nil {
 			for _, r := range sm.RecordDataList.ParameterRecordDataItems {
-				if idx, err := parseUint(r.Index, 16); err == nil && idx > 0x7FFF {
-					v.warn(p, RuleRecordIndex, "parameter record index %#x is outside the user range 0x0000-0x7FFF", idx)
+				if idx, err := parseUint(r.Index, 16); err == nil && !pnio.Index(idx).IsSubmoduleRecordIndex() {
+					v.warn(p, RuleRecordIndex, "parameter record index %#x is outside the user range 0x0000-0x7FFF and the profile range 0xB000-0xBFFF", idx)
 				}
 				for i, ref := range r.Refs {
 					v.checkDataType(func() string {
@@ -337,7 +339,7 @@ func (v *validator) checkRecords(path func() string, items []*ParameterRecordDat
 	base := path() + "/RecordDataList/"
 	recs := make([]ParameterRecord, 0, len(items))
 	for _, r := range items {
-		if idx, err := parseUint(r.Index, 16); err != nil || idx > 0x7FFF {
+		if idx, err := parseUint(r.Index, 16); err != nil || !pnio.Index(idx).IsSubmoduleRecordIndex() {
 			continue // the record-index rule and the structure report it
 		}
 		v.conv.budget = MaxModelRecordOctets

@@ -133,9 +133,26 @@ func TestSubmoduleTypeIO(t *testing.T) {
 }
 
 func TestIndexIsUserIndex(t *testing.T) {
-	for i, want := range map[Index]bool{0: true, 0x7FFF: true, 0x8000: false, IndexIM0: false, 0xFFFF: false} {
+	for i, want := range map[Index]bool{0: true, 0x7FFF: true, 0x8000: false, IndexIM0: false, 0xB600: false, 0xFFFF: false} {
 		if i.IsUserIndex() != want {
 			t.Errorf("Index(0x%04X).IsUserIndex() = %v", uint16(i), !want)
+		}
+	}
+}
+
+// The profile range of a subslot, 0xB000..0xBFFF, and the indexes of a
+// submodule's own records: user and profile, not PROFINET's.
+func TestIndexProfileRange(t *testing.T) {
+	for _, c := range []struct {
+		i                 Index
+		profile, ownIndex bool
+	}{
+		{0, false, true}, {0x7FFF, false, true}, {0x8000, false, false}, {IndexIM0, false, false}, {0xAFFF, false, false},
+		{0xB000, true, true}, {0xB02E, true, true}, {0xB600, true, true}, {0xB900, true, true}, {0xBFFF, true, true},
+		{IndexExpectedIdentSlot, false, false}, {0xD000, false, false}, {IndexAPIData, false, false}, {0xFFFF, false, false},
+	} {
+		if c.i.IsSubslotProfileIndex() != c.profile || c.i.IsSubmoduleRecordIndex() != c.ownIndex {
+			t.Errorf("%s: profile %v, own %v", c.i, c.i.IsSubslotProfileIndex(), c.i.IsSubmoduleRecordIndex())
 		}
 	}
 }

@@ -45,14 +45,16 @@ type RecordRequest struct {
 // method is not recovered.
 type Handler interface {
 	// ReadRecord reads a record the device does not serve itself: user
-	// indices (0..0x7FFF) without a model.Record, and indices the device
-	// does not know. Return a *pnio.StatusError (see RecordError) to
+	// indices (0..0x7FFF) and profile indices (0xB000..0xBFFF) without a
+	// model.Record, and indices the device does not know. Return a *pnio.StatusError (see RecordError) to
 	// answer with a PNIO status.
 	ReadRecord(ctx context.Context, r RecordRequest) ([]byte, error)
 
-	// WriteRecord writes such a record. Writes of model.Records are
-	// validated and stored by the device and then reported here; an error
-	// rejects the write.
+	// WriteRecord writes a user or profile record (indices 0..0x7FFF and
+	// 0xB000..0xBFFF); the device answers writes of other indices it does
+	// not know with "invalid index". Writes of model.Records are validated
+	// (ReadOnly, Length) and stored by the device and then reported here
+	// with Modeled set; an error rejects the write.
 	WriteRecord(ctx context.Context, r RecordRequest, data []byte) error
 
 	// PrmEnd reports the end of parameterization of an AR. When it
