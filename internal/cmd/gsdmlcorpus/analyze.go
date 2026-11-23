@@ -98,9 +98,15 @@ type DAPRow struct {
 	// model.Submodule is of API 0 (model.API), so a converted DAP with
 	// APIs converted without them.
 	APIs []string `json:"apis,omitempty"`
+	// PluggedAPIs are those of APIs that are in the DAP's plugged
+	// configuration: the DAP's submodules and the modules its references
+	// put in slots, not the modules only in the catalog.
+	PluggedAPIs []string `json:"plugged_apis,omitempty"`
 	// HighRecords counts the records of the DAP and of the modules it can
-	// use whose index is above 0x7FFF.
-	HighRecords int `json:"high_records,omitempty"`
+	// use whose index is a number above 0x7FFF; InvalidRecords those whose
+	// index is no Unsigned16.
+	HighRecords    int `json:"high_records,omitempty"`
+	InvalidRecords int `json:"invalid_records,omitempty"`
 	// Failures are the references whose reference or module does not
 	// convert.
 	Failures []RefFailure `json:"failures,omitempty"`
@@ -125,7 +131,7 @@ func analyze(data []byte) FileResult {
 	}
 	r.Modules, r.Submodules, r.Records = sizes(doc)
 	r.APIs, r.RecordIndexes = map[string]int{}, map[string]int{}
-	forEachSubmodule(doc, nil, func(sm *gsdml.VirtualSubmoduleItem) {
+	forEachSubmodule(doc, func(sm *gsdml.VirtualSubmoduleItem) {
 		if a := apiOf(sm); a != "" {
 			r.APIs[a]++
 		}
@@ -140,6 +146,7 @@ func analyze(data []byte) FileResult {
 		r.RecordIndexes = nil
 	}
 	r.Check, r.SchemaVersion = checkCounts(data)
+	ix := indexOf(doc)
 	reps, err := gsdml.AnalyzeModels(doc)
 	if err != nil {
 		r.Stage = StageModel
@@ -148,21 +155,56 @@ func analyze(data []byte) FileResult {
 	}
 	for _, rep := range reps {
 		row := DAPRow{DAP: rep.DAP, Outcome: rep.Outcome, Blocked: rep.Blocked, Error: rep.Error, DAPError: rep.DAPError, References: len(rep.Modules)}
-		apis := map[string]bool{}
-		forEachSubmodule(doc, &rep.DAP, func(sm *gsdml.VirtualSubmoduleItem) {
-			if a := apiOf(sm); a != "" {
-				apis[a] = true
+		// The DAP's own submodules are plugged; a module is plugged when
+		// its reference has configured slots, else only in the catalog.
+		apis, plugged := map[string]bool{}, map[string]bool{}
+		visit := func(l *gsdml.VirtualSubmoduleList, isPlugged bool) {
+			if l == nil {
+				return
 			}
-			for _, rec := range recordsOf(sm) {
-				if indexRange(rec.Index) != userRange {
-					row.HighRecords++
+			for _, sm := range l.VirtualSubmoduleItems {
+				if a := apiOf(sm); a != "" {
+					apis[a] = true
+					if isPlugged {
+						plugged[a] = true
+					}
+				}
+				for _, rec := range recordsOf(sm) {
+					switch indexRange(rec.Index) {
+					case userRange:
+					case invalidIndex:
+						row.InvalidRecords++
+					default:
+						row.HighRecords++
+					}
 				}
 			}
-		})
-		for a := range apis {
-			row.APIs = append(row.APIs, a)
 		}
-		sort.Strings(row.APIs)
+		if d := ix.daps[rep.DAP]; d != nil {
+			visit(d.VirtualSubmoduleList, true)
+		}
+		seen := map[*gsdml.ModuleItem]bool{}
+		for _, m := range rep.Modules {
+			mi := ix.modules[strings.Join(strings.Fields(m.Target), " ")]
+			if mi == nil {
+				continue
+			}
+			p := len(m.ConfiguredSlots) > 0
+			// A module several references name counts once, plugged when
+			// one of them plugs it.
+			if seen[mi] && !p {
+				continue
+			}
+			if seen[mi] {
+				for a := range apisOf(mi) {
+					plugged[a] = true
+				}
+				continue
+			}
+			seen[mi] = true
+			visit(mi.VirtualSubmoduleList, p)
+		}
+		row.APIs, row.PluggedAPIs = sortedSet(apis), sortedSet(plugged)
 		for _, m := range rep.Modules {
 			if len(m.ConfiguredSlots) > 0 {
 				row.Plugged++
@@ -261,15 +303,73 @@ func sizes(doc *gsdml.Document) (modules, submodules, records int) {
 	return modules, submodules, records
 }
 
-// userRange is the record index range a device defines.
-const userRange = "0x0000-0x7FFF"
+// userRange is the record index range a device defines; invalidIndex
+// the range of an index that is no Unsigned16.
+const (
+	userRange    = "0x0000-0x7FFF"
+	invalidIndex = "invalid"
+)
+
+// docIndex finds the DAPs and modules of a document as ToModel does: the
+// first DAP of an ID, the last module of an ID (IDs compared after
+// collapsing white space).
+type docIndex struct {
+	daps    map[string]*gsdml.DeviceAccessPointItem
+	modules map[string]*gsdml.ModuleItem
+}
+
+func indexOf(doc *gsdml.Document) docIndex {
+	ix := docIndex{daps: map[string]*gsdml.DeviceAccessPointItem{}, modules: map[string]*gsdml.ModuleItem{}}
+	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil {
+		return ix
+	}
+	ap := doc.ProfileBody.ApplicationProcess
+	if ap.DeviceAccessPointList != nil {
+		for _, d := range ap.DeviceAccessPointList.DeviceAccessPointItems {
+			if ix.daps[d.ID] == nil {
+				ix.daps[d.ID] = d
+			}
+		}
+	}
+	if ap.ModuleList != nil {
+		for _, m := range ap.ModuleList.ModuleItems {
+			ix.modules[strings.Join(strings.Fields(m.ID), " ")] = m
+		}
+	}
+	return ix
+}
+
+// apisOf is the set of APIs other than 0 of a module's submodules.
+func apisOf(m *gsdml.ModuleItem) map[string]bool {
+	out := map[string]bool{}
+	if m.VirtualSubmoduleList != nil {
+		for _, sm := range m.VirtualSubmoduleList.VirtualSubmoduleItems {
+			if a := apiOf(sm); a != "" {
+				out[a] = true
+			}
+		}
+	}
+	return out
+}
+
+func sortedSet(m map[string]bool) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
 
 // indexRange is the range of a record index, by 4096 above 0x7FFF.
 func indexRange(index string) string {
 	idx, err := gsdml.ParseUint16(index)
 	switch {
 	case err != nil:
-		return "invalid"
+		return invalidIndex
 	case idx <= 0x7FFF:
 		return userRange
 	}
@@ -300,9 +400,8 @@ func recordsOf(sm *gsdml.VirtualSubmoduleItem) []*gsdml.ParameterRecordDataItem 
 }
 
 // forEachSubmodule calls fn for the virtual submodules of the document's
-// DAPs and modules, or with dap set, of that DAP and the modules its
-// references name (the last module of an ID, as ToModel takes it).
-func forEachSubmodule(doc *gsdml.Document, dap *string, fn func(*gsdml.VirtualSubmoduleItem)) {
+// DAPs and modules.
+func forEachSubmodule(doc *gsdml.Document, fn func(*gsdml.VirtualSubmoduleItem)) {
 	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil {
 		return
 	}
@@ -314,32 +413,12 @@ func forEachSubmodule(doc *gsdml.Document, dap *string, fn func(*gsdml.VirtualSu
 			}
 		}
 	}
-	modules := map[string]*gsdml.ModuleItem{}
-	if ap.ModuleList != nil {
-		for _, m := range ap.ModuleList.ModuleItems {
-			modules[strings.Join(strings.Fields(m.ID), " ")] = m
-		}
-	}
 	if ap.DeviceAccessPointList != nil {
 		for _, d := range ap.DeviceAccessPointList.DeviceAccessPointItems {
-			if dap != nil && d.ID != *dap {
-				continue
-			}
 			each(d.VirtualSubmoduleList)
-			if dap == nil || d.UseableModules == nil {
-				continue
-			}
-			seen := map[*gsdml.ModuleItem]bool{}
-			for _, ref := range d.UseableModules.ModuleItemRefs {
-				if m := modules[strings.Join(strings.Fields(ref.ModuleItemTarget), " ")]; m != nil && !seen[m] {
-					seen[m] = true
-					each(m.VirtualSubmoduleList)
-				}
-			}
-			break // the first DAP of an ID, as ToModel takes it
 		}
 	}
-	if dap == nil && ap.ModuleList != nil {
+	if ap.ModuleList != nil {
 		for _, m := range ap.ModuleList.ModuleItems {
 			each(m.VirtualSubmoduleList)
 		}
@@ -398,6 +477,12 @@ type Fidelity struct {
 	FilesAPI     int `json:"files_api"`
 	DAPsAPI      int `json:"daps_api"`
 	ConvertedAPI int `json:"converted_api"`
+	// DAPsPluggedAPI and ConvertedPluggedAPI count the same for an API in
+	// the DAP's plugged configuration, not only in a catalog module: the
+	// DAPs whose converted model, as plugged, addresses a submodule with
+	// the wrong API.
+	DAPsPluggedAPI      int `json:"daps_plugged_api"`
+	ConvertedPluggedAPI int `json:"converted_plugged_api"`
 	// APIs counts the files by API.
 	APIs map[string]int `json:"apis"`
 	// FilesHighRecords and DAPsHighRecords count the files and DAPs with
@@ -456,7 +541,7 @@ func Summarize(results []FileResult) Summary {
 		high := false
 		for k, n := range r.RecordIndexes {
 			s.Fidelity.RecordIndexes[k] += n
-			if k != userRange {
+			if k != userRange && k != invalidIndex {
 				high = true
 			}
 		}
@@ -503,6 +588,12 @@ func Summarize(results []FileResult) Summary {
 				s.Fidelity.DAPsAPI++
 				if d.Outcome == gsdml.OutcomeConverted {
 					s.Fidelity.ConvertedAPI++
+				}
+			}
+			if len(d.PluggedAPIs) > 0 {
+				s.Fidelity.DAPsPluggedAPI++
+				if d.Outcome == gsdml.OutcomeConverted {
+					s.Fidelity.ConvertedPluggedAPI++
 				}
 			}
 			if d.HighRecords > 0 {
@@ -570,8 +661,9 @@ func Markdown(s Summary, source string) string {
 	}
 	f := s.Fidelity
 	w("\n## Fidelity\n\n| What the model does not carry | Files | DAPs | of them converted |\n|---|---|---|---|\n")
-	w("| a submodule of an API other than 0 (the model has API 0 only) | %d | %d | %d |\n", f.FilesAPI, f.DAPsAPI, f.ConvertedAPI)
-	w("| a record above 0x7FFF (ToModel refuses it) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
+	w("| a submodule of an API other than 0, in the DAP or a module it can use (the model has API 0 only) | %d | %d | %d |\n", f.FilesAPI, f.DAPsAPI, f.ConvertedAPI)
+	w("| … of them in the plugged configuration (the DAP's submodules, modules in slots) | | %d | %d |\n", f.DAPsPluggedAPI, f.ConvertedPluggedAPI)
+	w("| a record whose index is a number above 0x7FFF (ToModel refuses it) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
 	if len(f.APIs) > 0 {
 		w("\n| API | Files |\n|---|---|\n")
 		for _, k := range sortedKeys(f.APIs) {

@@ -18,8 +18,9 @@
 // collector (GOMEMLIMIT, -memlimit), which is not a hard limit: a file
 // whose live data exceeds it can still use more. A file that times out,
 // panics or exits is reported as a crash. Each child hashes the octets it
-// analyses; a file whose SHA-256 is not the one the index names is
-// reported as integrity, not analysed as that file.
+// reads and checks them against the index's SHA-256 before the analysis:
+// a file that is not the one the index names is reported as integrity and
+// not analysed.
 //
 // The results name files and quote error messages, which can hold values
 // of the vendor's file: they stay local, like the corpus. A regression
@@ -80,6 +81,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gsdmlcorpus", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	one := flags.String("one", "", "analyse one file and print its result (the child process)")
+	want := flags.String("sha256", "", "with -one: the SHA-256 the file must have; a file that has another is not analysed")
 	cache := flags.String("cache", "", "a corpus-fetch cache: read its index.jsonl")
 	dir := flags.String("dir", "", "a directory: analyse every .xml file under it")
 	out := flags.String("out", "", "write the results as JSON to this file")
@@ -91,7 +93,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *one != "" {
-		return runOne(*one, stdout, stderr)
+		return runOne(*one, *want, stdout, stderr)
 	}
 	if flags.NArg() > 0 || (*cache == "") == (*dir == "") || *jobs < 1 || *timeout <= 0 {
 		diag(stderr, "usage: gsdmlcorpus (-cache DIR | -dir DIR) [-out FILE] [-md FILE] [-timeout D] [-jobs N]")
@@ -101,11 +103,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	var err error
 	source, indexSum := "", ""
 	if *cache != "" {
-		inputs, err = fromIndex(*cache)
+		inputs, indexSum, err = fromIndex(*cache)
 		source = "corpus-fetch cache"
-		if b, rerr := readBounded(filepath.Join(*cache, "index.jsonl")); rerr == nil {
-			indexSum = sha256Hex(b)
-		}
 	} else {
 		inputs, err = fromDir(*dir)
 		source = "directory"
@@ -163,15 +162,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 // runOne analyses one file and prints its FileResult as JSON.
-func runOne(path string, stdout, stderr io.Writer) int {
+func runOne(path, want string, stdout, stderr io.Writer) int {
 	data, err := readBounded(path)
 	if err != nil {
 		diag(stderr, err)
 		return 2
 	}
 	start := time.Now()
-	r := analyze(data)
-	r.SHA256 = sha256Hex(data)
+	var r FileResult
+	// The digest is checked before the analysis: a file that is not the
+	// one the index names is not processed at all.
+	if got := sha256Hex(data); want != "" && got != want {
+		r = FileResult{Size: len(data), Stage: StageIntegrity, SHA256: got, DAPs: []DAPRow{},
+			Integrity: fmt.Sprintf("the file has sha256 %s, the index %s", got, want)}
+	} else {
+		r = analyze(data)
+		r.SHA256 = got
+	}
 	r.Millis = time.Since(start).Milliseconds()
 	if err := json.NewEncoder(stdout).Encode(r); err != nil {
 		diag(stderr, err)
@@ -226,7 +233,11 @@ func child(ctx context.Context, self string, in input, timeout time.Duration, me
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, self, "-one", in.Path)
+	args := []string{"-one", in.Path}
+	if in.SHA256 != "" {
+		args = append(args, "-sha256", in.SHA256)
+	}
+	cmd := exec.CommandContext(cctx, self, args...)
 	cmd.Env = append(os.Environ(), "GOMEMLIMIT="+memLimit)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &limited{w: &stdout, n: 64 << 20}, &limited{w: &stderr, n: 64 << 10}
@@ -247,9 +258,10 @@ func child(ctx context.Context, self string, in input, timeout time.Duration, me
 		return fail("no result: " + err.Error())
 	}
 	r.ID, r.Path, r.Member = in.ID, in.Path, in.Member
-	// r.SHA256 is that of the octets the child analysed. A file that no
-	// longer is what the index says is not counted as that file.
-	if in.SHA256 != "" && r.SHA256 != in.SHA256 {
+	// r.SHA256 is that of the octets the child read, which checked it
+	// before the analysis; checked again here, so that a result is never
+	// attributed to a file it is not of.
+	if in.SHA256 != "" && r.SHA256 != in.SHA256 && r.Stage != StageIntegrity {
 		f := fail("")
 		f.Crash, f.Stage, f.SHA256 = "", StageIntegrity, r.SHA256
 		f.Integrity = fmt.Sprintf("the analysed file has sha256 %s, the index %s", r.SHA256, in.SHA256)
@@ -281,18 +293,20 @@ func (l *limited) Write(p []byte) (int, error) {
 
 // fromIndex reads a corpus-fetch index.jsonl; paths in it are relative to
 // the cache and must stay inside it.
-func fromIndex(cache string) ([]input, error) {
-	f, err := os.Open(filepath.Join(cache, "index.jsonl"))
+//
+// It returns the SHA-256 of the octets it parsed: one read, so the digest
+// is that of the index the run used.
+func fromIndex(cache string) ([]input, string, error) {
+	data, err := readBounded(filepath.Join(cache, "index.jsonl"))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	defer func() { _ = f.Close() }()
 	root, err := filepath.Abs(cache)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	var inputs []input
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(bytes.NewReader(data))
 	sc.Buffer(make([]byte, 0, 64<<10), 1<<20)
 	for n := 1; sc.Scan(); n++ {
 		if len(bytes.TrimSpace(sc.Bytes())) == 0 {
@@ -302,21 +316,21 @@ func fromIndex(cache string) ([]input, error) {
 			ID, Path, SHA256, Member string
 		}
 		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
-			return nil, fmt.Errorf("index.jsonl line %d: %w", n, err)
+			return nil, "", fmt.Errorf("index.jsonl line %d: %w", n, err)
 		}
 		p := filepath.Join(root, filepath.FromSlash(e.Path))
 		if e.Path == "" || !strings.HasPrefix(p, root+string(filepath.Separator)) {
-			return nil, fmt.Errorf("index.jsonl line %d: path %q outside the cache", n, e.Path)
+			return nil, "", fmt.Errorf("index.jsonl line %d: path %q outside the cache", n, e.Path)
 		}
 		inputs = append(inputs, input{ID: e.ID, Path: p, Member: e.Member, SHA256: e.SHA256})
 	}
 	if err := sc.Err(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if len(inputs) == 0 {
-		return nil, errors.New("index.jsonl lists no file")
+		return nil, "", errors.New("index.jsonl lists no file")
 	}
-	return inputs, nil
+	return inputs, sha256Hex(data), nil
 }
 
 // fromDir lists the .xml files under dir, sorted.

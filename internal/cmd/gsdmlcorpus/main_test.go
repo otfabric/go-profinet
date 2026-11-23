@@ -86,13 +86,36 @@ func TestFidelity(t *testing.T) {
 	t.Parallel()
 	b := fixture(t, modular, `<VirtualSubmoduleItem ID="SM_DI16"`, `<VirtualSubmoduleItem API="19969" ID="SM_DI16"`)
 	r := analyze(b)
-	if r.APIs["0x4E01"] != 1 || r.RecordIndexes[userRange] == 0 || r.DAPs[0].Outcome != "converted" || !slicesEqual(r.DAPs[0].APIs, []string{"0x4E01"}) {
+	if r.APIs["0x4E01"] != 1 || r.RecordIndexes[userRange] == 0 || r.DAPs[0].Outcome != "converted" || !slicesEqual(r.DAPs[0].APIs, []string{"0x4E01"}) || !slicesEqual(r.DAPs[0].PluggedAPIs, []string{"0x4E01"}) {
 		t.Fatalf("%+v", r)
+	}
+	// MOD_DIO8 is only in DAP_1P's catalog, and plugged in slot 4 of
+	// DAP_2P: its API is in the plugged configuration of DAP_2P only.
+	cat := analyze(fixture(t, modular, `<VirtualSubmoduleItem ID="SM_DIO8"`, `<VirtualSubmoduleItem API="0x3A00" ID="SM_DIO8"`))
+	if d := cat.DAPs[0]; !slicesEqual(d.APIs, []string{"0x3A00"}) || len(d.PluggedAPIs) != 0 {
+		t.Fatalf("DAP_1P %+v", d)
+	}
+	if d := cat.DAPs[1]; !slicesEqual(d.PluggedAPIs, []string{"0x3A00"}) {
+		t.Fatalf("DAP_2P %+v", d)
+	}
+	if f := Summarize([]FileResult{cat}).Fidelity; f.DAPsAPI != 2 || f.ConvertedAPI != 2 || f.DAPsPluggedAPI != 1 || f.ConvertedPluggedAPI != 1 {
+		t.Fatalf("plugged %+v", f)
 	}
 	// A record above 0x7FFF: ToModel refuses the module.
 	h := analyze(fixture(t, modular, `<ParameterRecordDataItem Index="100" Length="2">`, `<ParameterRecordDataItem Index="46592" Length="2">`))
 	if h.RecordIndexes["0xB000-0xBFFF"] != 1 || h.DAPs[0].HighRecords != 1 || h.DAPs[0].Outcome == "converted" {
 		t.Fatalf("%+v", h)
+	}
+	// An index that is no number and one above 0x7FFF in one document:
+	// counted apart.
+	both := analyze(fixture(t, modular, `<ParameterRecordDataItem Index="100" Length="2">`, `<ParameterRecordDataItem Index="46592" Length="2">`,
+		`<ParameterRecordDataItem Index="101" Length="1">`, `<ParameterRecordDataItem Index="xyz" Length="1">`))
+	if d := both.DAPs[0]; d.HighRecords != 1 || d.InvalidRecords != 1 || both.RecordIndexes[invalidIndex] != 1 || both.RecordIndexes["0xB000-0xBFFF"] != 1 {
+		t.Fatalf("both %+v", both)
+	}
+	inval := analyze(fixture(t, modular, `<ParameterRecordDataItem Index="101" Length="1">`, `<ParameterRecordDataItem Index="xyz" Length="1">`))
+	if f := Summarize([]FileResult{inval}).Fidelity; inval.DAPs[0].HighRecords != 0 || f.FilesHighRecords != 0 || f.DAPsHighRecords != 0 {
+		t.Fatalf("invalid only %+v %+v", inval.DAPs[0], f)
 	}
 	if indexRange("x") != "invalid" || indexRange("0x7FFF") != userRange || indexRange("65535") != "0xF000-0xFFFF" {
 		t.Fatal("indexRange")
@@ -111,6 +134,30 @@ func TestFidelity(t *testing.T) {
 }
 
 func slicesEqual(a, b []string) bool { return strings.Join(a, ",") == strings.Join(b, ",") }
+
+// The child checks the digest before the analysis: a file that is not
+// the indexed one is not analysed at all.
+func TestRunOneDigest(t *testing.T) {
+	t.Parallel()
+	p := filepath.Join(t.TempDir(), "a.xml")
+	b := fixture(t, modular)
+	if err := os.WriteFile(p, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	want := strings.Repeat("0", 64)
+	if code := runOne(p, want, &out, &errb); code != 0 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var r FileResult
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil || r.Stage != StageIntegrity || r.SHA256 != sha256Hex(b) || r.Check != nil || len(r.DAPs) != 0 || !strings.Contains(r.Integrity, want) {
+		t.Fatalf("%v %+v", err, r)
+	}
+	out.Reset()
+	if code := runOne(p, sha256Hex(b), &out, &errb); code != 0 || !strings.Contains(out.String(), `"outcome":"converted"`) {
+		t.Fatalf("exit %d: %s", code, out.String())
+	}
+}
 
 func TestSignature(t *testing.T) {
 	t.Parallel()
