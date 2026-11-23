@@ -207,6 +207,43 @@ func parseAddr(s string, parts int) (slot, subslot uint16, index pnio.Index, dat
 	return
 }
 
+// splitAPI splits the API off a record address "API@slot:subslot:index":
+// without "@" the API is 0.
+func splitAPI(s string) (uint32, string, error) {
+	a, rest, ok := strings.Cut(s, "@")
+	if !ok {
+		return 0, s, nil
+	}
+	v, err := strconv.ParseUint(a, 0, 32)
+	if err != nil {
+		return 0, "", fmt.Errorf("%q: API: %w", s, err)
+	}
+	return uint32(v), rest, nil
+}
+
+// parseRecord parses "[API@]slot:subslot:index[:hex]".
+func parseRecord(s string, parts int) (controller.Record, []byte, error) {
+	api, rest, err := splitAPI(s)
+	if err != nil {
+		return controller.Record{}, nil, err
+	}
+	slot, sub, idx, data, err := parseAddr(rest, parts)
+	return controller.Record{API: api, Slot: slot, Subslot: sub, Index: idx}, data, err
+}
+
+// recordResult is the report entry of a record operation; it names the
+// API when it is not 0.
+func recordResult(op string, rec controller.Record) map[string]any {
+	r := map[string]any{"slot": rec.Slot, "subslot": rec.Subslot, "index": uint16(rec.Index)}
+	if op != "" {
+		r["op"] = op
+	}
+	if rec.API != 0 {
+		r["api"] = rec.API
+	}
+	return r
+}
+
 func runController(args []string) error {
 	fs := flag.NewFlagSet("controller", flag.ExitOnError)
 	iface := fs.String("i", "eth0", "interface")
@@ -235,10 +272,10 @@ func runController(args []string) error {
 	assignIP := fs.String("assign-ip", "", "assign this IP/prefix with DCP before connecting")
 	var outputs, reads, writes, params, implicit, wm, reparam multi
 	fs.Var(&outputs, "output", "slot:subslot:0:hex output data (repeatable)")
-	fs.Var(&reads, "read", "slot:subslot:index record to read while running (repeatable)")
-	fs.Var(&writes, "write", "slot:subslot:index:hex record to write while running (repeatable)")
+	fs.Var(&reads, "read", "[API@]slot:subslot:index record to read while running (repeatable)")
+	fs.Var(&writes, "write", "[API@]slot:subslot:index:hex record to write while running (repeatable)")
 	fs.Var(&params, "param", "slot:subslot:index:hex parameter written before PrmEnd (repeatable)")
-	fs.Var(&implicit, "implicit", "slot:subslot:index record to read with ReadImplicit, outside the AR (repeatable)")
+	fs.Var(&implicit, "implicit", "[API@]slot:subslot:index record to read with ReadImplicit, outside the AR (repeatable)")
 	fs.Var(&wm, "wm", "slot:subslot:index:hex record of one WriteMultiple call while running (repeatable)")
 	fs.Var(&reparam, "reparam", "slot:subslot:index:hex parameter of one re-parameterization (PrmBegin ... PrmEnd) while running (repeatable)")
 	_ = fs.Parse(args)
@@ -393,12 +430,12 @@ func runController(args []string) error {
 		results = append(results, r)
 	}
 	for _, w := range writes {
-		slot, sub, idx, data, err := parseAddr(w, 4)
+		rec, data, err := parseRecord(w, 4)
 		if err != nil {
 			return err
 		}
-		r := map[string]any{"op": "write", "slot": slot, "subslot": sub, "index": uint16(idx)}
-		if err := d.WriteRecord(rctx, controller.Record{Slot: slot, Subslot: sub, Index: idx}, data); err != nil {
+		r := recordResult("write", rec)
+		if err := d.WriteRecord(rctx, rec, data); err != nil {
 			r["error"] = err.Error()
 			if se, ok := errors.AsType[*pnio.StatusError](err); ok {
 				r["status"] = se.Status.String()
@@ -407,12 +444,12 @@ func runController(args []string) error {
 		results = append(results, r)
 	}
 	for _, rd := range reads {
-		slot, sub, idx, _, err := parseAddr(rd, 3)
+		rec, _, err := parseRecord(rd, 3)
 		if err != nil {
 			return err
 		}
-		r := map[string]any{"op": "read", "slot": slot, "subslot": sub, "index": uint16(idx)}
-		v, err := d.ReadRecord(rctx, controller.Record{Slot: slot, Subslot: sub, Index: idx}, 0)
+		r := recordResult("read", rec)
+		v, err := d.ReadRecord(rctx, rec, 0)
 		if err != nil {
 			r["error"] = err.Error()
 			if se, ok := errors.AsType[*pnio.StatusError](err); ok {
@@ -426,14 +463,14 @@ func runController(args []string) error {
 	report["records"] = results
 	var implicitResults []map[string]any
 	for _, rd := range implicit {
-		slot, sub, idx, _, err := parseAddr(rd, 3)
+		rec, _, err := parseRecord(rd, 3)
 		if err != nil {
 			return err
 		}
-		r := map[string]any{"slot": slot, "subslot": sub, "index": uint16(idx)}
+		r := recordResult("", rec)
 		ip := d.IP().Addr
 		rc := controller.NewRecordClient(ctrl.RPC(), &net.UDPAddr{IP: ip.AsSlice(), Port: rpc.Port}, pnio.ObjectUUID(max(m.Identity.Instance, 1), m.Identity.DeviceID, m.Identity.VendorID))
-		v, err := rc.Read(rctx, rpc.NilUUID, controller.Record{Slot: slot, Subslot: sub, Index: idx}, 0)
+		v, err := rc.Read(rctx, rpc.NilUUID, rec, 0)
 		if err != nil {
 			r["error"] = err.Error()
 		} else {

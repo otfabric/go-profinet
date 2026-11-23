@@ -56,3 +56,27 @@ func TestCheckIface(t *testing.T) {
 		return
 	}
 }
+
+// TestParseRecord: an "API@" prefix names the record's API; without one
+// it is API 0.
+func TestParseRecord(t *testing.T) {
+	rec, data, err := parseRecord("0x4E01@1:1:123:0a0b", 4)
+	if err != nil || rec.API != 0x4E01 || rec.Slot != 1 || rec.Subslot != 1 || rec.Index != 123 || string(data) != "\x0a\x0b" {
+		t.Fatalf("%+v %x %v", rec, data, err)
+	}
+	if r := recordResult("read", rec); r["api"] != uint32(0x4E01) || r["op"] != "read" || r["index"] != uint16(123) {
+		t.Fatalf("%v", r)
+	}
+	rec, _, err = parseRecord("0:1:0xF821", 3)
+	if err != nil || rec.API != 0 || rec.Index != 0xF821 {
+		t.Fatalf("%+v %v", rec, err)
+	}
+	if r := recordResult("", rec); r["api"] != nil || r["op"] != nil {
+		t.Fatalf("%v", r)
+	}
+	for _, bad := range []string{"x@1:1:1", "0x100000000@1:1:1", "1@1:1"} {
+		if _, _, err := parseRecord(bad, 3); err == nil {
+			t.Fatalf("%q: no error", bad)
+		}
+	}
+}

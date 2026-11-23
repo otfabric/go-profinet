@@ -66,12 +66,13 @@ against (see [the matrix](#interop-matrix)).
 | Record | Read | Write | Interop |
 |--------|:---:|:---:|---------|
 | User records of the model (0x0000–0x7FFF), application records (Handler) | ✅ | ✅ | p-net, pnio-rs, profinet-py |
+| User records of a submodule in an API other than 0 (0x4E01) | ✅ (controller) | ✅ (controller) | p-net, built for two APIs, with its sample application patched to pass each slot's API to its I/O calls: written before PrmEnd and in Data, read back (`TestPnetAPI`, profinet-interop v0.12.0). p-net answers a Read in an API it does not have without a PNIOStatus (waiver `pnet-read-unknown-api-no-status`). go-profinet's device in a non-zero API: decoders only |
 | Profile records of the model (0xB000–0xBFFF), application records (Handler) | ✅ | ✅ | none: tshark decodes a Write of 0xB600 in API 0x4E01 with its values (`TestCodecDecoders`, profinet-interop v0.11.0 `fields`); p-net hands the application indexes up to 0x7FFF only, by its source (`pf_fspm_cm_read_ind`, `pf_cmwrr_write`: `PF_IDX_USER_MAX`), so it answers a read of 0xB600 with invalid index (not run) |
 | ReadImplicit (no AR) | ✅ | n/a | profinet-py, p-net |
 | WriteMultiple (0xE040) | ✅ | ✅ | p-net |
 | I&M0 (0xAFF0), I&M1–4 (0xAFF1–0xAFF4), I&M0FilterData (0xF840) | ✅ | ✅ (I&M1–4) | p-net, pnio-rs, profinet-py |
-| RealIdentificationData (0xF000, 0xC001, 0x8001), ExpectedIdentificationData | ✅ | n/a | p-net, profinet-py |
-| APIData (0xF821), within an AR and by ReadImplicit | ✅ | n/a | p-net (decoded: API 0, `TestPnetController`); tshark decodes the APIs of a two-API block (`TestCodecDecoders`, profinet-interop v0.10.0 `fields`) |
+| RealIdentificationData (0xF000, 0xC001, 0x8001, 0xE001), ExpectedIdentificationData | ✅ | n/a | p-net, profinet-py; with a submodule in API 0x4E01, p-net for the AR (0xE001) and for that API (0xF000) (`TestPnetAPI`) |
+| APIData (0xF821), within an AR and by ReadImplicit | ✅ | n/a | p-net: API 0 (`TestPnetController`), and APIs 0 and 0x4E01 with p-net built for two APIs (`TestPnetAPI`, profinet-interop v0.12.0); tshark decodes the APIs of a two-API block (`TestCodecDecoders`, profinet-interop v0.10.0 `fields`) |
 | ModuleDiff (0xE002) | ✅ | n/a | profinet-py |
 | Diagnosis: channel, all, maintenance and qualified (0x800A–0x800C, 0xC00A–0xC00C, 0xE00A–0xE00C, 0xF00A–0xF00C, 0xF80C) | ✅ | n/a | p-net |
 | PDPortDataReal (0x802A), PDRealData (0xF841) | ✅ | n/a | p-net (decoded) |
