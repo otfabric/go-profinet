@@ -135,6 +135,25 @@ func TestRecordClientMalformed(t *testing.T) {
 		t.Fatalf("%+v %v", dd, err)
 	}
 
+	// ReadAPIData: a refusal, data that is no block, another block.
+	answer(failed(pnio.RWStatus(false, pnio.RWInvalidIndex, 0)))
+	if _, err := rc.ReadAPIData(ctx, ar); !errors.As(err, new(*pnio.StatusError)) {
+		t.Fatalf("refused: %v", err)
+	}
+	answer(readRes(1, notBlock))
+	if _, err := rc.ReadAPIData(ctx, ar); !errors.Is(err, profinet.ErrMalformed) {
+		t.Fatalf("no block: %v", err)
+	}
+	answer(readRes(uint32(len(b)), b))
+	if _, err := rc.ReadAPIData(ctx, ar); !errors.Is(err, profinet.ErrMalformed) {
+		t.Fatalf("I&M1 as APIData: %v", err)
+	}
+	ad := (&pnio.APIData{APIs: []uint32{0, 0x4E01}}).Append(nil)
+	answer(readRes(uint32(len(ad)), ad))
+	if apis, err := rc.ReadAPIData(ctx, ar); err != nil || len(apis) != 2 || apis[1] != 0x4E01 {
+		t.Fatalf("APIData %v %v", apis, err)
+	}
+
 	// Write: the status of the WriteRes counts.
 	wres := pnio.WriteRes{ARUUID: ar, Index: 0x10, Status: pnio.RWStatus(true, pnio.RWAccessDenied, 0)}
 	answer(ok(wres.Append(nil)))

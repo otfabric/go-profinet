@@ -97,7 +97,10 @@ Malformed frames and datagrams never return an error to the application and
 never panic: they are dropped and counted (`Malformed` in the stats of the
 mux, the DCP client and responder, the LLDP agent, the alarm manager, the RPC
 server, the RT consumers). A decoder used directly returns an error matching
-`ErrMalformed`.
+`ErrMalformed`; a block of a version it does not decode, `ErrUnsupported`
+(`pnio.DecodeAPIData` takes APIData 1.0 only). A device that does not
+support APIData answers `RecordClient.ReadAPIData` with a
+`*pnio.StatusError`, which matches `ErrNotFound` for an invalid index.
 
 ## Values that do not fit their field
 

@@ -694,6 +694,14 @@ func (r *RecordClient) Read(ctx context.Context, ar rpc.UUID, rec Record, maxLen
 
 Read reads a record within an AR (ar is the AR UUID) or, with a nil ar, implicitly (ReadImplicit, no AR needed). maxLen bounds the data; zero means 4096. A PNIO error is returned as a \*pnio.StatusError.
 
+#### func (RecordClient) ReadAPIData
+
+```go
+func (r *RecordClient) ReadAPIData(ctx context.Context, ar rpc.UUID) ([]uint32, error)
+```
+
+ReadAPIData reads the APIs of the device (APIData, index 0xF821), within an AR or, with a nil ar, implicitly. The read header addresses API 0, slot 0, subslot 1 (the DAP), as for I&M0. A device that does not support the record answers with a PNIO error (\*pnio.StatusError).
+
 #### func (RecordClient) ReadDiagnosis
 
 ```go

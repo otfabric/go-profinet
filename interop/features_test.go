@@ -346,7 +346,8 @@ func TestCodecDecoders(t *testing.T) {
 	// A submodule of API 0x4E01 (IO-Link) beside API 0 in one slot: the
 	// IOCAR Connect request with its ExpectedSubmoduleBlockReq and IOCR
 	// API lists, a Write request, and the Read responses of
-	// RealIdentificationData and DiagnosisData in that API. They have no
+	// RealIdentificationData and DiagnosisData in that API and of APIData
+	// (0xF821) with both APIs. They have no
 	// check of their own: the tshark and scapy checks of codecs.pcap
 	// below decode them, and a new check would need a stable ID in
 	// profinet-interop's matrix/ids.tsv.
@@ -395,6 +396,7 @@ func TestCodecDecoders(t *testing.T) {
 		{0, pnio.IndexRealIdentAR, func() []byte { id := m.RealIdentification(); return id.Append(nil) }()},
 		{apiIOL, pnio.IndexDiagAllSubslot, (&pnio.DiagnosisData{API: apiIOL, Slot: 1, Subslot: 2, ChannelNumber: pnio.ChannelNumberSubmodule, ChannelProperties: pnio.ChanSpecAppears,
 			USI: pnio.USIChannelDiagnosis, Items: []pnio.DiagnosisItem{{ChannelNumber: 1, ChannelProperties: pnio.ChanDirInput | pnio.ChanSpecAppears, ErrorType: pnio.ChannelErrLineBreak}}}).Append(nil)},
+		{0, pnio.IndexAPIData, (&pnio.APIData{APIs: []uint32{0, apiIOL}}).Append(nil)},
 	} {
 		rr := pnio.ReadRes{Seq: uint16(30 + i), ARUUID: car.AR.ARUUID, API: r.api, Slot: 1, Subslot: 2, Index: r.idx, Length: uint32(len(r.data))}
 		add(ipv4UDP(dst, src, [4]byte{10, 0, 0, 2}, [4]byte{10, 0, 0, 1}, rpc.Port, 49152,
@@ -405,6 +407,12 @@ func TestCodecDecoders(t *testing.T) {
 	}
 	e.expect("MRP Test, TopologyChange, LinkDown, LinkUp; PTCP DelayReq, DelayRes; IOCARSR Connect with SRInfoBlock and MCRBlockReq; MRP records (PDInterfaceMrpDataAdjust/Check/Real, PDPortMrpDataAdjust) encoded (go-profinet)", true, "")
 	e.oracles("codecs.pcap")
+	// The values tshark decodes from the APIData read response: the read
+	// header's API (0) comes first, then the block's two APIs.
+	fr := e.tsharkFields("codecs.pcap", "pn_io.index == 0xf821", "pn_io.number_of_apis", "pn_io.api")
+	e.expect("tshark fields codecs.pcap: APIData (0xF821) NumberOfAPIs 2, APIs 0x00000000 and 0x00004e01",
+		len(fr) == 1 && slices.Equal(fr[0].Fields["pn_io.number_of_apis"], []string{"2"}) &&
+			slices.Equal(fr[0].Fields["pn_io.api"], []string{"0x00000000", "0x00000000", "0x00004e01"}), "%+v", fr)
 }
 
 // writeFrames writes Ethernet frames, padded to the minimum size, into a

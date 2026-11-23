@@ -75,6 +75,7 @@ func FuzzBlocks(f *testing.F) {
 		ack.Append(nil),
 		(&IdentificationData{Expected: true, APIs: []IdentAPI{{Slots: []IdentSlot{{Submodules: []IdentSubmodule{{}}}}}}}).Append(nil),
 		AppendWriteMultiple(nil, []WriteMultipleItem{{Data: hx("01")}, {Data: hx("0203")}}),
+		(&APIData{APIs: []uint32{0, 0x4E01}}).Append(nil),
 	} {
 		f.Add(b)
 	}
@@ -94,7 +95,7 @@ func FuzzBlocks(f *testing.F) {
 		for _, typ := range []BlockType{blk.Header.Type, BlockARReq, BlockIOCRReq, BlockAlarmCRReq, BlockExpectedSubmReq,
 			BlockARRPCReq, BlockPrmEndPlugReq, BlockReadReq, BlockReadRes, BlockWriteReq, BlockWriteRes, BlockIM0,
 			BlockIM1, BlockIM2, BlockIM3, BlockIM4, BlockDiagnosisData, BlockAlarmNotificationHigh, BlockAlarmAckLow,
-			BlockRealIdentData} {
+			BlockRealIdentData, BlockAPIData} {
 			blk.Header.Type = typ
 			if v, err := DecodeARBlockReq(blk); err == nil {
 				stable(t, "ARBlockReq", v, func(v ARBlockReq) []byte { return v.Append(nil) }, DecodeARBlockReq)
@@ -167,6 +168,9 @@ func FuzzBlocks(f *testing.F) {
 			}
 			if v, err := DecodeIdentificationData(blk); err == nil {
 				stable(t, "IdentificationData", v, func(v IdentificationData) []byte { return v.Append(nil) }, DecodeIdentificationData)
+			}
+			if v, err := DecodeAPIData(blk); err == nil {
+				stable(t, "APIData", v, func(v APIData) []byte { return v.Append(nil) }, DecodeAPIData)
 			}
 		}
 	})

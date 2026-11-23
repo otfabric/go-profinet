@@ -101,6 +101,8 @@ func (t BlockType) String() string {
 		return "RealIdentificationData"
 	case BlockExpectedIdentData:
 		return "ExpectedIdentificationData"
+	case BlockAPIData:
+		return "APIData"
 	case BlockPDPortDataReal:
 		return "PDPortDataReal"
 	case BlockPDInterfaceDataReal:
