@@ -146,7 +146,7 @@ of profinet-interop v0.11.0.
 | tshark and scapy | | (decoders of our Hello, SNMP, UDP-RT, DHCP, APIData and profile-record frames) | 10 | 0 | 0 | 2 |
 
 The full matrix, feature by feature, with the evidence of each check, is
-[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/main/docs/MATRIX.md)
+[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.11.1/docs/MATRIX.md)
 (39 test runs, 272 checks: 252 pass, 0 fail, 6 n/a, 14 deviations; the Interop workflow on amd64,
 the mrp rows from the Kernel MRP workflow's micro-VMs); the notes on each
 peer are in its
