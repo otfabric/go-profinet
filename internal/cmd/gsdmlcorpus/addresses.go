@@ -62,7 +62,9 @@ type AddressCheck struct {
 	// converts cannot be read here: an attribute this check parses and
 	// ToModel does not.
 	Unread bool `json:"unread,omitempty"`
-	// Samples names up to maxSamples addresses of each kind.
+	// Samples names up to maxSamples addresses of each kind (lost, extra,
+	// changed, record lost, record extra, collision), each prefixed with
+	// its kind.
 	Samples []string `json:"samples,omitempty"`
 }
 
@@ -72,10 +74,14 @@ func (c *AddressCheck) Failed() bool {
 }
 
 // checkAddresses is the AddressCheck of a DAP ToModel converts, nil for
-// one it does not.
+// one it does not. A report of a converted DAP without a model is Unread:
+// the check fails rather than pass it by.
 func checkAddresses(ix docIndex, rep gsdml.ModelReport) *AddressCheck {
-	if rep.Outcome != gsdml.OutcomeConverted || rep.Model == nil {
+	if rep.Outcome != gsdml.OutcomeConverted {
 		return nil
+	}
+	if rep.Model == nil {
+		return &AddressCheck{Unread: true}
 	}
 	want, ok := expectedAddresses(ix, rep)
 	if !ok {
@@ -250,15 +256,17 @@ func modelAddresses(m *model.Device) *inventory {
 // compareAddresses compares the expected addresses with the model's.
 func compareAddresses(want, got *inventory) *AddressCheck {
 	c := &AddressCheck{Addresses: len(want.addrs), Collisions: len(want.collisions)}
-	sample := func(format string, a ...any) {
-		if len(c.Samples) < 4*maxSamples {
-			c.Samples = append(c.Samples, fmt.Sprintf(format, a...))
+	// Each kind has its own maxSamples, so that many of one kind do not
+	// hide the others.
+	per := map[string]int{}
+	sample := func(kind, format string, a ...any) {
+		if per[kind] < maxSamples {
+			per[kind]++
+			c.Samples = append(c.Samples, kind+": "+fmt.Sprintf(format, a...))
 		}
 	}
 	for _, s := range want.collisions {
-		if len(c.Samples) < maxSamples {
-			c.Samples = append(c.Samples, "collision: "+s)
-		}
+		sample("collision", "%s", s)
 	}
 	for _, k := range sortedAddrs(want.addrs) {
 		w := want.addrs[k]
@@ -267,30 +275,30 @@ func compareAddresses(want, got *inventory) *AddressCheck {
 		switch {
 		case !ok:
 			c.Lost++
-			sample("lost: %s ident 0x%X", addrName(k, w.api), w.ident)
+			sample("lost", "%s ident 0x%X", addrName(k, w.api), w.ident)
 			continue
 		case g.api != w.api || g.ident != w.ident:
 			c.Changed++
-			sample("changed: %s ident 0x%X is API 0x%X ident 0x%X in the model", addrName(k, w.api), w.ident, g.api, g.ident)
+			sample("changed", "%s ident 0x%X is API 0x%X ident 0x%X in the model", addrName(k, w.api), w.ident, g.api, g.ident)
 			continue
 		}
 		for _, r := range w.records {
 			if _, found := slices.BinarySearch(g.records, r); !found {
 				c.RecordsLost++
-				sample("record lost: %s record 0x%04X", addrName(k, w.api), r)
+				sample("record lost", "%s record 0x%04X", addrName(k, w.api), r)
 			}
 		}
 		for _, r := range g.records {
 			if _, found := slices.BinarySearch(w.records, r); !found {
 				c.RecordsExtra++
-				sample("record extra: %s record 0x%04X", addrName(k, w.api), r)
+				sample("record extra", "%s record 0x%04X", addrName(k, w.api), r)
 			}
 		}
 	}
 	for _, k := range sortedAddrs(got.addrs) {
 		if _, ok := want.addrs[k]; !ok {
 			c.Extra++
-			sample("extra: %s ident 0x%X", addrName(k, got.addrs[k].api), got.addrs[k].ident)
+			sample("extra", "%s ident 0x%X", addrName(k, got.addrs[k].api), got.addrs[k].ident)
 		}
 	}
 	return c

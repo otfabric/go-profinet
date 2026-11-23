@@ -147,6 +147,10 @@ func TestAddressUnread(t *testing.T) {
 	if a := checkAddresses(docIndex{}, gsdml.ModelReport{Outcome: gsdml.OutcomeMalformed}); a != nil || a.Failed() {
 		t.Fatalf("%+v", a)
 	}
+	// Converted without a model: inconsistent, so it fails.
+	if a := checkAddresses(docIndex{}, gsdml.ModelReport{Outcome: gsdml.OutcomeConverted}); a == nil || !a.Unread || !a.Failed() {
+		t.Fatalf("no model: %+v", a)
+	}
 	var ix docIndex
 	for name, edit := range map[string]func(){
 		"module":  func() { delete(ix.modules, "MOD_DI16") },
@@ -197,5 +201,39 @@ func TestAddressSummary(t *testing.T) {
 	f = Summarize([]FileResult{r}).Fidelity
 	if addressGate(f, &stderr) != 1 || !strings.Contains(stderr.String(), "address fidelity: 1 of 2 converted DAPs: 1 lost") {
 		t.Fatalf("%+v %s", f, stderr.String())
+	}
+}
+
+// Each kind keeps its own ten samples: many lost addresses do not hide the
+// extra ones, the changed ones or the records.
+func TestAddressSamplesPerKind(t *testing.T) {
+	t.Parallel()
+	want, got := newInventory(), newInventory()
+	for i := uint16(1); i <= 15; i++ {
+		want.add(1, i, addrEntry{ident: 1})                          // lost
+		got.add(2, i, addrEntry{ident: 2})                           // extra
+		want.add(3, i, addrEntry{ident: 3})                          // changed
+		got.add(3, i, addrEntry{ident: 4})                           //
+		want.add(4, i, addrEntry{ident: 5, records: []uint16{i}})    // record lost
+		got.add(4, i, addrEntry{ident: 5, records: []uint16{0x100}}) // record extra
+		want.add(5, i, addrEntry{})
+		want.add(5, i, addrEntry{}) // collision
+		got.add(5, i, addrEntry{})
+	}
+	a := compareAddresses(want, got)
+	if a.Lost != 15 || a.Extra != 15 || a.Changed != 15 || a.RecordsLost != 15 || a.RecordsExtra != 15 || a.Collisions != 15 {
+		t.Fatalf("%+v", a)
+	}
+	kinds := map[string]int{}
+	for _, s := range a.Samples {
+		kinds[s[:strings.Index(s, ": ")]]++
+	}
+	for _, k := range []string{"lost", "extra", "changed", "record lost", "record extra", "collision"} {
+		if kinds[k] != maxSamples {
+			t.Fatalf("%s: %d samples, want %d: %v", k, kinds[k], maxSamples, kinds)
+		}
+	}
+	if len(a.Samples) != 6*maxSamples {
+		t.Fatalf("%d samples", len(a.Samples))
 	}
 }

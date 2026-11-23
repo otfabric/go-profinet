@@ -50,7 +50,7 @@ parameter records. No library API or behaviour changes.
     the model serves (`model.Device.Each`).
   - **What it counts:** lost, extra and changed addresses; lost and extra
     record indexes; collisions (two submodules at one address, or a record
-    index twice in a submodule), with up to ten samples of each.
+    index twice in a submodule), with up to ten samples of each kind.
   - **Summary and matrix:** the summary's fidelity totals them, and the
     matrix has an Addresses table.
   - **Not independent:** the expected side takes the slots from
@@ -61,7 +61,7 @@ parameter records. No library API or behaviour changes.
 
 - **`gsdmlcorpus` exit status**: 1 when a converted DAP's model loses,
   adds or changes an address or a record index, or when the file's
-  addresses of a converted DAP cannot be read. The results are still
+  addresses of a converted DAP cannot be read, or its report has no model. The results are still
   written. It was 0 for every finished run.
 
 ### Breaking
