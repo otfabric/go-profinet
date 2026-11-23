@@ -14,8 +14,12 @@
 // -cache reads the index.jsonl of profinet-interop's corpus-fetch
 // (docs/CORPUS.md there); -dir analyses every .xml file under DIR. The
 // files are untrusted: each is analysed in a child process of this
-// command, with a timeout (-timeout) and a soft memory limit (GOMEMLIMIT);
-// a file that times out, panics or exits is reported as a crash.
+// command, with a timeout (-timeout) and a memory target for the garbage
+// collector (GOMEMLIMIT, -memlimit), which is not a hard limit: a file
+// whose live data exceeds it can still use more. A file that times out,
+// panics or exits is reported as a crash. Each child hashes the octets it
+// analyses; a file whose SHA-256 is not the one the index names is
+// reported as integrity, not analysed as that file.
 //
 // The results name files and quote error messages, which can hold values
 // of the vendor's file: they stay local, like the corpus. A regression
@@ -57,10 +61,12 @@ func main() {
 
 // Result is the document -out writes.
 type Result struct {
-	Schema      string       `json:"schema"`
-	GoProfinet  string       `json:"go_profinet"`
-	GeneratedAt string       `json:"generated_at"`
-	Source      string       `json:"source"`
+	Schema      string `json:"schema"`
+	GoProfinet  string `json:"go_profinet"`
+	GeneratedAt string `json:"generated_at"`
+	Source      string `json:"source"`
+	// IndexSHA256 is the SHA-256 of the cache's index.jsonl the run read.
+	IndexSHA256 string       `json:"index_sha256,omitempty"`
 	Summary     Summary      `json:"summary"`
 	Files       []FileResult `json:"files"`
 }
@@ -80,7 +86,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	md := flags.String("md", "", "write the matrix as Markdown to this file")
 	timeout := flags.Duration("timeout", 2*time.Minute, "the analysis of one file")
 	jobs := flags.Int("jobs", 4, "files analysed at once")
-	memLimit := flags.String("memlimit", "2GiB", "GOMEMLIMIT of a child process")
+	memLimit := flags.String("memlimit", "2GiB", "GOMEMLIMIT of a child process (a garbage-collector target, not a hard limit)")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -93,10 +99,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	var inputs []input
 	var err error
-	source := ""
+	source, indexSum := "", ""
 	if *cache != "" {
 		inputs, err = fromIndex(*cache)
 		source = "corpus-fetch cache"
+		if b, rerr := readBounded(filepath.Join(*cache, "index.jsonl")); rerr == nil {
+			indexSum = sha256Hex(b)
+		}
 	} else {
 		inputs, err = fromDir(*dir)
 		source = "directory"
@@ -116,11 +125,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	sum := Summarize(results)
 	version := goProfinetVersion()
 	src := fmt.Sprintf("go-profinet %s over %d files of a %s.", version, len(results), source)
-	doc := Result{Schema: Schema, GoProfinet: version, GeneratedAt: time.Now().UTC().Format(time.RFC3339), Source: source, Summary: sum, Files: results}
+	if indexSum != "" {
+		src = fmt.Sprintf("go-profinet %s over %d files of a %s (index.jsonl sha256 %s).", version, len(results), source, indexSum)
+	}
+	doc := Result{Schema: Schema, GoProfinet: version, GeneratedAt: time.Now().UTC().Format(time.RFC3339), Source: source, IndexSHA256: indexSum, Summary: sum, Files: results}
+	var written []string
 	if *out != "" {
 		b, err := json.MarshalIndent(doc, "", "  ")
 		if err == nil {
 			err = os.WriteFile(*out, append(b, '\n'), 0o644)
+			written = append(written, fmt.Sprintf("%s sha256 %s", *out, sha256Hex(append(b, '\n'))))
 		}
 		if err != nil {
 			diag(stderr, err)
@@ -133,12 +147,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 			diag(stderr, err)
 			return 2
 		}
+		written = append(written, fmt.Sprintf("%s sha256 %s", *md, sha256Hex([]byte(matrix))))
 	}
 	var werr error
 	if *out == "" && *md == "" {
 		_, werr = fmt.Fprint(stdout, matrix)
 	} else {
-		_, werr = fmt.Fprintf(stdout, "%d files: %v\n", sum.Files, sum.FileStages)
+		_, werr = fmt.Fprintf(stdout, "%d files (%d distinct): %v\n%s\n", sum.Files, sum.Distinct, sum.FileStages, strings.Join(written, "\n"))
 	}
 	if werr != nil {
 		diag(stderr, werr)
@@ -156,6 +171,7 @@ func runOne(path string, stdout, stderr io.Writer) int {
 	}
 	start := time.Now()
 	r := analyze(data)
+	r.SHA256 = sha256Hex(data)
 	r.Millis = time.Since(start).Milliseconds()
 	if err := json.NewEncoder(stdout).Encode(r); err != nil {
 		diag(stderr, err)
@@ -231,11 +247,13 @@ func child(ctx context.Context, self string, in input, timeout time.Duration, me
 		return fail("no result: " + err.Error())
 	}
 	r.ID, r.Path, r.Member = in.ID, in.Path, in.Member
-	if r.SHA256 = in.SHA256; r.SHA256 == "" {
-		if data, err := readBounded(in.Path); err == nil {
-			s := sha256.Sum256(data)
-			r.SHA256 = hex.EncodeToString(s[:])
-		}
+	// r.SHA256 is that of the octets the child analysed. A file that no
+	// longer is what the index says is not counted as that file.
+	if in.SHA256 != "" && r.SHA256 != in.SHA256 {
+		f := fail("")
+		f.Crash, f.Stage, f.SHA256 = "", StageIntegrity, r.SHA256
+		f.Integrity = fmt.Sprintf("the analysed file has sha256 %s, the index %s", r.SHA256, in.SHA256)
+		return f
 	}
 	if r.Millis == 0 {
 		r.Millis = time.Since(start).Milliseconds()
@@ -359,3 +377,8 @@ func goProfinetVersion() string {
 // diag writes a diagnostic. A failed write to the diagnostics stream
 // cannot be reported anywhere, so its error is dropped.
 func diag(w io.Writer, a ...any) { _, _ = fmt.Fprintln(w, a...) }
+
+func sha256Hex(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
+}

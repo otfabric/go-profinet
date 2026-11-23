@@ -79,6 +79,39 @@ func TestAnalyze(t *testing.T) {
 	}
 }
 
+// Submodules of an API other than 0 and records above 0x7FFF: counted, and
+// a DAP that converts with them is counted as converted without them
+// (both DAPs of the fixture use MOD_DI16).
+func TestFidelity(t *testing.T) {
+	t.Parallel()
+	b := fixture(t, modular, `<VirtualSubmoduleItem ID="SM_DI16"`, `<VirtualSubmoduleItem API="19969" ID="SM_DI16"`)
+	r := analyze(b)
+	if r.APIs["0x4E01"] != 1 || r.RecordIndexes[userRange] == 0 || r.DAPs[0].Outcome != "converted" || !slicesEqual(r.DAPs[0].APIs, []string{"0x4E01"}) {
+		t.Fatalf("%+v", r)
+	}
+	// A record above 0x7FFF: ToModel refuses the module.
+	h := analyze(fixture(t, modular, `<ParameterRecordDataItem Index="100" Length="2">`, `<ParameterRecordDataItem Index="46592" Length="2">`))
+	if h.RecordIndexes["0xB000-0xBFFF"] != 1 || h.DAPs[0].HighRecords != 1 || h.DAPs[0].Outcome == "converted" {
+		t.Fatalf("%+v", h)
+	}
+	if indexRange("x") != "invalid" || indexRange("0x7FFF") != userRange || indexRange("65535") != "0xF000-0xFFFF" {
+		t.Fatal("indexRange")
+	}
+	inv := analyze(fixture(t, modular, `<VirtualSubmoduleItem ID="SM_DI16"`, `<VirtualSubmoduleItem API="x" ID="SM_DI16"`))
+	if inv.APIs["invalid"] != 1 {
+		t.Fatalf("%+v", inv.APIs)
+	}
+	s := Summarize([]FileResult{r, h, r})
+	if f := s.Fidelity; f.FilesAPI != 2 || f.DAPsAPI != 4 || f.ConvertedAPI != 4 || f.APIs["0x4E01"] != 2 || f.FilesHighRecords != 1 || f.DAPsHighRecords < 1 || f.ConvertedHighRecords != 0 {
+		t.Fatalf("%+v", s.Fidelity)
+	}
+	if md := Markdown(s, ""); !strings.Contains(md, "## Fidelity") || !strings.Contains(md, "| 0x4E01 | 2 |") || !strings.Contains(md, "ToModel conversion") {
+		t.Fatal(md)
+	}
+}
+
+func slicesEqual(a, b []string) bool { return strings.Join(a, ",") == strings.Join(b, ",") }
+
 func TestSignature(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{
@@ -152,10 +185,25 @@ func TestRun(t *testing.T) {
 		t.Fatalf("%s", m)
 	}
 	// The index of a corpus-fetch cache; a path outside it is refused.
-	write("index.jsonl", []byte(`{"id":"gh-1","path":"gsdml/gh-1/GSDML-a.xml","sha256":"abc","member":""}`+"\n"))
+	good := sha256Hex(fixture(t, modular))
+	write("index.jsonl", []byte(`{"id":"gh-1","path":"gsdml/gh-1/GSDML-a.xml","sha256":"`+good+`","member":""}`+"\n"))
 	so.Reset()
-	if code := run([]string{"-cache", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "| ok | 1 |") {
+	if code := run([]string{"-cache", dir}, &so, &se); code != 0 || !strings.Contains(so.String(), "| ok | 1 |") || !strings.Contains(so.String(), "index.jsonl sha256 ") {
 		t.Fatalf("exit %d: %s %s", code, so.String(), se.String())
+	}
+	// The cached file changed after the fetch, the index not: the file is
+	// not analysed as the indexed one.
+	write("gsdml/gh-1/GSDML-a.xml", fixture(t, modular, `MinDeviceInterval="32"`, `MinDeviceInterval="64"`))
+	if code := run([]string{"-cache", dir, "-out", out}, &so, &se); code != 0 {
+		t.Fatalf("exit %d: %s", code, se.String())
+	}
+	b, _ = os.ReadFile(out)
+	res = Result{}
+	if err := json.Unmarshal(b, &res); err != nil || res.IndexSHA256 == "" {
+		t.Fatal(err)
+	}
+	if f := res.Files[0]; f.Stage != StageIntegrity || f.SHA256 == good || !strings.Contains(f.Integrity, good) || len(f.DAPs) != 0 || res.Summary.FileStages[StageIntegrity] != 1 {
+		t.Fatalf("tampered %+v", f)
 	}
 	write("index.jsonl", []byte(`{"id":"x","path":"../etc/passwd"}`+"\n"))
 	if code := run([]string{"-cache", dir}, &so, &se); code != 2 {

@@ -22,6 +22,9 @@ const Schema = "gsdml-corpus-result-v1"
 const (
 	StageParse = "parse"
 	StageModel = "model"
+	// StageIntegrity: the file is not the one the index names (its
+	// SHA-256 differs); it is not analysed.
+	StageIntegrity = "integrity"
 )
 
 // FileResult is the analysis of one GSDML file: one row per device access
@@ -45,11 +48,21 @@ type FileResult struct {
 	Modules    int `json:"modules"`
 	Submodules int `json:"submodules"`
 	Records    int `json:"records"`
+	// APIs counts the virtual submodules by their API other than 0
+	// ("0x4E01"; "invalid" for one that is no Unsigned32).
+	APIs map[string]int `json:"apis,omitempty"`
+	// RecordIndexes counts the parameter records by index range: the user
+	// range "0x0000-0x7FFF", above it by 4096 ("0xB000-0xBFFF"), "invalid"
+	// for an index that is no Unsigned16. The ranges are numeric, not a
+	// claim about what an index above 0x7FFF means.
+	RecordIndexes map[string]int `json:"record_indexes,omitempty"`
 	// DAPs are AnalyzeModels' reports, one per device access point.
 	DAPs []DAPRow `json:"daps"`
 	// Crash is set when the analysis did not finish: a timeout, a panic
 	// or an exit, from the parent process.
 	Crash string `json:"crash,omitempty"`
+	// Integrity says why the file is not the one the index names.
+	Integrity string `json:"integrity,omitempty"`
 	// Millis is the time of the analysis.
 	Millis int64 `json:"millis"`
 }
@@ -80,6 +93,14 @@ type DAPRow struct {
 	// RecordOctets sums the record octets of the plugged references, once
 	// per configured slot.
 	RecordOctets int `json:"record_octets"`
+	// APIs are the APIs other than 0 of the submodules of the DAP and of
+	// the modules it can use, sorted. The model has none of them: every
+	// model.Submodule is of API 0 (model.API), so a converted DAP with
+	// APIs converted without them.
+	APIs []string `json:"apis,omitempty"`
+	// HighRecords counts the records of the DAP and of the modules it can
+	// use whose index is above 0x7FFF.
+	HighRecords int `json:"high_records,omitempty"`
 	// Failures are the references whose reference or module does not
 	// convert.
 	Failures []RefFailure `json:"failures,omitempty"`
@@ -103,6 +124,21 @@ func analyze(data []byte) FileResult {
 		return r
 	}
 	r.Modules, r.Submodules, r.Records = sizes(doc)
+	r.APIs, r.RecordIndexes = map[string]int{}, map[string]int{}
+	forEachSubmodule(doc, nil, func(sm *gsdml.VirtualSubmoduleItem) {
+		if a := apiOf(sm); a != "" {
+			r.APIs[a]++
+		}
+		for _, rec := range recordsOf(sm) {
+			r.RecordIndexes[indexRange(rec.Index)]++
+		}
+	})
+	if len(r.APIs) == 0 {
+		r.APIs = nil
+	}
+	if len(r.RecordIndexes) == 0 {
+		r.RecordIndexes = nil
+	}
 	r.Check, r.SchemaVersion = checkCounts(data)
 	reps, err := gsdml.AnalyzeModels(doc)
 	if err != nil {
@@ -112,6 +148,21 @@ func analyze(data []byte) FileResult {
 	}
 	for _, rep := range reps {
 		row := DAPRow{DAP: rep.DAP, Outcome: rep.Outcome, Blocked: rep.Blocked, Error: rep.Error, DAPError: rep.DAPError, References: len(rep.Modules)}
+		apis := map[string]bool{}
+		forEachSubmodule(doc, &rep.DAP, func(sm *gsdml.VirtualSubmoduleItem) {
+			if a := apiOf(sm); a != "" {
+				apis[a] = true
+			}
+			for _, rec := range recordsOf(sm) {
+				if indexRange(rec.Index) != userRange {
+					row.HighRecords++
+				}
+			}
+		})
+		for a := range apis {
+			row.APIs = append(row.APIs, a)
+		}
+		sort.Strings(row.APIs)
 		for _, m := range rep.Modules {
 			if len(m.ConfiguredSlots) > 0 {
 				row.Plugged++
@@ -210,6 +261,91 @@ func sizes(doc *gsdml.Document) (modules, submodules, records int) {
 	return modules, submodules, records
 }
 
+// userRange is the record index range a device defines.
+const userRange = "0x0000-0x7FFF"
+
+// indexRange is the range of a record index, by 4096 above 0x7FFF.
+func indexRange(index string) string {
+	idx, err := gsdml.ParseUint16(index)
+	switch {
+	case err != nil:
+		return "invalid"
+	case idx <= 0x7FFF:
+		return userRange
+	}
+	return fmt.Sprintf("0x%X000-0x%XFFF", idx>>12, idx>>12)
+}
+
+// apiOf is a submodule's API other than 0 in hexadecimal, "invalid" for
+// one that is no Unsigned32, empty for API 0 or none.
+func apiOf(sm *gsdml.VirtualSubmoduleItem) string {
+	if sm.API == "" {
+		return ""
+	}
+	a, err := gsdml.ParseUint32(sm.API)
+	switch {
+	case err != nil:
+		return "invalid"
+	case a == 0:
+		return ""
+	}
+	return fmt.Sprintf("0x%X", a)
+}
+
+func recordsOf(sm *gsdml.VirtualSubmoduleItem) []*gsdml.ParameterRecordDataItem {
+	if sm.RecordDataList == nil {
+		return nil
+	}
+	return sm.RecordDataList.ParameterRecordDataItems
+}
+
+// forEachSubmodule calls fn for the virtual submodules of the document's
+// DAPs and modules, or with dap set, of that DAP and the modules its
+// references name (the last module of an ID, as ToModel takes it).
+func forEachSubmodule(doc *gsdml.Document, dap *string, fn func(*gsdml.VirtualSubmoduleItem)) {
+	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil {
+		return
+	}
+	ap := doc.ProfileBody.ApplicationProcess
+	each := func(l *gsdml.VirtualSubmoduleList) {
+		if l != nil {
+			for _, sm := range l.VirtualSubmoduleItems {
+				fn(sm)
+			}
+		}
+	}
+	modules := map[string]*gsdml.ModuleItem{}
+	if ap.ModuleList != nil {
+		for _, m := range ap.ModuleList.ModuleItems {
+			modules[strings.Join(strings.Fields(m.ID), " ")] = m
+		}
+	}
+	if ap.DeviceAccessPointList != nil {
+		for _, d := range ap.DeviceAccessPointList.DeviceAccessPointItems {
+			if dap != nil && d.ID != *dap {
+				continue
+			}
+			each(d.VirtualSubmoduleList)
+			if dap == nil || d.UseableModules == nil {
+				continue
+			}
+			seen := map[*gsdml.ModuleItem]bool{}
+			for _, ref := range d.UseableModules.ModuleItemRefs {
+				if m := modules[strings.Join(strings.Fields(ref.ModuleItemTarget), " ")]; m != nil && !seen[m] {
+					seen[m] = true
+					each(m.VirtualSubmoduleList)
+				}
+			}
+			break // the first DAP of an ID, as ToModel takes it
+		}
+	}
+	if dap == nil && ap.ModuleList != nil {
+		for _, m := range ap.ModuleList.ModuleItems {
+			each(m.VirtualSubmoduleList)
+		}
+	}
+}
+
 var (
 	quoted = regexp.MustCompile(`"[^"]*"|'[^']*'|\[[^\]]*\]`)
 	number = regexp.MustCompile(`\b(0[xX][0-9a-fA-F]+|\d+)\b`)
@@ -233,9 +369,11 @@ func Signature(msg string) string {
 
 // Summary counts the results.
 type Summary struct {
-	Files       int            `json:"files"`
-	DAPs        int            `json:"daps"`
-	FileStages  map[string]int `json:"file_stages"`  // "ok", "parse", "model", "crash"
+	Files int `json:"files"`
+	DAPs  int `json:"daps"`
+	// Distinct counts the files by content (SHA-256).
+	Distinct    int            `json:"distinct"`
+	FileStages  map[string]int `json:"file_stages"`  // "ok", "parse", "model", "integrity", "crash"
 	DAPOutcomes map[string]int `json:"dap_outcomes"` // by outcome, and "blocked"
 	// Valid counts the files CheckBytes reports no error for.
 	Valid int `json:"valid"`
@@ -246,6 +384,30 @@ type Summary struct {
 	Signatures []SignatureCount `json:"signatures"`
 	// ErrorRules counts the files with an error of each Check rule.
 	ErrorRules map[string]int `json:"error_rules"`
+	// Fidelity: what a converted model leaves out.
+	Fidelity Fidelity `json:"fidelity"`
+}
+
+// Fidelity counts content a ToModel conversion does not carry: submodules
+// of an API other than 0 (the model has API 0 only), and records above
+// 0x7FFF (ToModel refuses them).
+type Fidelity struct {
+	// FilesAPI and DAPsAPI count the files and DAPs with a submodule of
+	// an API other than 0; ConvertedAPI the DAPs among them ToModel
+	// converts, without those APIs.
+	FilesAPI     int `json:"files_api"`
+	DAPsAPI      int `json:"daps_api"`
+	ConvertedAPI int `json:"converted_api"`
+	// APIs counts the files by API.
+	APIs map[string]int `json:"apis"`
+	// FilesHighRecords and DAPsHighRecords count the files and DAPs with
+	// a record above 0x7FFF; ConvertedHighRecords the DAPs among them
+	// ToModel converts.
+	FilesHighRecords     int `json:"files_high_records"`
+	DAPsHighRecords      int `json:"daps_high_records"`
+	ConvertedHighRecords int `json:"converted_high_records"`
+	// RecordIndexes counts the records by index range.
+	RecordIndexes map[string]int `json:"record_indexes"`
 }
 
 // SignatureCount is one kind of failure.
@@ -259,7 +421,9 @@ type SignatureCount struct {
 
 // Summarize counts results.
 func Summarize(results []FileResult) Summary {
-	s := Summary{FileStages: map[string]int{}, DAPOutcomes: map[string]int{}, ByVersion: map[string][2]int{}, ErrorRules: map[string]int{}}
+	s := Summary{FileStages: map[string]int{}, DAPOutcomes: map[string]int{}, ByVersion: map[string][2]int{}, ErrorRules: map[string]int{},
+		Fidelity: Fidelity{APIs: map[string]int{}, RecordIndexes: map[string]int{}}}
+	contents := map[string]bool{}
 	type key struct{ sig, kind, outcome string }
 	sigs := map[key]*SignatureCount{}
 	add := func(k key, file string, files map[key]map[string]bool) {
@@ -280,6 +444,25 @@ func Summarize(results []FileResult) Summary {
 	files := map[key]map[string]bool{}
 	for _, r := range results {
 		s.Files++
+		if r.SHA256 != "" {
+			contents[r.SHA256] = true
+		}
+		if len(r.APIs) > 0 {
+			s.Fidelity.FilesAPI++
+		}
+		for a := range r.APIs {
+			s.Fidelity.APIs[a]++
+		}
+		high := false
+		for k, n := range r.RecordIndexes {
+			s.Fidelity.RecordIndexes[k] += n
+			if k != userRange {
+				high = true
+			}
+		}
+		if high {
+			s.Fidelity.FilesHighRecords++
+		}
 		stage := r.Stage
 		switch {
 		case r.Crash != "":
@@ -316,6 +499,18 @@ func Summarize(results []FileResult) Summary {
 			if d.Blocked {
 				s.DAPOutcomes["blocked"]++
 			}
+			if len(d.APIs) > 0 {
+				s.Fidelity.DAPsAPI++
+				if d.Outcome == gsdml.OutcomeConverted {
+					s.Fidelity.ConvertedAPI++
+				}
+			}
+			if d.HighRecords > 0 {
+				s.Fidelity.DAPsHighRecords++
+				if d.Outcome == gsdml.OutcomeConverted {
+					s.Fidelity.ConvertedHighRecords++
+				}
+			}
 			if d.Outcome == gsdml.OutcomeConverted {
 				continue
 			}
@@ -330,6 +525,7 @@ func Summarize(results []FileResult) Summary {
 			}
 		}
 	}
+	s.Distinct = len(contents)
 	for _, c := range sigs {
 		s.Signatures = append(s.Signatures, *c)
 	}
@@ -353,12 +549,13 @@ func Markdown(s Summary, source string) string {
 	var b strings.Builder
 	w := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	w("# GSDML corpus run\n\n%s\n\n", source)
-	w("%d files, %d device access points; %d files without a CheckBytes error.\n\n", s.Files, s.DAPs, s.Valid)
-	w("| Files | Count |\n|---|---|\n")
+	w("%d files (%d distinct by content), %d device access points; %d files without a CheckBytes error.\n\n", s.Files, s.Distinct, s.DAPs, s.Valid)
+	w("The outcomes are **ToModel conversion** outcomes: a converted DAP is one `gsdml.ToModel` turns into a model, not a device shown to be supported or interoperable. The fidelity table lists what a converted model leaves out.\n\n")
+	w("| Files (ToModel conversion) | Count |\n|---|---|\n")
 	for _, k := range sortedKeys(s.FileStages) {
 		w("| %s | %d |\n", k, s.FileStages[k])
 	}
-	w("\n| Device access points | Count |\n|---|---|\n")
+	w("\n| Device access points (ToModel conversion) | Count |\n|---|---|\n")
 	for _, k := range sortedKeys(s.DAPOutcomes) {
 		w("| %s | %d |\n", k, s.DAPOutcomes[k])
 	}
@@ -370,6 +567,22 @@ func Markdown(s Summary, source string) string {
 	sort.Strings(versions)
 	for _, v := range versions {
 		w("| %s | %d | %d |\n", v, s.ByVersion[v][0], s.ByVersion[v][1])
+	}
+	f := s.Fidelity
+	w("\n## Fidelity\n\n| What the model does not carry | Files | DAPs | of them converted |\n|---|---|---|---|\n")
+	w("| a submodule of an API other than 0 (the model has API 0 only) | %d | %d | %d |\n", f.FilesAPI, f.DAPsAPI, f.ConvertedAPI)
+	w("| a record above 0x7FFF (ToModel refuses it) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
+	if len(f.APIs) > 0 {
+		w("\n| API | Files |\n|---|---|\n")
+		for _, k := range sortedKeys(f.APIs) {
+			w("| %s | %d |\n", k, f.APIs[k])
+		}
+	}
+	if len(f.RecordIndexes) > 0 {
+		w("\n| Record index range | Records |\n|---|---|\n")
+		for _, k := range sortedKeys(f.RecordIndexes) {
+			w("| %s | %d |\n", k, f.RecordIndexes[k])
+		}
 	}
 	if len(s.ErrorRules) > 0 {
 		w("\n| Check error rule | Files |\n|---|---|\n")
