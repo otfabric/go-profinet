@@ -3,7 +3,7 @@
 What go-profinet supports, on what, how each feature is tested, and against
 what. Status: go-profinet v0.21.0 (2026-11-23); profinetctl v0.17.1 pins
 go-profinet v0.17.0 (its main pins v0.21.0, not yet released). Main pins
-profinet-interop v0.10.0 (contract 1.4, tshark's `fields`; its mrp image
+profinet-interop v0.11.0 (contract 1.4, tshark's `fields`; its mrp image
 carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
 scapy 2.8.0).
 

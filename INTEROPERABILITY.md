@@ -126,7 +126,7 @@ either cannot decode, or that tshark warns about, fails the test unless it
 is an attributed deviation of the peer.
 
 The Interop workflow builds the images of the profinet-interop release
-`INTEROP_REF` names (v0.10.0). The counts below are older: the matrix of
+`INTEROP_REF` names (v0.11.0). The counts below are older: the matrix of
 the profinet-interop v0.8.0 run (2026-11-12: the Interop and Kernel MRP
 workflows of the commit that moved the pin to v0.8.0, released as
 go-profinet v0.8.1); later checks, the APIData ones among them, are not
