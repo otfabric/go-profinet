@@ -1,9 +1,8 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.22.0 (2026-11-23); profinetctl v0.18.0 pins
-go-profinet v0.21.0 (the move to v0.22.0 is otfabric/profinetctl#48, not
-yet released). Main pins
+what. Status: go-profinet v0.22.0 (2026-11-23); profinetctl v0.19.0 pins
+go-profinet v0.22.0. Main pins
 profinet-interop v0.11.0 (contract 1.4, tshark's `fields`; its mrp image
 carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
 scapy 2.8.0).
@@ -38,7 +37,7 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.22.0** | 1.26 or later (CI: 1.26–1.27) | v0.11.0 (1.4) | none released | **yes** |
+| **v0.22.0** | 1.26 or later (CI: 1.26–1.27) | v0.11.0 (1.4) | v0.19.0 | **yes** |
 | v0.21.0 | 1.26 or later (CI: 1.26–1.27) | v0.10.0 (1.4) | v0.18.0 | no: v0.22.0 accepts parameter records in the profile range 0xB000–0xBFFF |
 | v0.20.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no: v0.21.0 answers APIData (0xF821) itself |
 | v0.19.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no: v0.20.0 sends the submodule APIs of a GSDML file |
