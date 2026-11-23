@@ -3,27 +3,25 @@
 What go-profinet supports, on what, how each feature is tested, and against
 what. Status: go-profinet v0.22.0 (2026-11-23); profinetctl v0.19.0 pins
 go-profinet v0.22.0. Main pins
-profinet-interop v0.11.0 (contract 1.4, tshark's `fields`; its mrp image
+profinet-interop v0.11.1 (contract 1.4, tshark's `fields`; its mrp image
 carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
 scapy 2.8.0).
 
-The interop evidence is older than the code, and is kept at the versions
-it was measured on:
+The interop evidence is that of go-profinet v0.22.0:
 
-- The interop matrix below is that of the profinet-interop v0.8.0 run of
-  2026-11-12 against go-profinet v0.8.1. v0.9.1 (DCP responder) and
-  v0.11.0 (ModuleDiffBlock) changed wire behaviour after it, so the
-  matrix's counts for those parts are evidence for v0.8.1 only.
-- The Interop workflow last passed on commit 735ba8d (2026-11-22, the
-  commit before v0.13.0, profinet-interop v0.9.0), and before that on
-  v0.12.0 (f9a5d82, profinet-interop v0.8.0). The matrix was not
-  regenerated from either run, and it has not run on v0.13.0–v0.18.0 or
-  with profinet-interop v0.9.2. v0.13.0–v0.18.0 changed GSDML handling,
-  the parameterization API and the pnio codecs of the `_S` DataTypes;
-  they did not change the controller, device, RPC or DCP packages.
-- The pull request workflow's interop job passed on the tree of v0.20.0
-  (61a3bab, profinet-interop v0.9.2). The matrix was not regenerated from
-  it.
+- The interop matrix below, published in profinet-interop v0.11.1, comes
+  from the Interop and Kernel MRP jobs of go-profinet's pull request
+  workflow, run 45200308175 (2026-11-23). That run tested PR #109 at
+  417e513, whose tree is the tree of the v0.22.0 release commit e7313fc,
+  with the images of profinet-interop v0.11.0. The matrix has 272 checks:
+  252 pass, 0 fail, 6 n/a and 14 peer deviations.
+- The Interop and Kernel MRP workflows run on pull requests that change
+  code, weekly and by hand, not on pushes to `main`; a release is
+  covered by the pull request run of its tree.
+- For the non-zero API (0x4E01) and the profile records (0xB000–0xBFFF)
+  the evidence is a decoder's: tshark decodes go-profinet's frames, and
+  no independent peer exchanges them (sections 2 and 5,
+  [INTEROPERABILITY.md](../INTEROPERABILITY.md)).
 
 How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
@@ -150,22 +148,23 @@ libraries (go-modbus, go-ethernetip, go-canbus, …):
 
 Each peer runs in a container of
 [profinet-interop](https://github.com/otfabric/profinet-interop) against
-go-profinet (the Interop workflow builds v0.8.0; the counts below are the
-matrix of its run of 2026-11-12); every exchange is captured and decoded
+go-profinet (the Interop workflow builds v0.11.1; the counts below are the
+matrix of go-profinet v0.22.0's run of 2026-11-23, published in
+profinet-interop v0.11.1); every exchange is captured and decoded
 by tshark and scapy. Full evidence, check by check:
 [MATRIX.md](https://github.com/otfabric/profinet-interop/blob/main/docs/MATRIX.md).
 
 | Peer | go-profinet as | DCP | LLDP | AR, startup | Records, I&M | Alarms | Cyclic | Shared device | Port checks | Re-param. | MRP | MRA | SNMP | pass | fail | n/a | dev. |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|---:|
-| rt-labs p-net `ea5e554` (device) | controller | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1 ms | ✅ | ✅ | n/a¹ | | | | 56 | 0 | 1 | 0 |
+| rt-labs p-net `ea5e554` (device) | controller | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1 ms | ✅ | ✅ | n/a¹ | | | | 58 | 0 | 1 | 0 |
 | pnio-rs v0.1.0 (device) | controller | ◐² | | ✅ | ✅³ | | ✅ | | | n/a¹ | | | | 13 | 0 | 3 | 0 |
 | profinet-py 0.6.6 (controller) | device | ✅ | | ✅ | ✅⁴ | ✅ | ✅ | | | ✅ | | | | 32 | 0 | 1 | 3 |
 | pnio-dcp 1.2.0 (DCP tool) | device | ✅ | | | | | | | | | | | | 8 | 0 | 0 | 0 |
 | umrp v4.0 (MRP node) | MRP node | | | | | | | | | | ✅ | ✅⁵ | | 32 | 0 | 0 | 2 |
 | microchip-ung/mrp `177717e` on the Linux bridge (MRP node) | MRP node | | | | | | | | | | ✅⁶ | ✅ | | 31 | 0 | 1 | 0 |
 | Net-SNMP 5.9.3 (SNMP manager) | device | | ✅ LLDP-MIB | | | | | | | | | | ✅ | 29 | 0 | 0 | 0 |
-| tshark 4.0.17, scapy 2.6.1 (decoders) | every role | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅⁷ | ✅⁷ | ✅ | 47 | 0 | 0 | 9 |
-| **total** | | | | | | | | | | | | | | **248** | **0** | **6** | **14** |
+| tshark 4.0.17, scapy 2.8.0 (decoders) | every role | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅⁷ | ✅⁷ | ✅ | 49 | 0 | 0 | 9 |
+| **total** | | | | | | | | | | | | | | **252** | **0** | **6** | **14** |
 
 ✅ tested and passing · ◐ partly · empty: the peer does not have the
 feature. **n/a** and **dev.** are profinet-interop's outcomes: the peer
