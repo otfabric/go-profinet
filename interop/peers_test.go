@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -168,6 +169,141 @@ func TestProfinetPyController(t *testing.T) {
 
 // TestPnioRsReparameterize: pnio-rs answers PrmBegin in Data with
 // DD 81 3D 03 (CMDEV state conflict): not applicable; its AR runs on.
+// TestProfinetPyAPI: profinet-py as IO-Controller of go-profinet's device
+// with the IO module of slot 3 in API 0x4E01 (testdata/otf-device-api.json;
+// the GSDML file go-profinet writes for it names the API, which
+// profinet-py's GSDML loader reads). profinet-py's read and write take an
+// API; its IOCRs and expected configuration list each slot under its
+// submodule's API.
+func TestProfinetPyAPI(t *testing.T) {
+	e := newEnv(t)
+	img := image("profinet-py")
+	e.result.peer("profinet-py", img, "controller")
+	dev := e.startOTF("dut", 20, "device", "-station", "otf-dut", "-model", "/otfnode-testdata/otf-device-api.json", "-gsdml-out", "/share/otf-dut-api.xml")
+	e.waitEvent(dev, 30*time.Second, "start", func(m map[string]any) bool { return m["event"] == "start" })
+	stop := e.capture(dev, "profinet-py-api.pcap")
+	out := e.run("pypn", img, 3, 3*time.Minute, "controller", "--station", "otf-dut", "--gsdml", "/share/otf-dut-api.xml",
+		"--read", "0x4e01@3:1:0x11", "--write", "0x4e01@3:1:0x11:0a0b", "--read", "0x4e01@3:1:0x11", "--read", "0@3:1:0x11", "--read", "0x4e02@3:1:0x11",
+		"--read", "0x4e01@3:1:0xF000", "--read", "0:1:0xF821",
+		"--output", "2:1:a1b2c3d4", "--output", "3:1:beef", "--read-input", "1:1", "--read-input", "3:1", "--duration", "3")
+	var rep struct {
+		Steps []struct {
+			Step  string `json:"step"`
+			OK    bool   `json:"ok"`
+			Value any    `json:"value"`
+			Error string `json:"error"`
+		} `json:"steps"`
+	}
+	if err := json.Unmarshal(lastLine(out), &rep); err != nil {
+		t.Fatalf("profinet-py output: %v\n%s", err, out)
+	}
+	steps := map[string]int{}
+	for i, s := range rep.Steps {
+		steps[s.Step] = i
+	}
+	ok := func(name string) bool { i, found := steps[name]; return found && rep.Steps[i].OK }
+	val := func(name string) string {
+		if i, found := steps[name]; found {
+			return str(rep.Steps[i].Value)
+		}
+		return ""
+	}
+	errOf := func(name string) string {
+		if i, found := steps[name]; found {
+			return rep.Steps[i].Error
+		}
+		return ""
+	}
+	// The two reads of slot 3's record repeat a step name; the report
+	// keeps both in order.
+	var recReads []string
+	for _, s := range rep.Steps {
+		if s.Step == "read 0x4e01@3:1:0x11" && s.OK {
+			recReads = append(recReads, str(s.Value))
+		}
+	}
+	e.expect("Read a record of a submodule in API 0x4E01: its default", len(recReads) == 2 && recReads[0] == "0002", "%v", recReads)
+	e.expect("Write a record of a submodule in API 0x4E01, read back", ok("write 0x4e01@3:1:0x11:0a0b") && len(recReads) == 2 && recReads[1] == "0a0b", "%v %s", recReads, errOf("write 0x4e01@3:1:0x11:0a0b"))
+	// go-profinet's device routes records by (API, slot, subslot): the
+	// slot and subslot of the submodule in another API, or in an API the
+	// device does not have, is "invalid area/API" (ErrorDecode 0x80
+	// PNIORW, ErrorCode1 0xB4, as profinet-py decodes it).
+	refused := func(name string) bool {
+		return !ok(name) && strings.Contains(errOf(name), "Decode=0xB4") && strings.Contains(errOf(name), "ErrorCode1=0x80")
+	}
+	e.expect("Read of that record in API 0 refused: invalid area/API (0xB4)", refused("read 0@3:1:0x11"), "%s", errOf("read 0@3:1:0x11"))
+	e.expect("Read in an API the device does not have (0x4E02) refused: invalid area/API (0xB4)", refused("read 0x4e02@3:1:0x11"), "%s", errOf("read 0x4e02@3:1:0x11"))
+	decode := func(name string) (pnio.RawBlock, error) {
+		b, err := hex.DecodeString(val(name))
+		if err != nil {
+			return pnio.RawBlock{}, err
+		}
+		blk, _, err := pnio.ReadBlock(b)
+		return blk, err
+	}
+	var apis []uint32
+	blk, err := decode("read 0:1:0xF821")
+	if err == nil {
+		var d pnio.APIData
+		d, err = pnio.DecodeAPIData(blk)
+		apis = d.APIs
+	}
+	e.expect("APIData (0xF821) read by profinet-py: APIs 0 and 0x4E01", ok("read 0:1:0xF821") && err == nil && slices.Equal(apis, []uint32{0, 0x4E01}), "%v %v %s", apis, err, val("read 0:1:0xF821"))
+	var ident string
+	blk, err = decode("read 0x4e01@3:1:0xF000")
+	if err == nil {
+		var d pnio.IdentificationData
+		d, err = pnio.DecodeIdentificationData(blk)
+		for _, a := range d.APIs {
+			for _, sl := range a.Slots {
+				for _, sm := range sl.Submodules {
+					ident += fmt.Sprintf("%#x %d/%d:%#x/%#x ", a.API, sl.Slot, sm.Subslot, sl.IdentNumber, sm.IdentNumber)
+				}
+			}
+		}
+	}
+	e.expect("RealIdentificationData for API 0x4E01 (0xF000) read by profinet-py: slot 3 alone", err == nil && ident == "0x4e01 3/1:0x30/0x31 ", "%q %v", ident, err)
+	// profinet-py's slot discovery reads 0xF000 in API 0, which Wireshark's
+	// index table names "RealIdentificationData for one API": API 0's
+	// slots, without slot 3.
+	e.expect("Slot discovery by profinet-py (0xF000 in API 0): API 0's slots, not slot 3", ok("discover-slots") && strings.Contains(val("discover-slots"), "slot=2") && !strings.Contains(val("discover-slots"), "slot=3"), "%s", val("discover-slots"))
+	e.expect("GSDML with a submodule in API 0x4E01, written by go-profinet, parsed by profinet-py; cyclic AR (IOCARSingle) established", ok("start-cyclic") && strings.Contains(val("start-cyclic"), "slot:3"), "%v %s", val("start-cyclic"), errOf("start-cyclic"))
+	e.expect("Cyclic inputs of the submodule in API 0x4E01 at profinet-py", ok("input 3:1") && len(val("input 3:1")) == 4, "%s", val("input 3:1"))
+	evs := e.events(dev)
+	outputs := map[string]bool{}
+	for _, ev := range evs {
+		if ev["event"] == "output" {
+			outputs[fmt.Sprintf("%v:%v=%v", ev["slot"], ev["subslot"], ev["data"])] = true
+		}
+	}
+	e.expect("Cyclic outputs from profinet-py at the device, in API 0x4E01 (slot 3) and API 0 (slot 2)", outputs["3:1=beef"] && outputs["2:1=a1b2c3d4"], "%v", outputs)
+	var writes []string
+	for _, ev := range evs {
+		if ev["event"] == "write" {
+			writes = append(writes, fmt.Sprintf("%v:%v:%v=%v", ev["slot"], ev["subslot"], ev["index"], ev["data"]))
+		}
+	}
+	e.expect("The device received the write in API 0x4E01", slices.Contains(writes, "3:1:17=0a0b"), "%v", writes)
+	pcap := stop()
+	e.oracles(pcap, peerDeviation{Protocol: "PNIO-CM", Message: "Trailing stray characters",
+		Why: "profinet-py writes I&M1 with BlockLength 58 and two padding octets; the standard block is 56 octets (tshark flags the extra octets of its Write request)"})
+	// What tshark decodes: profinet-py's Connect names both APIs, and the
+	// record frames of index 0x0011 name the API of each request.
+	fr := e.tsharkFields(pcap, "dcerpc.pkt_type == 0 && dcerpc.opnum == 0 && pn_io.iocr_type", "pn_io.api")
+	e.expect("tshark fields: profinet-py's Connect request names APIs 0x00000000 and 0x00004e01", len(fr) == 1 &&
+		slices.Contains(fr[0].Fields["pn_io.api"], "0x00004e01") && slices.Contains(fr[0].Fields["pn_io.api"], "0x00000000"), "%+v", fr)
+	fr = e.tsharkFields(pcap, "pn_io.index == 0x0011", "pn_io.api", "pn_io.slot_nr", "pn_io.subslot_nr")
+	n := map[string]int{}
+	slot3 := true
+	for _, f := range fr {
+		for _, a := range f.Fields["pn_io.api"] {
+			n[a]++
+		}
+		slot3 = slot3 && allEqual(f.Fields["pn_io.slot_nr"], "0x0003") && allEqual(f.Fields["pn_io.subslot_nr"], "0x0001")
+	}
+	e.expect("tshark fields: record 0x0011 read and written in API 0x00004e01, slot 3, subslot 1; the refused reads in APIs 0 and 0x00004e02", slot3 && n["0x00004e01"] >= 6 && n["0x00000000"] >= 1 && n["0x00004e02"] >= 1, "%v %+v", n, fr)
+}
+
 func TestPnioRsReparameterize(t *testing.T) {
 	e := newEnv(t)
 	img := image("pnio-rs")

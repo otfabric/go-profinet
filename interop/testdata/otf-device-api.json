@@ -1,0 +1,112 @@
+{
+  "identity": {
+    "vendorId": 61440,
+    "deviceId": 257,
+    "vendorName": "OT Fabric",
+    "typeOfStation": "go-profinet interop device",
+    "family": "Interop",
+    "orderId": "OTF-INTEROP-1",
+    "serialNumber": "0001",
+    "hardwareRevision": 1,
+    "softwareRevision": {
+      "Prefix": 86,
+      "FunctionalEnhance": 1,
+      "BugFix": 0,
+      "InternalChange": 0
+    },
+    "instance": 0
+  },
+  "capabilities": {
+    "maxArs": 2,
+    "minDeviceInterval": 32,
+    "conformanceClass": "B",
+    "lldp": true,
+    "ports": 1
+  },
+  "dap": {
+    "name": "go-profinet interop DAP",
+    "identNumber": 256,
+    "submodules": [
+      {
+        "name": "go-profinet interop DAP",
+        "identNumber": 1,
+        "subslot": 1
+      },
+      {
+        "name": "Interface",
+        "identNumber": 32768,
+        "subslot": 32768
+      },
+      {
+        "name": "Port 1",
+        "identNumber": 32769,
+        "subslot": 32769
+      }
+    ]
+  },
+  "slots": [
+    {
+      "slot": 1,
+      "module": {
+        "name": "8 octets in",
+        "identNumber": 16,
+        "submodules": [
+          {
+            "name": "Inputs",
+            "identNumber": 17,
+            "subslot": 1,
+            "inputLength": 8
+          }
+        ]
+      }
+    },
+    {
+      "slot": 2,
+      "module": {
+        "name": "4 octets out",
+        "identNumber": 32,
+        "submodules": [
+          {
+            "name": "Outputs",
+            "identNumber": 33,
+            "subslot": 1,
+            "outputLength": 4,
+            "records": [
+              {
+                "index": 16,
+                "name": "Mode",
+                "length": 2,
+                "default": "AAE="
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "slot": 3,
+      "module": {
+        "name": "2 in 2 out",
+        "identNumber": 48,
+        "submodules": [
+          {
+            "name": "IO",
+            "identNumber": 49,
+            "api": 19969,
+            "subslot": 1,
+            "inputLength": 2,
+            "outputLength": 2,
+            "records": [
+              {
+                "index": 17,
+                "name": "Profile parameter",
+                "length": 2,
+                "default": "AAI="
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

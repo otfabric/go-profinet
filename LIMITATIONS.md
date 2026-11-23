@@ -66,8 +66,12 @@ Restrictions:
   (0xF000) the header's API; 0xF80C everything. A subslot-level read whose
   API is not the submodule's, or another read in an API the device does not
   have, is refused with "invalid area/API". Not checked against IEC
-  61158-6-10 (not read) nor an independent device with an API other than
-  0: no peer of profinet-interop has one. tshark and scapy decode the
+  61158-6-10 (not read). Against independent peers with an API other than
+  0: p-net's answers to 0xE001 and 0xF000 (`TestPnetAPI`), and
+  profinet-py's reads of go-profinet's device, 0xF000 per API and record
+  reads refused with invalid area/API (`TestProfinetPyAPI`). The
+  slot-level and subslot-level identification reads in a non-zero API
+  are not exchanged with a peer. tshark and scapy decode the
   frames without a malformed frame (the interop suite's codec scenario);
   the field values they decode are not compared.
 - APIData (index 0xF821) lists the device's APIs, API 0 among them, in
@@ -77,8 +81,8 @@ Restrictions:
   was not read. A device of two APIs is p-net built for two APIs
   (`TestPnetAPI`), whose sample application keeps records by slot and
   subslot: that a device scopes records by API is not tested against an
-  independent device. go-profinet's device answering with two APIs has been
-  checked against tshark's decoding only.
+  independent device. go-profinet's device answering with two APIs is
+  read by profinet-py (`TestProfinetPyAPI`).
 - `controller.Parameter` has no API: a parameter is written at the API of
   the model's submodule in its slot and subslot (API 0 where the model has
   none). `RecordClient.ReadDiagnosis` reads a subslot at API 0;
