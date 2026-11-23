@@ -110,6 +110,9 @@ type DAPRow struct {
 	// index is no Unsigned16.
 	HighRecords    int `json:"high_records,omitempty"`
 	InvalidRecords int `json:"invalid_records,omitempty"`
+	// Addresses compares the addresses of the DAP's plugged configuration
+	// with its model's; nil for a DAP ToModel does not convert.
+	Addresses *AddressCheck `json:"addresses,omitempty"`
 	// Failures are the references whose reference or module does not
 	// convert.
 	Failures []RefFailure `json:"failures,omitempty"`
@@ -229,6 +232,7 @@ func analyze(data []byte) FileResult {
 				row.Failures = append(row.Failures, RefFailure{Target: m.Target, Path: m.ModulePath, Kind: "module", Class: m.ModuleOutcome, Error: m.ModuleError})
 			}
 		}
+		row.Addresses = checkAddresses(ix, rep)
 		if rep.Outcome != gsdml.OutcomeConverted && r.Stage == "" {
 			r.Stage = StageModel
 		}
@@ -508,6 +512,25 @@ type Fidelity struct {
 	ConvertedHighRecords int `json:"converted_high_records"`
 	// RecordIndexes counts the records by index range.
 	RecordIndexes map[string]int `json:"record_indexes"`
+	// DAPsAddressChecked counts the converted DAPs whose addresses were
+	// compared with their model's (AddressCheck), Addresses and
+	// AddressRecords the submodule addresses and record indexes compared;
+	// DAPsAddressFailed the DAPs whose model loses, adds or changes one,
+	// or whose addresses could not be read. The run fails when it is not
+	// zero.
+	DAPsAddressChecked int `json:"daps_address_checked"`
+	Addresses          int `json:"addresses"`
+	AddressRecords     int `json:"address_records"`
+	DAPsAddressFailed  int `json:"daps_address_failed"`
+	// AddressLost … AddressCollisions sum the AddressCheck counts.
+	AddressLost         int `json:"address_lost"`
+	AddressExtra        int `json:"address_extra"`
+	AddressChanged      int `json:"address_changed"`
+	AddressRecordsLost  int `json:"address_records_lost"`
+	AddressRecordsExtra int `json:"address_records_extra"`
+	AddressUnread       int `json:"address_unread"`
+	DAPsAddressCollide  int `json:"daps_address_collisions"`
+	AddressCollisions   int `json:"address_collisions"`
 }
 
 // SignatureCount is one kind of failure.
@@ -614,6 +637,27 @@ func Summarize(results []FileResult) Summary {
 			if d.Outcome == gsdml.OutcomeConverted && !slices.Equal(d.ModelAPIs, d.PluggedAPIs) {
 				s.Fidelity.APIMismatch++
 			}
+			if a := d.Addresses; a != nil {
+				f := &s.Fidelity
+				f.DAPsAddressChecked++
+				f.Addresses += a.Addresses
+				f.AddressRecords += a.Records
+				f.AddressLost += a.Lost
+				f.AddressExtra += a.Extra
+				f.AddressChanged += a.Changed
+				f.AddressRecordsLost += a.RecordsLost
+				f.AddressRecordsExtra += a.RecordsExtra
+				f.AddressCollisions += a.Collisions
+				if a.Unread {
+					f.AddressUnread++
+				}
+				if a.Failed() {
+					f.DAPsAddressFailed++
+				}
+				if a.Collisions > 0 {
+					f.DAPsAddressCollide++
+				}
+			}
 			if d.HighRecords > 0 {
 				s.Fidelity.DAPsHighRecords++
 				if d.Outcome == gsdml.OutcomeConverted {
@@ -683,6 +727,10 @@ func Markdown(s Summary, source string) string {
 	w("| … of them in the plugged configuration (the DAP's submodules, modules in slots) | | %d | %d |\n", f.DAPsPluggedAPI, f.ConvertedPluggedAPI)
 	w("| a record whose index is a number above 0x7FFF (ToModel keeps 0xB000-0xBFFF, refuses the others) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
 	w("\nConverted DAPs whose model does not keep the APIs of their plugged configuration: %d.\n", f.APIMismatch)
+	w("\n### Addresses\n\nEvery converted DAP's plugged configuration, as the file states it (API, slot, subslot, SubmoduleIdentNumber, record indexes), against the submodules a device built from its model serves.\n\n")
+	w("| Converted DAPs compared | Submodule addresses | Record indexes | DAPs failed | Lost | Extra | Changed | Records lost | Records extra | Unread |\n|---|---|---|---|---|---|---|---|---|---|\n")
+	w("| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n", f.DAPsAddressChecked, f.Addresses, f.AddressRecords, f.DAPsAddressFailed, f.AddressLost, f.AddressExtra, f.AddressChanged, f.AddressRecordsLost, f.AddressRecordsExtra, f.AddressUnread)
+	w("\nCollisions (two submodules at one address, or one record index twice in a submodule, in the file; a device built from the model serves the first): %d in %d DAPs.\n", f.AddressCollisions, f.DAPsAddressCollide)
 	if len(f.APIs) > 0 {
 		w("\n| API | Files |\n|---|---|\n")
 		for _, k := range sortedKeys(f.APIs) {

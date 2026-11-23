@@ -26,8 +26,16 @@
 // of the vendor's file: they stay local, like the corpus. A regression
 // case for go-profinet is written in our own words (§16 of the plan).
 //
-// Exit status: 0 when the run finished (whatever the files' outcomes), 2
-// for a usage or I/O error.
+// For every device access point ToModel converts, the run compares the
+// addresses of its plugged configuration as the file states them (API,
+// slot, subslot, SubmoduleIdentNumber, record indexes) with those a device
+// built from the model serves (AddressCheck).
+//
+// Exit status: 0 when the run finished and every converted DAP's model
+// keeps its addresses (whatever the files' other outcomes); 1 when the
+// run finished and a converted DAP's model loses, adds or changes an
+// address or a record index, or its addresses could not be read (the
+// results are still written); 2 for a usage or I/O error.
 package main
 
 import (
@@ -158,7 +166,18 @@ func run(args []string, stdout, stderr io.Writer) int {
 		diag(stderr, werr)
 		return 2
 	}
-	return 0
+	return addressGate(sum.Fidelity, stderr)
+}
+
+// addressGate is the exit status of a finished run: 1 when a converted
+// DAP's model does not keep its addresses, else 0.
+func addressGate(f Fidelity, stderr io.Writer) int {
+	if f.DAPsAddressFailed == 0 {
+		return 0
+	}
+	diag(stderr, fmt.Sprintf("address fidelity: %d of %d converted DAPs: %d lost, %d extra, %d changed, %d records lost, %d records extra, %d unread",
+		f.DAPsAddressFailed, f.DAPsAddressChecked, f.AddressLost, f.AddressExtra, f.AddressChanged, f.AddressRecordsLost, f.AddressRecordsExtra, f.AddressUnread))
+	return 1
 }
 
 // runOne analyses one file and prints its FileResult as JSON.
