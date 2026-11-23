@@ -26,6 +26,54 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.22.1
+
+**Date:** 2026-11-23
+**Previous release:** v0.22.0
+
+## Summary
+
+The GSDML corpus run (`internal/cmd/gsdmlcorpus`, `make gsdml-corpus`)
+checks, for every device access point `ToModel` converts, that the model
+keeps the addresses of its plugged configuration: each submodule's API,
+slot, subslot and SubmoduleIdentNumber, and the record indexes of its
+parameter records. No library API or behaviour changes.
+
+## Changes
+
+### Added
+
+- **`gsdmlcorpus` address check**: per converted DAP an `addresses`
+  object (`gsdml-corpus-result-v1`):
+  - **What it compares:** the file's submodule addresses and record
+    indexes, read from its attributes, against those a device built from
+    the model serves (`model.Device.Each`).
+  - **What it counts:** lost, extra and changed addresses; lost and extra
+    record indexes; collisions (two submodules at one address, or a record
+    index twice in a submodule), with up to ten samples of each.
+  - **Summary and matrix:** the summary's fidelity totals them, and the
+    matrix has an Addresses table.
+  - **Not independent:** the expected side takes the slots from
+    `AnalyzeModels` and, without FixedInSubslots, ToModel's subslot rule
+    (docs/TESTING.md).
+
+### Changed
+
+- **`gsdmlcorpus` exit status**: 1 when a converted DAP's model loses,
+  adds or changes an address or a record index, or when the file's
+  addresses of a converted DAP cannot be read. The results are still
+  written. It was 0 for every finished run.
+
+### Breaking
+
+None. `gsdmlcorpus` is an internal command, not part of the module's API.
+A script that runs `make gsdml-corpus` sees exit status 1 where the check
+fails. On the local corpus of 249 public GSDML files, all 779 converted
+device access points keep their 4134 submodule addresses and 801 record
+indexes, with no collision. That result stays local, like the corpus.
+
+---
+
 ## v0.22.0
 
 **Date:** 2026-11-23
