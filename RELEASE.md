@@ -44,6 +44,13 @@ device access points) declare records at 0xB600, 0xB701–0xB703 and 0xB900;
 values tshark decodes from a Write of 0xB600 in API 0x4E01, against
 profinet-interop v0.11.0; no independent device accepts such a record.
 
+This is generic, API-aware transport of profile records and GSDML
+parameterization with them, not an implementation of a profile: what
+PROFIdrive's parameter access (0xB02E, 0xB02F, a request/response
+protocol) or IO-Link defines for its records is the application's
+(`Handler`). The tshark check shows the header values and that the
+record's octets end the frame, not that tshark interprets them.
+
 ## Changes
 
 ### Added
