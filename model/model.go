@@ -440,7 +440,8 @@ func (d *Device) WithSlots(slots ...uint16) *Device {
 // Expected returns the ExpectedSubmoduleBlockReq blocks (one per slot)
 // that describe the plugged configuration, as a controller sends them.
 // A slot's block has one API entry per API its submodules belong to, in
-// API order, each with the module ident and that API's submodules.
+// API order, each with the module ident and that API's submodules; a
+// module without submodules has one entry in API 0.
 func (d *Device) Expected() []pnio.ExpectedSubmoduleBlockReq {
 	var out []pnio.ExpectedSubmoduleBlockReq
 	for _, m := range d.modules() {
@@ -465,7 +466,8 @@ func (d *Device) Expected() []pnio.ExpectedSubmoduleBlockReq {
 
 // RealIdentification returns the RealIdentificationData of the plugged
 // configuration: one entry per API, in API order, with the slots (in slot
-// order) that have submodules of that API.
+// order) that have submodules of that API; a module without submodules is
+// in API 0.
 func (d *Device) RealIdentification() pnio.IdentificationData {
 	var id pnio.IdentificationData
 	at := map[uint32]int{}
@@ -511,8 +513,12 @@ type apiGroup struct {
 }
 
 // byAPI groups a module's submodules by API, in API order, each group's
-// submodules in subslot order.
+// submodules in subslot order. A module without submodules is one empty
+// group in API 0, so that it keeps its entry in API 0 as before APIs.
 func byAPI(subs []Submodule) []apiGroup {
+	if len(subs) == 0 {
+		return []apiGroup{{api: API}}
+	}
 	var gs []apiGroup
 	for i := range subs {
 		s := &subs[i]

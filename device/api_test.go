@@ -240,3 +240,36 @@ func TestConnectWrongAPI(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// apiOf gives the plugged submodule's API, and API 0 for a subslot the
+// model does not have (a diagnosis or alarm of a channel without one).
+func TestAPIOf(t *testing.T) {
+	d := &Device{model: apiModel()}
+	for _, c := range []struct {
+		slot, subslot uint16
+		want          uint32
+	}{{5, 2, apiIOLink}, {5, 1, 0}, {0, 1, 0}, {9, 1, 0}, {5, 9, 0}} {
+		if got := d.apiOf(c.slot, c.subslot); got != c.want {
+			t.Errorf("apiOf(%d, %d) = %#x, want %#x", c.slot, c.subslot, got, c.want)
+		}
+	}
+}
+
+// A module without submodules is plugged in API 0, as before APIs, and in
+// no other API.
+func TestModuleDiffEmptyModule(t *testing.T) {
+	n := newNet(t)
+	m := apiModel()
+	m.Slots = append(m.Slots, model.Slot{Number: 7, Module: model.Module{Name: "Empty", IdentNumber: 0x70}})
+	d, _ := n.device(nil, func(c *Config) { c.Model = m })
+	exp := func(api uint32) []pnio.ExpectedSubmoduleBlockReq {
+		return []pnio.ExpectedSubmoduleBlockReq{{Modules: []pnio.ExpectedModule{{API: api, Slot: 7, IdentNumber: 0x70}}}}
+	}
+	if diff, _ := d.moduleDiff(exp(0), nil); diff != nil {
+		t.Fatalf("API 0: %+v", diff)
+	}
+	diff, _ := d.moduleDiff(exp(apiIOLink), nil)
+	if diff == nil || len(diff.APIs) != 1 || diff.APIs[0].API != apiIOLink || diff.APIs[0].Modules[0].State != pnio.ModuleStateNoModule {
+		t.Fatalf("API %#x: %+v", apiIOLink, diff)
+	}
+}

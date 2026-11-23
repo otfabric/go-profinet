@@ -319,10 +319,12 @@ func (d *Device) moduleDiff(exp []pnio.ExpectedSubmoduleBlockReq, locked map[key
 	for _, b := range exp {
 		for _, em := range b.Modules {
 			// A module is plugged in an API when one of its submodules
-			// belongs to it.
+			// belongs to it; a module without submodules is in API 0.
 			rm, ok := d.model.Module(em.Slot)
-			if ok {
+			if ok && len(rm.Submodules) > 0 {
 				ok = slices.ContainsFunc(rm.Submodules, func(s model.Submodule) bool { return s.API == em.API })
+			} else if ok {
+				ok = em.API == model.API
 			}
 			if !ok {
 				dm := pnio.DiffModule{Slot: em.Slot, IdentNumber: em.IdentNumber, State: pnio.ModuleStateNoModule}

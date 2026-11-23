@@ -117,3 +117,34 @@ func TestSubmoduleAPIJSON(t *testing.T) {
 		t.Fatalf("%+v %v", s, err)
 	}
 }
+
+// A module without submodules keeps its entry in API 0: the bytes are those
+// go-profinet v0.19.0 (before APIs) encoded for the same model.
+func TestEmptyModuleAPI0(t *testing.T) {
+	d := validDevice()
+	d.Slots = []Slot{
+		{Number: 1, Module: Module{Name: "IO", IdentNumber: 0x40, Submodules: []Submodule{{Name: "io", IdentNumber: 0x41, Subslot: 1, InputLen: 2}}}},
+		{Number: 3, Module: Module{Name: "Empty", IdentNumber: 0x60}},
+	}
+	if err := d.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"0104003c010000010000000000000000010000000003000100000001000000010000010180000000800000000001000001018001000080010000000100000101",
+		"010400200100000100000000000100000040000000010001000000410001000100020101",
+		"01040012010000010000000000030000006000000000",
+	}
+	exp := d.Expected()
+	if len(exp) != len(want) {
+		t.Fatalf("%d blocks, want %d", len(exp), len(want))
+	}
+	for i, b := range exp {
+		if got := b.Append(nil); !bytes.Equal(got, unhex(t, want[i])) {
+			t.Errorf("block %d\n got %x\nwant %s", i, got, want[i])
+		}
+	}
+	id := d.RealIdentification()
+	if got, w := id.Append(nil), unhex(t, "0013003a01010001000000000003000000000100000300010000000180000000800080010000800100010000004000010001000000410003000000600000"); !bytes.Equal(got, w) {
+		t.Errorf("identification\n got %x\nwant %x", got, w)
+	}
+}

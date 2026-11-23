@@ -105,7 +105,7 @@ Each calls fn for every plugged submodule in slot and subslot order, the DAP fir
 func (d *Device) Expected() []pnio.ExpectedSubmoduleBlockReq
 ```
 
-Expected returns the ExpectedSubmoduleBlockReq blocks (one per slot) that describe the plugged configuration, as a controller sends them. A slot's block has one API entry per API its submodules belong to, in API order, each with the module ident and that API's submodules.
+Expected returns the ExpectedSubmoduleBlockReq blocks (one per slot) that describe the plugged configuration, as a controller sends them. A slot's block has one API entry per API its submodules belong to, in API order, each with the module ident and that API's submodules; a module without submodules has one entry in API 0.
 
 #### func (Device) Module
 
@@ -129,7 +129,7 @@ ModuleTypes returns the distinct module types of the slots: the plugged modules 
 func (d *Device) RealIdentification() pnio.IdentificationData
 ```
 
-RealIdentification returns the RealIdentificationData of the plugged configuration: one entry per API, in API order, with the slots (in slot order) that have submodules of that API.
+RealIdentification returns the RealIdentificationData of the plugged configuration: one entry per API, in API order, with the slots (in slot order) that have submodules of that API; a module without submodules is in API 0.
 
 #### func (Device) Submodule
 

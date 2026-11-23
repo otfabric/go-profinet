@@ -3,10 +3,12 @@
 package controller
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/otfabric/go-profinet/alarm"
 	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/pnio"
 )
@@ -116,6 +118,73 @@ func TestConnectAPIAddressing(t *testing.T) {
 		}
 		if w.API != want {
 			t.Errorf("write %d/%d %s: API %#x, want %#x", w.Slot, w.Subslot, w.Index, w.API, want)
+		}
+	}
+}
+
+// A submodule a shared device releases to the AR gets its parameters
+// written in its API.
+func TestReleasedParameterAPI(t *testing.T) {
+	n := newNet(t)
+	c, cn := n.controller()
+	f := n.fake("fake")
+	var mu sync.Mutex
+	var writes []pnio.WriteReq
+	f.set(func(f *fakeDev) {
+		f.raw = func(op pnio.OpNum, blocks []byte) []byte {
+			if op != pnio.OpWrite {
+				return nil
+			}
+			blk, _, err := pnio.ReadBlock(blocks)
+			if err != nil {
+				t.Error(err)
+				return nil
+			}
+			q, err := pnio.DecodeWriteReq(blk)
+			if err != nil {
+				t.Error(err)
+				return nil
+			}
+			mu.Lock()
+			writes = append(writes, q)
+			mu.Unlock()
+			res := pnio.WriteRes{Seq: q.Seq, ARUUID: q.ARUUID, API: q.API, Slot: q.Slot, Subslot: q.Subslot, Index: q.Index, Length: q.Length}
+			return pnio.AppendNDRResponse(nil, order, pnio.Status{}, 0, res.Append(nil))
+		}
+	})
+	cd, err := c.AddDevice(DeviceConfig{StationName: "fake", Model: apiModel(), ReconnectMin: time.Hour, ReductionRatio: 512, DataHoldFactor: 0x1E00,
+		RTATimeoutFactor: 10, Parameters: []Parameter{{Slot: 4, Subslot: 2, Index: 0x20, Data: []byte{7}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cd.Close() }()
+	waitState(t, cd, StateWaitAppReady, 5*time.Second)
+	req := <-f.requests
+	cb := pnio.ControlBlock{Type: pnio.BlockAppReadyReq, ARUUID: req.AR.ARUUID, SessionKey: req.AR.SessionKey, Command: pnio.CmdApplicationReady}
+	if st, _, err := f.appReady(c, 34964, cb); err != nil || !st.OK() {
+		t.Fatalf("appready %v %v", st, err)
+	}
+	waitState(t, cd, StateRunning, 5*time.Second)
+	ep, err := f.am.Open(alarm.EndpointConfig{LocalRef: 0x77, RemoteRef: req.AlarmCR.LocalAlarmReference, RemoteMAC: cn.mux.HardwareAddr(), Timeout: time.Second, Retries: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ep.Close()
+	note := pnio.AlarmNotification{Type: pnio.AlarmReleased, API: apiIOLink, Slot: 4, Subslot: 2, ModuleIdentNumber: 0x40, SubmoduleIdentNumber: 0x42}
+	if err := ep.Send(context.Background(), note.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	// One write at startup, one for the handover.
+	eventually(t, 5*time.Second, "the handover's parameter write", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(writes) == 2
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	for _, w := range writes {
+		if w.API != apiIOLink || w.Slot != 4 || w.Subslot != 2 || w.Index != 0x20 {
+			t.Errorf("write %+v", w)
 		}
 	}
 }

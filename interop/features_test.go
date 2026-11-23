@@ -346,7 +346,10 @@ func TestCodecDecoders(t *testing.T) {
 	// A submodule of API 0x4E01 (IO-Link) beside API 0 in one slot: the
 	// IOCAR Connect request with its ExpectedSubmoduleBlockReq and IOCR
 	// API lists, a Write request, and the Read responses of
-	// RealIdentificationData and DiagnosisData in that API.
+	// RealIdentificationData and DiagnosisData in that API. They have no
+	// check of their own: the tshark and scapy checks of codecs.pcap
+	// below decode them, and a new check would need a stable ID in
+	// profinet-interop's matrix/ids.tsv.
 	const apiIOL = 0x4E01
 	m := &model.Device{
 		Identity:     model.Identity{VendorID: 0xF000, DeviceID: 2},
@@ -401,7 +404,6 @@ func TestCodecDecoders(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.expect("MRP Test, TopologyChange, LinkDown, LinkUp; PTCP DelayReq, DelayRes; IOCARSR Connect with SRInfoBlock and MCRBlockReq; MRP records (PDInterfaceMrpDataAdjust/Check/Real, PDPortMrpDataAdjust) encoded (go-profinet)", true, "")
-	e.expect("Submodule of API 0x4E01 beside API 0 in one slot: IOCAR Connect (ExpectedSubmoduleBlockReq, IOCR API lists), Write, RealIdentificationData and DiagnosisData Read responses encoded (go-profinet)", true, "")
 	e.oracles("codecs.pcap")
 }
 

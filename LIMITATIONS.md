@@ -43,6 +43,10 @@ Restrictions:
   serves the I&M0 filter data and the PDEV records there. `ToModel` refuses
   a DAP submodule of another API (`ErrUnsupported`); no file of the local
   GSDML corpus has one.
+- A module without submodules has no API of its own: it is in API 0 (the
+  ExpectedSubmoduleBlockReq, the identification and the ModuleDiffBlock),
+  as before APIs. That keeps the encoding of v0.19.0; it is not taken from
+  IEC 61158-6-10 or a reference implementation.
 - Which part of the identification and diagnosis a read returns follows
   the read header's address and the index range: a subslot-level index
   (0x8000) the header's API, slot and subslot; a slot-level one (0xC000)
