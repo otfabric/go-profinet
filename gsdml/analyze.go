@@ -28,9 +28,6 @@ const (
 	// go-profinet (profinet.ErrResourceExhausted), for example
 	// MaxModelRecordOctets.
 	OutcomeResourceExhausted Outcome = "resource_exhausted"
-	// OutcomeBlocked: a device access point whose own content converts,
-	// but that ToModel refuses because a module it can use does not.
-	OutcomeBlocked Outcome = "blocked"
 )
 
 // outcomeOf classifies a conversion error. Malformed content is never
@@ -50,20 +47,36 @@ func outcomeOf(err error) Outcome {
 	}
 }
 
+// errText is the text of err, empty for nil.
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
 // ModelReport is what AnalyzeModels found for one device access point.
 type ModelReport struct {
 	// DAP is the device access point's ID, and Path its element path.
 	DAP  string `json:"dap"`
 	Path string `json:"path"`
-	// Outcome is ToModel's for the DAP; Err is ToModel's error and Error
-	// its text, empty when it converted.
+	// Outcome is always the classification of ToModel's error for the
+	// DAP; Err is that error and Error its text, empty when it converted.
+	// What else AnalyzeModels finds never changes them.
 	Outcome Outcome `json:"outcome"`
 	Error   string  `json:"error,omitempty"`
 	Err     error   `json:"-"`
-	// DAPError is the error of the DAP's own content (identity,
-	// capabilities, submodules), without its modules; empty when that
-	// converts. A DAP that is blocked has none.
+	// DAPErr is the error of the DAP's own content (identity,
+	// capabilities, submodules), without its modules, and DAPError its
+	// text; nil when that converts.
 	DAPError string `json:"dap_error,omitempty"`
+	DAPErr   error  `json:"-"`
+	// Blocked reports that at least one of Modules has a reference or
+	// module error: each one ToModel would refuse the DAP for, whichever
+	// it reaches first. A DAP can be blocked and have another Outcome,
+	// for example resource_exhausted when the plugged records exceed
+	// MaxModelRecordOctets before ToModel reaches the reference.
+	Blocked bool `json:"blocked"`
 	// Modules are the DAP's UseableModules references, in file order.
 	Modules []ModuleReport `json:"modules"`
 	// Model is ToModel's model when Outcome is OutcomeConverted, nil
@@ -72,7 +85,7 @@ type ModelReport struct {
 }
 
 // ModuleReport is what AnalyzeModels found for one module reference of a
-// device access point.
+// device access point: the reference itself, and the module it names.
 type ModuleReport struct {
 	// Target is the reference's ModuleItemTarget, Path the reference's
 	// element path, and ModulePath the path of the module it names (empty
@@ -80,29 +93,33 @@ type ModuleReport struct {
 	Target     string `json:"target"`
 	Path       string `json:"path"`
 	ModulePath string `json:"module_path,omitempty"`
+	// ReferenceOutcome is the reference's own: malformed when it names no
+	// module or its slot attributes do not parse. ReferenceErr is that
+	// error and ReferenceError its text.
+	ReferenceOutcome Outcome `json:"reference_outcome"`
+	ReferenceError   string  `json:"reference_error,omitempty"`
+	ReferenceErr     error   `json:"-"`
+	// ModuleOutcome is the conversion of the module on its own, with the
+	// whole MaxModelRecordOctets; empty when the reference names no
+	// module. ModuleErr is its error and ModuleError its text.
+	ModuleOutcome Outcome `json:"module_outcome,omitempty"`
+	ModuleError   string  `json:"module_error,omitempty"`
+	ModuleErr     error   `json:"-"`
 	// ModuleIdent is the module's ModuleIdentNumber, 0 when it does not
-	// parse.
+	// parse or the reference names no module.
 	ModuleIdent uint32 `json:"module_ident"`
-	// Outcome is the module's conversion on its own, with the whole
-	// MaxModelRecordOctets; Err and Error as in ModelReport.
-	Outcome Outcome `json:"outcome"`
-	Error   string  `json:"error,omitempty"`
-	Err     error   `json:"-"`
-	// Slots are the slots ToModel plugs the module in (FixedInSlots, else
-	// UsedInSlots, else a single AllowedInSlots; a slot an earlier
-	// reference took is left out); none for a module that is only in the
-	// catalog. A reference whose slot list does not parse has none, and
-	// SlotsError says why.
-	Slots      []uint16 `json:"slots,omitempty"`
-	SlotsError string   `json:"slots_error,omitempty"`
+	// ConfiguredSlots are the slots the reference asks for (FixedInSlots,
+	// else UsedInSlots, else a single AllowedInSlots), less slot 0, slots
+	// above 0x7FFF and slots an earlier reference asked for: the slots
+	// ToModel would plug the module in. They are requested positions, not
+	// a model: only when the DAP's Outcome is OutcomeConverted are they
+	// the slots of its Model. None for a module that is only in the
+	// catalog, or when the slot attributes do not parse.
+	ConfiguredSlots []uint16 `json:"configured_slots,omitempty"`
 	// RecordOctets are the octets of the module's parameter records, for
 	// one slot, when it converts.
 	RecordOctets int `json:"record_octets"`
 }
-
-// Plugged reports whether ToModel plugs the module in a slot, rather
-// than only listing it in the catalog.
-func (r ModuleReport) Plugged() bool { return len(r.Slots) > 0 }
 
 // moduleResult is the conversion of one module, shared by the references
 // and device access points that name it.
@@ -113,27 +130,22 @@ type moduleResult struct {
 }
 
 // AnalyzeModels converts every device access point of a document with
-// ToModel and reports, for each, the outcome and why: a DAP that does not
-// convert gets the conversion of each module it can use, on its own, so
-// that one module that does not convert does not hide the others.
+// ToModel and reports, for each, the outcome and why: every module
+// reference gets its own status and that of the module it names,
+// converted on its own, so that one that does not convert does not hide
+// the others.
 //
 // It is a diagnostic: ToModel stays the conversion to use. A report's
-// Model is ToModel's, and only for a DAP that converts.
-//
-//   - A DAP whose own content does not convert has that outcome, with
-//     DAPError.
-//   - A DAP whose own content converts but one of whose modules does not
-//     is OutcomeBlocked.
-//   - A DAP whose modules all convert on their own but whose model has
-//     parameter records beyond MaxModelRecordOctets is
-//     OutcomeResourceExhausted: each module's RecordOctets keep what each
-//     one adds.
+// Outcome and Err are always ToModel's, and its Model is ToModel's, only
+// for a DAP that converts.
 //
 // A module several references name is converted once. It returns an
-// error matching profinet.ErrMalformed for a document without device
-// access points.
+// error matching profinet.ErrMalformed for a nil document and for one
+// without device access points.
 func AnalyzeModels(doc *Document) ([]ModelReport, error) {
-	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil || doc.ProfileBody.ApplicationProcess.DeviceAccessPointList == nil {
+	if doc == nil || doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil ||
+		doc.ProfileBody.ApplicationProcess.DeviceAccessPointList == nil ||
+		len(doc.ProfileBody.ApplicationProcess.DeviceAccessPointList.DeviceAccessPointItems) == 0 {
 		return nil, malformed("no device access point")
 	}
 	ap := doc.ProfileBody.ApplicationProcess
@@ -165,54 +177,44 @@ func AnalyzeModels(doc *Document) ([]ModelReport, error) {
 	for _, dap := range ap.DeviceAccessPointList.DeviceAccessPointItems {
 		rep := ModelReport{DAP: dap.ID, Path: root + "/DeviceAccessPointList/DeviceAccessPointItem[" + pathID(dap.ID) + "]", Modules: []ModuleReport{}}
 		m, err := ToModel(doc, dap.ID)
-		rep.Outcome, rep.Err = outcomeOf(err), err
-		if err != nil {
-			rep.Error = err.Error()
-		} else {
+		rep.Outcome, rep.Err, rep.Error = outcomeOf(err), err, errText(err)
+		if err == nil {
 			rep.Model = m
 		}
 		c.budget = MaxModelRecordOctets
-		_, _, dapErr := c.dapModel(dap.ID)
-		if dapErr != nil {
-			rep.DAPError = dapErr.Error()
-		}
-		blocked := false
+		_, _, rep.DAPErr = c.dapModel(dap.ID)
+		rep.DAPError = errText(rep.DAPErr)
 		if um := dap.UseableModules; um != nil {
 			used := map[uint16]bool{}
 			for _, ref := range um.ModuleItemRefs {
 				mr := ModuleReport{Target: ref.ModuleItemTarget, Path: rep.Path + "/UseableModules/ModuleItemRef[" + pathID(ref.ModuleItemTarget) + "]"}
-				mi := modules[collapseSpace(ref.ModuleItemTarget)]
-				if mi == nil {
-					mr.Err = malformed("ModuleItemRef %q: no such module", clip(ref.ModuleItemTarget))
+				if mi := modules[collapseSpace(ref.ModuleItemTarget)]; mi == nil {
+					mr.ReferenceErr = malformed("ModuleItemRef %q: no such module", clip(ref.ModuleItemTarget))
 				} else {
 					mr.ModulePath = root + "/ModuleList/ModuleItem[" + pathID(mi.ID) + "]"
 					r := convert(mi)
-					mr.ModuleIdent, mr.Err, mr.RecordOctets = r.ident, r.err, r.octets
-				}
-				mr.Outcome = outcomeOf(mr.Err)
-				if mr.Err != nil {
-					mr.Error = mr.Err.Error()
-					blocked = true
+					mr.ModuleIdent, mr.ModuleErr, mr.RecordOctets = r.ident, r.err, r.octets
+					mr.ModuleOutcome, mr.ModuleError = outcomeOf(r.err), errText(r.err)
 				}
 				// The slots as ToModel plugs them: the first reference to
 				// a slot takes it.
 				list, err := configuredSlots(ref)
-				if err != nil {
-					mr.SlotsError = err.Error()
-					blocked = true
+				if mr.ReferenceErr == nil {
+					mr.ReferenceErr = err
 				}
 				for _, s := range list {
 					if s == 0 || s > 0x7FFF || used[uint16(s)] {
 						continue
 					}
 					used[uint16(s)] = true
-					mr.Slots = append(mr.Slots, uint16(s))
+					mr.ConfiguredSlots = append(mr.ConfiguredSlots, uint16(s))
+				}
+				mr.ReferenceOutcome, mr.ReferenceError = outcomeOf(mr.ReferenceErr), errText(mr.ReferenceErr)
+				if mr.ReferenceErr != nil || mr.ModuleErr != nil {
+					rep.Blocked = true
 				}
 				rep.Modules = append(rep.Modules, mr)
 			}
-		}
-		if err != nil && dapErr == nil && blocked {
-			rep.Outcome = OutcomeBlocked
 		}
 		out = append(out, rep)
 	}

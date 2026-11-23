@@ -226,9 +226,11 @@ package in §14.
 - **Size:** M.
 - **Done in v0.19.0:** `gsdml.AnalyzeModels` reports every DAP with
   ToModel's outcome, error and model (converted only), and every module
-  reference with its own conversion and slots; outcomes `converted`,
-  `malformed`, `unsupported`, `resource_exhausted`, `blocked`. ToModel is
-  unchanged. The corpus run (C1/C2/C5, profinet-interop) is still to do.
+  reference with its own status, the conversion of the module it names
+  and its configured slots; outcomes `converted`, `malformed`,
+  `unsupported`, `resource_exhausted`, and a `Blocked` flag that never
+  replaces ToModel's outcome. ToModel is unchanged. A benchmark on large
+  vendor files waits for the corpus. The corpus run (C1/C2/C5, profinet-interop) is still to do.
 
 ### D8 — XML hardening relies on encoding/xml defaults (robustness, P3)
 

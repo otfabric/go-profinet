@@ -44,13 +44,19 @@ unchanged.
 
 - **`gsdml.AnalyzeModels`**, **`ModelReport`**, **`ModuleReport`** and
   **`Outcome`** (`converted`, `malformed`, `unsupported`,
-  `resource_exhausted`, `blocked`). A report's `Model` is `ToModel`'s, and
-  only for a DAP that converts; no partial model is returned. A module is
-  converted on its own and reports its errors, slots and record octets, so
-  a DAP refused for the aggregate `MaxModelRecordOctets` limit shows every
-  module as converted next to the DAP's `resource_exhausted`. A document
-  without device access points is `ErrMalformed`. JSON tags are given for
-  reports; `Err` and `Model` are not marshalled.
+  `resource_exhausted`). A report's `Outcome`, `Err` and `Model` are
+  always `ToModel`'s, the model only for a DAP that converts; no partial
+  model is returned. `Blocked` flags a DAP with a module reference or
+  module that does not convert, without replacing its outcome. Each
+  reference has its own status (`ReferenceOutcome`: no such module, slot
+  attributes that do not parse) apart from that of the module it names
+  (`ModuleOutcome`, converted on its own), its `ConfiguredSlots`
+  (requested positions, the model's slots only for a converted DAP) and
+  `RecordOctets`, so a DAP refused for the aggregate
+  `MaxModelRecordOctets` limit shows every module as converted next to
+  the DAP's `resource_exhausted`. A nil document, or one without device
+  access points, is `ErrMalformed`. Reports have JSON tags; the errors
+  and the model are not marshalled.
 
 ### Changed
 
