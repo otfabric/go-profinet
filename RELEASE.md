@@ -78,8 +78,9 @@ converted from GSDML keeps the `VirtualSubmoduleItem` `API`, which
 
 ### Breaking
 
-Consumer assessment: gorelease is expected to report only additions (run
-before the release); the changes are in behaviour and affect only models
+Consumer assessment: gorelease (base v0.19.0) reports only additions
+(`Submodule.API`, `Device.APIs`, `ReadSubmoduleDiagnosis`); the changes
+are in behaviour and affect only models
 and files with an API other than 0. profinetctl builds its models with
 `ToModel` and so sends the file's APIs once it moves to this version; its
 device view reads index 0xF000 at API 0 and so lists the API 0 submodules
