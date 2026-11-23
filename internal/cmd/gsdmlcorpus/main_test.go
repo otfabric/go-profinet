@@ -112,10 +112,18 @@ func TestFidelity(t *testing.T) {
 	if md := Markdown(Summarize([]FileResult{lost}), ""); !strings.Contains(md, "keep the APIs of their plugged configuration: 1.") {
 		t.Fatal(md)
 	}
-	// A record above 0x7FFF: ToModel refuses the module.
+	// A record of the profile range (0xB600): counted above 0x7FFF, and
+	// ToModel keeps it; one at 0x8100 (PROFINET's own range) it refuses.
 	h := analyze(fixture(t, modular, `<ParameterRecordDataItem Index="100" Length="2">`, `<ParameterRecordDataItem Index="46592" Length="2">`))
-	if h.RecordIndexes["0xB000-0xBFFF"] != 1 || h.DAPs[0].HighRecords != 1 || h.DAPs[0].Outcome == "converted" {
+	if h.RecordIndexes["0xB000-0xBFFF"] != 1 || h.DAPs[0].HighRecords != 1 || h.DAPs[0].Outcome != "converted" {
 		t.Fatalf("%+v", h)
+	}
+	if f := Summarize([]FileResult{h}).Fidelity; f.DAPsHighRecords != 2 || f.ConvertedHighRecords != 2 {
+		t.Fatalf("profile %+v", f)
+	}
+	p := analyze(fixture(t, modular, `<ParameterRecordDataItem Index="100" Length="2">`, `<ParameterRecordDataItem Index="33024" Length="2">`))
+	if p.RecordIndexes["0x8000-0x8FFF"] != 1 || p.DAPs[0].HighRecords != 1 || p.DAPs[0].Outcome == "converted" {
+		t.Fatalf("0x8100 %+v", p)
 	}
 	// An index that is no number and one above 0x7FFF in one document:
 	// counted apart.
@@ -135,8 +143,8 @@ func TestFidelity(t *testing.T) {
 	if inv.APIs["invalid"] != 1 || inv.DAPs[0].Outcome != gsdml.OutcomeMalformed {
 		t.Fatalf("%+v", inv.APIs)
 	}
-	s := Summarize([]FileResult{r, h, r})
-	if f := s.Fidelity; f.FilesAPI != 2 || f.DAPsAPI != 4 || f.ConvertedAPI != 4 || f.APIs["0x4E01"] != 2 || f.FilesHighRecords != 1 || f.DAPsHighRecords < 1 || f.ConvertedHighRecords != 0 {
+	s := Summarize([]FileResult{r, h, r, p})
+	if f := s.Fidelity; f.FilesAPI != 2 || f.DAPsAPI != 4 || f.ConvertedAPI != 4 || f.APIs["0x4E01"] != 2 || f.FilesHighRecords != 2 || f.DAPsHighRecords != 4 || f.ConvertedHighRecords != 2 {
 		t.Fatalf("%+v", s.Fidelity)
 	}
 	if md := Markdown(s, ""); !strings.Contains(md, "## Fidelity") || !strings.Contains(md, "| 0x4E01 | 2 |") || !strings.Contains(md, "ToModel conversion") {

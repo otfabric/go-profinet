@@ -39,7 +39,8 @@ const (
 	// controller cannot tell them apart (local heuristic).
 	RuleIdentNumber = "ident-number"
 	// RuleRecordIndex: a parameter record outside the user index range
-	// 0x0000-0x7FFF (the range of record indexes a device defines).
+	// 0x0000-0x7FFF and the profile range 0xB000-0xBFFF (the record
+	// indexes of a submodule, pnio.Index.IsSubmoduleRecordIndex).
 	RuleRecordIndex = "record-index"
 	// RuleSubslot: an interface or port submodule outside 0x8000-0x8FFF,
 	// the subslots PROFINET reserves for them (as p-net and pnio-rs number

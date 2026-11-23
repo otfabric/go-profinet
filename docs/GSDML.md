@@ -535,11 +535,11 @@ err := r.Err() // or gsdml.Validate(doc)
 | `structure` | error | required elements and attributes, the lexical types of attributes (hexadecimal and decimal unsigned values, value lists, enumerations, IDs), unique IDs | go-profinet's catalog ([CODEGEN.md](CODEGEN.md)) |
 | `reference` | error | every module, submodule, value item, graphic, category and text reference resolves | the catalog |
 | `io-data-length` | error | a submodule's input or output data and its provider status fit the 1440 octets of an RT frame | a physical limit of the frame |
-| `parameter-record` | error | a parameter record `ToModel` can convert: its DefaultValues encode, its fields and Consts lie in the record, its attributes parse; a record outside the user index range is left to `record-index` | the encoders `ToModel` uses ([Parameter records](#parameter-records)) |
+| `parameter-record` | error | a parameter record `ToModel` can convert: its DefaultValues encode, its fields and Consts lie in the record, its attributes parse; a record outside the user and profile index ranges is left to `record-index` | the encoders `ToModel` uses ([Parameter records](#parameter-records)) |
 | `parameter-layout`, `parameter-overlap`, `parameter-default`, `parameter-allowed-values`, `parameter-encoding` | as `ParameterRecord.Check` grades them | the record rules of [Parameter records](#parameter-records), for every record of the document | ISO 15745-4:2003/Amd 1:2006, Annex D as the maintainer's review states it; Siemens GSDML Getting Started 02/2024 §15 |
 | `transfer-sequence` | error, warning | a submodule's TransferSequence values are 1 to N (error), and records without one are not mixed with sequenced ones (warning) | Table D.28; the warning is go-profinet's plan policy |
 | `slots` | warning | modules allowed, used or fixed in slots the device access point has (`PhysicalSlots`), used or fixed only where allowed, no slot fixed by two modules | consistency of the file's own declarations |
-| `record-index` | warning | parameter records in the user index range 0x0000–0x7FFF | the record index ranges of PROFINET IO |
+| `record-index` | warning | parameter records in the user index range 0x0000–0x7FFF or the profile range 0xB000–0xBFFF | the record index ranges of PROFINET IO (Wireshark's PNIO dissector, `indexReservedForProfiles`) |
 | `ident-number` | warning | no two modules with one ModuleIdentNumber | local heuristic: a controller could not tell them apart |
 | `subslot` | warning | interface and port submodules in 0x8000–0x8FFF | local heuristic: the numbering p-net and pnio-rs use |
 | `reduction-ratio` | warning | reduction ratios are powers of two from 1 to 512 | local heuristic: the RT_CLASS_1 ratios |

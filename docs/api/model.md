@@ -222,7 +222,8 @@ PluggedSubmodule is a submodule with its position.
 
 ```go
 type Record struct {
-	// Index is the record index, 0..0x7FFF for user records.
+	// Index is the record index: 0..0x7FFF for user records, 0xB000..0xBFFF
+	// for the records of a profile (pnio.Index.IsSubmoduleRecordIndex).
 	Index pnio.Index `json:"index"`
 	// Name names the record in GSDML.
 	Name string `json:"name,omitempty"`

@@ -52,6 +52,14 @@ func TestValidateOK(t *testing.T) {
 	if err := d.Validate(); err != nil {
 		t.Fatal(err)
 	}
+	// Records of the profile range 0xB000..0xBFFF, its ends included.
+	for _, idx := range []pnio.Index{0xB000, 0xB02E, 0xB600, 0xBFFF} {
+		d = validDevice()
+		d.Slots[1].Module.Submodules[0].Records[0].Index = idx
+		if err := d.Validate(); err != nil {
+			t.Fatalf("%s: %v", idx, err)
+		}
+	}
 	// Only one of vendor and device ID is enough.
 	d = validDevice()
 	d.Identity.VendorID = 0
@@ -83,7 +91,9 @@ func TestValidateErrors(t *testing.T) {
 		{"DAP submodule of another API", func(d *Device) { d.DAP.Submodules[2].API = 0x3A00 }, "API 0x3a00, the DAP's submodules belong to API 0"},
 		{"input too long", func(d *Device) { d.Slots[0].Module.Submodules[0].InputLen = 1440 }, "longer than the C_SDU"},
 		{"output too long", func(d *Device) { d.Slots[0].Module.Submodules[0].OutputLen = 1440 }, "longer than the C_SDU"},
-		{"record index", func(d *Device) { d.Slots[1].Module.Submodules[0].Records[0].Index = 0x8000 }, "outside 0..0x7FFF"},
+		{"record index", func(d *Device) { d.Slots[1].Module.Submodules[0].Records[0].Index = 0x8000 }, "outside 0..0x7FFF and 0xB000..0xBFFF"},
+		{"record index 0xAFFF", func(d *Device) { d.Slots[1].Module.Submodules[0].Records[0].Index = 0xAFFF }, "record index 0xAFFF outside"},
+		{"record index 0xC000", func(d *Device) { d.Slots[1].Module.Submodules[0].Records[0].Index = 0xC000 }, "record index 0xC000 outside"},
 		{"duplicate record", func(d *Device) { d.Slots[1].Module.Submodules[0].Records[1].Index = 0x10 }, "twice"},
 		{"default length", func(d *Device) { d.Slots[1].Module.Submodules[0].Records[0].Default = []byte{1} }, "default of 1 octets, length 2"},
 		{"too much IO", func(d *Device) {

@@ -3,7 +3,7 @@
 What go-profinet supports, on what, how each feature is tested, and against
 what. Status: go-profinet v0.21.0 (2026-11-23); profinetctl v0.17.1 pins
 go-profinet v0.17.0 (its main pins v0.21.0, not yet released). Main pins
-profinet-interop v0.10.0 (contract 1.4, tshark's `fields`; its mrp image
+profinet-interop v0.11.0 (contract 1.4, tshark's `fields`; its mrp image
 carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
 scapy 2.8.0).
 
@@ -103,6 +103,7 @@ matrix (section 5).
 | Device access AR (IOSAR) | ✅ | ✅ | ✅ record and I&M commands | ✅ | profinet-py |
 | Records: user, I&M0–4, WriteMultiple, ReadImplicit, ModuleDiff, identification, diagnosis | ✅ | ✅ | ✅ | ✅ | p-net, pnio-rs, profinet-py |
 | APIData (0xF821): the APIs of a device, within an AR or implicitly (`RecordClient.ReadAPIData`) | ✅ | ✅ | — | ✅ | p-net (API 0, outside and inside an AR); tshark decodes a two-API block's values (`TestCodecDecoders`, `fields`) |
+| Parameter records in the profile range 0xB000–0xBFFF (`pnio.Index.IsSubslotProfileIndex`): in a model, from and to GSDML, written at Connect, served and written by the device, the Handler for the ones the model lacks | ✅ | ✅ | — | ✅ (`TestProfileRecords`) | wire format only: tshark decodes the API, slot, subslot, index, length and data of a Write of 0xB600 in API 0x4E01 (`TestCodecDecoders`, `fields`); no peer accepts such a record (p-net hands the application indexes up to 0x7FFF only) |
 | Submodules of an API other than 0 (`model.Submodule.API`, GSDML `VirtualSubmoduleItem` `API`): expected and real identification, IOCR data objects, records, ModuleDiff, diagnosis and alarms addressed by (API, slot, subslot) | ✅ | ✅ | ◐ records take an API; the device view reads API 0 | ✅ | none: no peer has such a submodule; tshark and scapy decode the frames (decoders only) |
 | Alarms: both priorities, process and diagnosis, acknowledgement | ✅ | ✅ | ✅ `alarms` | ✅ chaos | p-net, profinet-py |
 | Cyclic data RT_CLASS_1/2, IOPS/IOCS, DataStatus, watchdog | ✅ | ✅ | ✅ `io` | ✅ | p-net (1 ms), pnio-rs, profinet-py |
@@ -214,6 +215,7 @@ text is not available to the project.
 | Connect, PrmEnd, ApplicationReady, Release, abort, CM activity timeout | Wireshark; reference stacks | — |
 | Re-parameterization | Wireshark; p-net's CMPBE | no independent device accepts PrmBegin |
 | Submodule APIs | the API fields of the blocks and headers as Wireshark dissects them; the scope of a read by index range (subslot, slot, AR, API, device) follows the header's address (IEC 61158-6-10 not read) | no profile behaviour; DAP submodules API 0; a subslot number unique in its slot across APIs (LIMITATIONS.md) |
+| Profile record indexes (0xB000–0xBFFF) | Wireshark's PNIO dissector: `indexReservedForProfiles` ("Reserved for Profiles (subslot specific)"), the `pn_io_index` table (0xB02E/0xB02F PROFIdrive parameter access); GSDML files of IO-Link Wireless masters (records 0xB600, 0xB701–0xB703, 0xB900, "Profile Index"); IEC 61158-6-10 not read | the subslot range only (not 0xD000–0xDFFF, 0xEC00–0xEFFF, 0xF400–0xF7FF, 0xFC00–); no profile behaviour, a record's meaning is its GSDML file's or the application's |
 | APIData (0xF821) | Wireshark's `dissect_APIData_block` (block version 1.0: NumberOfAPIs, then one Unsigned32 API each); p-net's answer to the read (IEC 61158-6-10 not read) | the read header addresses slot 0, subslot 1 at API 0; no padding is accepted after the APIs |
 | Records, I&M0–4, diagnosis | Wireshark; reference stacks | I&M5 (Wireshark and profinet-py disagree), I&M6/7 (not public), LogBook entries (time stamp layouts disagree) deferred |
 | Alarms | Wireshark; reference stacks | — |

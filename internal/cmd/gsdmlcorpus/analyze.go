@@ -481,7 +481,8 @@ type Summary struct {
 
 // Fidelity counts content that tests a ToModel conversion: submodules of
 // an API other than 0, which the model must keep, and records above 0x7FFF
-// (ToModel refuses them).
+// (ToModel keeps those of the profile range 0xB000-0xBFFF and refuses the
+// others).
 type Fidelity struct {
 	// FilesAPI and DAPsAPI count the files and DAPs with a submodule of
 	// an API other than 0; ConvertedAPI the DAPs among them ToModel
@@ -680,7 +681,7 @@ func Markdown(s Summary, source string) string {
 	w("\n## Fidelity\n\n| Content | Files | DAPs | of them converted |\n|---|---|---|---|\n")
 	w("| a submodule of an API other than 0, in the DAP or a module it can use | %d | %d | %d |\n", f.FilesAPI, f.DAPsAPI, f.ConvertedAPI)
 	w("| … of them in the plugged configuration (the DAP's submodules, modules in slots) | | %d | %d |\n", f.DAPsPluggedAPI, f.ConvertedPluggedAPI)
-	w("| a record whose index is a number above 0x7FFF (ToModel refuses it) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
+	w("| a record whose index is a number above 0x7FFF (ToModel keeps 0xB000-0xBFFF, refuses the others) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
 	w("\nConverted DAPs whose model does not keep the APIs of their plugged configuration: %d.\n", f.APIMismatch)
 	if len(f.APIs) > 0 {
 		w("\n| API | Files |\n|---|---|\n")

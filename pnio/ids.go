@@ -319,6 +319,20 @@ const (
 // 0x0000..0x7FFF.
 func (i Index) IsUserIndex() bool { return i <= 0x7FFF }
 
+// IsSubslotProfileIndex reports whether the index is in 0xB000..0xBFFF,
+// the record indexes of a subslot reserved for profiles (Wireshark's PNIO
+// dissector, indexReservedForProfiles: "Reserved for Profiles (subslot
+// specific)"; IEC 61158-6-10 not read). A profile defines what such a
+// record means, e.g. PROFIdrive's parameter access at 0xB02E and 0xB02F;
+// GSDML files of IO-Link masters declare parameter records there.
+func (i Index) IsSubslotProfileIndex() bool { return i >= 0xB000 && i <= 0xBFFF }
+
+// IsSubmoduleRecordIndex reports whether the index is one a submodule's
+// own records use: user specific (0x0000..0x7FFF) or reserved for profiles
+// (0xB000..0xBFFF). The other indexes address the records the PROFINET
+// IO protocol defines (identification, diagnosis, I&M, ...).
+func (i Index) IsSubmoduleRecordIndex() bool { return i.IsUserIndex() || i.IsSubslotProfileIndex() }
+
 func (i Index) String() string { return fmt.Sprintf("0x%04X", uint16(i)) }
 
 // AlarmType is the type of an alarm.

@@ -547,7 +547,7 @@ func within(off uint32, n, size int) bool {
 
 func (c *conv) toRecord(r *ParameterRecordDataItem) (model.Record, error) {
 	idx, err := ParseUint16(r.Index)
-	if err != nil || idx > 0x7FFF {
+	if err != nil || !pnio.Index(idx).IsSubmoduleRecordIndex() {
 		return model.Record{}, fmt.Errorf("gsdml: %w: record Index %q", profinet.ErrMalformed, r.Index)
 	}
 	n, err := ParseUint32(r.Length)

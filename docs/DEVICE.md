@@ -60,7 +60,7 @@ The `Handler` decides what the device leaves to the application:
 
 | Method | Called for |
 |--------|------------|
-| `ReadRecord`, `WriteRecord` | user records without a `model.Record`, unknown indices; return `device.RecordError(code1, code2)` to refuse. Writes of model records are validated and stored by the device and then reported |
+| `ReadRecord`, `WriteRecord` | user (0x0000–0x7FFF) and profile (0xB000–0xBFFF) records without a `model.Record`, unknown indices (reads only: a write of another unknown index is "invalid index"); return `device.RecordError(code1, code2)` to refuse. Writes of model records are validated and stored by the device and then reported |
 | `PrmEnd` | the end of parameterization; return nil when the application is ready (the device then sends ApplicationReady), an error to abort |
 | `StateChanged`, `AlarmAck` | AR transitions, alarm acknowledgements |
 | `Signal`, `ResetToFactory`, `NameChanged`, `IPChanged` | DCP requests (with `Config.Store` the device persists the name, address and I&M records itself) |

@@ -1930,6 +1930,22 @@ const (
 
 Indexes of the PDev records.
 
+#### func (Index) IsSubmoduleRecordIndex
+
+```go
+func (i Index) IsSubmoduleRecordIndex() bool
+```
+
+IsSubmoduleRecordIndex reports whether the index is one a submodule's own records use: user specific (0x0000..0x7FFF) or reserved for profiles (0xB000..0xBFFF). The other indexes address the records the PROFINET IO protocol defines (identification, diagnosis, I&M, ...).
+
+#### func (Index) IsSubslotProfileIndex
+
+```go
+func (i Index) IsSubslotProfileIndex() bool
+```
+
+IsSubslotProfileIndex reports whether the index is in 0xB000..0xBFFF, the record indexes of a subslot reserved for profiles (Wireshark's PNIO dissector, indexReservedForProfiles: "Reserved for Profiles (subslot specific)"; IEC 61158-6-10 not read). A profile defines what such a record means, e.g. PROFIdrive's parameter access at 0xB02E and 0xB02F; GSDML files of IO-Link masters declare parameter records there.
+
 #### func (Index) IsUserIndex
 
 ```go
