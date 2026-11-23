@@ -229,10 +229,31 @@ func TestPnetAPI(t *testing.T) {
 	prov, _ := stats["Provider"].(map[string]any)
 	e.expect("Cyclic data with submodules of two APIs", cons["Received"].(float64) > 100 && cons["Malformed"] == 0.0 && cons["Expired"] == 0.0 && prov["Sent"].(float64) > 100 && prov["SendErrors"] == 0.0, "%v %v", cons, prov)
 	in, _ := r["inputs"].(map[string]any)
+	// The IO module's input in API 0x4E01: p-net's sample application
+	// counts its one octet up at each data update (samples/pn_dev/app_data.c,
+	// app_data_get_input_data: inputdata[0] = counter++, bit 7 the button)
+	// and sets its IOPS good, so the data go-profinet consumes changes.
+	io, _ := in["1:1"].(map[string]any)
+	values, _ := io["values"].(float64)
+	e.expect("Inputs of the submodule in API 0x4E01 (slot 1, subslot 1): IOPS good, one octet, changing while the AR runs",
+		io != nil && io["iops"] == 128.0 && len(str(io["data"])) == 2 && values > 1, "%v", io)
 	echo, _ := in["2:1"].(map[string]any)
 	e.expect("Echo module (API 0) returns our outputs next to a submodule of API 0x4E01", echo != nil && echo["iops"] == 128.0 && echo["data"] != "0000000000000000", "%v", echo)
 	e.expect("Release ends the AR at p-net", e.eventually(dev, 5*time.Second, named("release", "closed")), "")
-	e.oracles(stop())
+	pcap := stop()
+	e.oracles(pcap)
+	// The values tshark decodes from the record requests and responses of
+	// indexes 123 and 124 (the parameter write, the Write in Data and the
+	// reads): each IODHeader names API 0x4E01, slot 1, subslot 1.
+	fr := e.tsharkFields(pcap, "pn_io.index == 0x007b || pn_io.index == 0x007c", "pn_io.api", "pn_io.slot_nr", "pn_io.subslot_nr")
+	e.expect("tshark fields: records 123 and 124 written and read in API 0x00004e01, slot 1, subslot 1", len(fr) >= 8 && !slices.ContainsFunc(fr, func(f fieldFrame) bool {
+		return !allEqual(f.Fields["pn_io.api"], "0x00004e01") || !allEqual(f.Fields["pn_io.slot_nr"], "0x0001") || !allEqual(f.Fields["pn_io.subslot_nr"], "0x0001")
+	}), "%+v", fr)
+	// The Connect request: its expected configuration and IOCRs name both
+	// APIs.
+	fr = e.tsharkFields(pcap, "dcerpc.pkt_type == 0 && dcerpc.opnum == 0 && pn_io.iocr_type", "pn_io.api")
+	e.expect("tshark fields: the Connect request names APIs 0x00000000 and 0x00004e01", len(fr) == 1 &&
+		slices.Contains(fr[0].Fields["pn_io.api"], "0x00004e01") && slices.Contains(fr[0].Fields["pn_io.api"], "0x00000000"), "%+v", fr)
 
 	// A Read in an API p-net does not have, in an AR of its own and not
 	// captured: p-net answers it with an RPC response without NDR data
@@ -442,4 +463,9 @@ func TestPnetConfigurationMismatch(t *testing.T) {
 	e.expect("Unexpected module in slot 2: p-net plugs it (no ModuleDiff), the AR runs", r["running"] == true && r["moduleDiff"] == nil, "running=%v diff=%v", r["running"], r["moduleDiff"])
 	r = report(t, e.otf("device", 2, 90*time.Second, "controller", "-station", "pnet-dut", "-model", wrongDevice, "-timeout", "5s"))
 	e.expect("Model of another DeviceID: the controller refuses the device", r["running"] == false && strings.Contains(str(r["error"]), "device"), "running=%v error=%v", r["running"], r["error"])
+}
+
+// allEqual reports whether vs has values and every one is v.
+func allEqual(vs []string, v string) bool {
+	return len(vs) > 0 && !slices.ContainsFunc(vs, func(s string) bool { return s != v })
 }

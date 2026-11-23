@@ -487,26 +487,55 @@ func runController(args []string) error {
 			report["diagnosis"] = v
 		}
 	}
+	// The inputs are sampled while the AR runs: "values" counts the
+	// distinct input data seen of each submodule, so that a report shows
+	// whether the device's data changed.
+	seen := map[string]map[string]bool{}
+	sample := func() {
+		m.Each(func(p model.PluggedSubmodule) {
+			if p.Submodule.InputLen == 0 {
+				return
+			}
+			if v, _, ok := d.Input(p.Slot, p.Submodule.Subslot); ok {
+				k := fmt.Sprintf("%d:%d", p.Slot, p.Submodule.Subslot)
+				if seen[k] == nil {
+					seen[k] = map[string]bool{}
+				}
+				seen[k][hex.EncodeToString(v)] = true
+			}
+		})
+	}
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
 	deadline := time.After(*dur)
 	for waiting := *alarms; waiting > 0; {
 		select {
 		case <-alarmCh:
 			waiting--
+		case <-tick.C:
+			sample()
 		case <-deadline:
 			waiting = 0
 			deadline = nil
 		}
 	}
-	if deadline != nil {
-		<-deadline
+	for deadline != nil {
+		select {
+		case <-tick.C:
+			sample()
+		case <-deadline:
+			deadline = nil
+		}
 	}
+	sample()
 	inputs := map[string]any{}
 	m.Each(func(p model.PluggedSubmodule) {
 		if p.Submodule.InputLen == 0 {
 			return
 		}
+		k := fmt.Sprintf("%d:%d", p.Slot, p.Submodule.Subslot)
 		v, iops, _ := d.Input(p.Slot, p.Submodule.Subslot)
-		inputs[fmt.Sprintf("%d:%d", p.Slot, p.Submodule.Subslot)] = map[string]any{"data": hex.EncodeToString(v), "iops": iops}
+		inputs[k] = map[string]any{"data": hex.EncodeToString(v), "iops": iops, "values": len(seen[k])}
 	})
 	report["inputs"] = inputs
 	st, last := d.State()
