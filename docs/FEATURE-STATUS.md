@@ -95,6 +95,7 @@ matrix (section 5).
 | Connect: IOCARSingle, legacy (RT_CLASS_1) and advanced (RT_CLASS_2) startup | ✅ | ✅ | ✅ `connect`, `ar` | ✅ | p-net, pnio-rs, profinet-py |
 | Device access AR (IOSAR) | ✅ | ✅ | ✅ record and I&M commands | ✅ | profinet-py |
 | Records: user, I&M0–4, WriteMultiple, ReadImplicit, ModuleDiff, identification, diagnosis | ✅ | ✅ | ✅ | ✅ | p-net, pnio-rs, profinet-py |
+| Submodules of an API other than 0 (`model.Submodule.API`, GSDML `VirtualSubmoduleItem` `API`): expected and real identification, IOCR data objects, records, ModuleDiff, diagnosis and alarms addressed by (API, slot, subslot) | ✅ | ✅ | ◐ records take an API; the device view reads API 0 | ✅ | none: no peer has such a submodule; tshark and scapy decode the frames (decoders only) |
 | Alarms: both priorities, process and diagnosis, acknowledgement | ✅ | ✅ | ✅ `alarms` | ✅ chaos | p-net, profinet-py |
 | Cyclic data RT_CLASS_1/2, IOPS/IOCS, DataStatus, watchdog | ✅ | ✅ | ✅ `io` | ✅ | p-net (1 ms), pnio-rs, profinet-py |
 | Shared device (several IOCARs, one owner per submodule) | ✅ | ✅ | ◐ `connect --slot` | ✅ | p-net |
@@ -204,6 +205,7 @@ text is not available to the project.
 | LLDP | IEEE 802.1AB; Wireshark | line delay not measured |
 | Connect, PrmEnd, ApplicationReady, Release, abort, CM activity timeout | Wireshark; reference stacks | — |
 | Re-parameterization | Wireshark; p-net's CMPBE | no independent device accepts PrmBegin |
+| Submodule APIs | the API fields of the blocks and headers as Wireshark dissects them; the scope of a read by index range (subslot, slot, AR, API, device) follows the header's address (IEC 61158-6-10 not read) | no profile behaviour; DAP submodules API 0; a subslot number unique in its slot across APIs (LIMITATIONS.md) |
 | Records, I&M0–4, diagnosis | Wireshark; reference stacks | I&M5 (Wireshark and profinet-py disagree), I&M6/7 (not public), LogBook entries (time stamp layouts disagree) deferred |
 | Alarms | Wireshark; reference stacks | — |
 | Cyclic data | Wireshark; reference stacks | timing of a general-purpose OS ([CYCLIC.md](CYCLIC.md), [BENCHMARKS.md](BENCHMARKS.md)) |

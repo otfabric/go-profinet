@@ -30,7 +30,7 @@ Well-known subslots of the device access point.
 const API uint32 = 0
 ```
 
-API is the application process identifier of every submodule this model describes (profile-independent API 0).
+API is the profile-independent application process identifier 0: the default of Submodule.API, and the API of the DAP's submodules (the identity, the interface and the ports), which Validate requires.
 
 ## Types
 
@@ -83,6 +83,14 @@ type Device struct {
 
 Device is the description of an IO-Device.
 
+#### func (Device) APIs
+
+```go
+func (d *Device) APIs() []uint32
+```
+
+APIs returns the APIs of the plugged submodules, in ascending order. API 0 is always among them: the DAP's submodules belong to it.
+
 #### func (Device) Each
 
 ```go
@@ -97,7 +105,7 @@ Each calls fn for every plugged submodule in slot and subslot order, the DAP fir
 func (d *Device) Expected() []pnio.ExpectedSubmoduleBlockReq
 ```
 
-Expected returns the ExpectedSubmoduleBlockReq blocks (one per slot) that describe the plugged configuration, as a controller sends them.
+Expected returns the ExpectedSubmoduleBlockReq blocks (one per slot) that describe the plugged configuration, as a controller sends them. A slot's block has one API entry per API its submodules belong to, in API order, each with the module ident and that API's submodules; a module without submodules has one entry in API 0.
 
 #### func (Device) Module
 
@@ -121,7 +129,7 @@ ModuleTypes returns the distinct module types of the slots: the plugged modules 
 func (d *Device) RealIdentification() pnio.IdentificationData
 ```
 
-RealIdentification returns the RealIdentificationData of the plugged configuration.
+RealIdentification returns the RealIdentificationData of the plugged configuration: one entry per API, in API order, with the slots (in slot order) that have submodules of that API; a module without submodules is in API 0.
 
 #### func (Device) Submodule
 
@@ -137,7 +145,7 @@ Submodule returns a plugged submodule.
 func (d *Device) Validate() error
 ```
 
-Validate checks the description: unique slots and subslots, a DAP with its identity submodule, IO lengths the C\_SDU can carry, records in the user range. Two bounds come before the work on the submodules: at most 1440 plugged submodules, which is what a C\_SDU carries, and at most 16 MiB of parameter records in the plugged submodules together.
+Validate checks the description: unique slots and subslots (a subslot number is unique in its slot, whatever the submodules' APIs), a DAP with its identity submodule and its submodules in API 0, IO lengths the C\_SDU can carry, records in the user range. Two bounds come before the work on the submodules: at most 1440 plugged submodules, which is what a C\_SDU carries, and at most 16 MiB of parameter records in the plugged submodules together.
 
 #### func (Device) WithSlots
 
@@ -246,6 +254,12 @@ Slot is a module plugged into a slot.
 type Submodule struct {
 	Name        string `json:"name"`
 	IdentNumber uint32 `json:"identNumber"`
+	// API is the application process identifier the submodule belongs
+	// to (GSDML VirtualSubmoduleItem API): zero, the default, is the
+	// profile-independent API 0. A submodule is addressed by (API, slot,
+	// subslot) on the wire: in the expected and real identification, in
+	// the read and write headers, in diagnoses and alarms.
+	API uint32 `json:"api,omitempty"`
 	// Subslot is where the submodule is plugged in its module.
 	Subslot uint16 `json:"subslot"`
 	// InputLen and OutputLen are the IO data lengths; both zero make a

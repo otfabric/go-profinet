@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"time"
 
@@ -42,14 +43,18 @@ func (d *Device) readRecord(ctx context.Context, a *ar, q pnio.ReadReq) ([]byte,
 }
 
 func (d *Device) readRecordData(ctx context.Context, a *ar, q pnio.ReadReq) ([]byte, error) {
-	if q.API != model.API {
-		return nil, rwErr(pnio.RWInvalidArea)
-	}
-	// Indices below 0xC000 address one subslot, which must exist.
+	// Indices below 0xC000 address one subslot, which must exist in the
+	// API of the header; the others an API the device has.
 	if q.Index < 0xC000 {
-		if _, ok := d.model.Submodule(q.Slot, q.Subslot); !ok {
+		sm, ok := d.model.Submodule(q.Slot, q.Subslot)
+		if !ok {
 			return nil, rwErr(pnio.RWInvalidSlot)
 		}
+		if sm.API != q.API {
+			return nil, rwErr(pnio.RWInvalidArea)
+		}
+	} else if !d.hasAPI(q.API) {
+		return nil, rwErr(pnio.RWInvalidArea)
 	}
 	if b, ok, err := d.readPDev(q); ok {
 		return b, err
@@ -149,12 +154,12 @@ func (d *Device) writeRecord(ctx context.Context, a *ar, q pnio.WriteReq, data [
 }
 
 func (d *Device) writeRecordData(ctx context.Context, a *ar, q pnio.WriteReq, data []byte) error {
-	if q.API != model.API {
-		return rwErr(pnio.RWInvalidArea)
-	}
 	sm, ok := d.model.Submodule(q.Slot, q.Subslot)
 	if !ok {
 		return rwErr(pnio.RWInvalidSlot)
+	}
+	if sm.API != q.API {
+		return rwErr(pnio.RWInvalidArea)
 	}
 	// A submodule another IO controller owns is not this one's to write
 	// (a device access AR may write anything).
@@ -261,20 +266,27 @@ func (d *Device) im0Filter() []byte {
 	return append(sub, dev...)
 }
 
-func filterIdent(id pnio.IdentificationData, slot, subslot uint16, bySlot, bySubslot bool) pnio.IdentificationData {
-	if !bySlot {
+// filterIdent keeps the part of the identification a read addresses:
+// everything at the AR level, the header's API at the API level, its API
+// and slot at the slot level, and its API, slot and subslot at the
+// subslot level.
+func filterIdent(id pnio.IdentificationData, q pnio.ReadReq, level identLevel) pnio.IdentificationData {
+	if level == levelAR {
 		return id
 	}
 	out := pnio.IdentificationData{Expected: id.Expected}
 	for _, a := range id.APIs {
+		if a.API != q.API {
+			continue
+		}
 		na := pnio.IdentAPI{API: a.API}
 		for _, s := range a.Slots {
-			if s.Slot != slot {
+			if level != levelAPI && s.Slot != q.Slot {
 				continue
 			}
 			ns := pnio.IdentSlot{Slot: s.Slot, IdentNumber: s.IdentNumber}
 			for _, sm := range s.Submodules {
-				if !bySubslot || sm.Subslot == subslot {
+				if level != levelSubslot || sm.Subslot == q.Subslot {
 					ns.Submodules = append(ns.Submodules, sm)
 				}
 			}
@@ -283,6 +295,32 @@ func filterIdent(id pnio.IdentificationData, slot, subslot uint16, bySlot, bySub
 		out.APIs = append(out.APIs, na)
 	}
 	return out
+}
+
+// identLevel is the part of the device a record index addresses.
+type identLevel int
+
+const (
+	levelSubslot identLevel = iota
+	levelSlot
+	levelAR
+	levelAPI
+)
+
+// levelOf returns the level of a record index by its range: 0x8000 a
+// subslot, 0xC000 a slot, 0xE000 the AR, 0xF000 an API (0xF800 and up,
+// the device, is not an identification level).
+func levelOf(i pnio.Index) identLevel {
+	switch {
+	case i < 0xC000:
+		return levelSubslot
+	case i < 0xE000:
+		return levelSlot
+	case i < 0xF000:
+		return levelAR
+	default:
+		return levelAPI
+	}
 }
 
 // portData returns the PDPortDataReal of the DAP's ports. Each of the
@@ -318,7 +356,7 @@ func (d *Device) portData() []pnio.PDPortDataReal {
 
 func (d *Device) realIdent(q pnio.ReadReq) []byte {
 	id := d.model.RealIdentification()
-	id = filterIdent(id, q.Slot, q.Subslot, q.Index == pnio.IndexRealIdentSlot || q.Index == pnio.IndexRealIdentSubslot, q.Index == pnio.IndexRealIdentSubslot)
+	id = filterIdent(id, q, levelOf(q.Index))
 	return id.Append(nil)
 }
 
@@ -340,11 +378,29 @@ func expectedIdent(a *ar, q pnio.ReadReq) []byte {
 			id.APIs[i].Slots = append(id.APIs[i].Slots, s)
 		}
 	}
-	id = filterIdent(id, q.Slot, q.Subslot, q.Index != pnio.IndexExpectedIdentAR, q.Index == pnio.IndexExpectedIdentSubslot)
+	id = filterIdent(id, q, levelOf(q.Index))
 	return id.Append(nil)
 }
 
-// diagnosis returns the DiagnosisData blocks in the scope of the index.
+// apiOf returns the API of the plugged submodule in a slot and subslot,
+// API 0 when there is none.
+func (d *Device) apiOf(slot, subslot uint16) uint32 {
+	if sm, ok := d.model.Submodule(slot, subslot); ok {
+		return sm.API
+	}
+	return model.API
+}
+
+// hasAPI reports whether a plugged submodule belongs to an API (API 0
+// always: the DAP's submodules belong to it).
+func (d *Device) hasAPI(api uint32) bool {
+	return slices.Contains(d.apis, api)
+}
+
+// diagnosis returns the DiagnosisData blocks in the scope of the index:
+// the header's API, slot and subslot at the subslot level, its API and
+// slot at the slot level, all of the AR, the header's API at the API
+// level (0xF000), everything at the device level (0xF800).
 func (d *Device) diagnosis(q pnio.ReadReq) []byte {
 	d.mu.Lock()
 	keys := make([]key, 0, len(d.diags))
@@ -352,16 +408,22 @@ func (d *Device) diagnosis(q pnio.ReadReq) []byte {
 		if len(v) == 0 {
 			continue
 		}
-		switch q.Index & 0xF000 {
-		case 0x8000:
-			if k.slot != q.Slot || k.subslot != q.Subslot {
+		api := d.apiOf(k.slot, k.subslot)
+		switch {
+		case q.Index >= 0xF800: // the device
+		case q.Index >= 0xF000:
+			if api != q.API {
 				continue
 			}
-		case 0xC000:
-			if k.slot != q.Slot {
+		case q.Index >= 0xE000: // the AR
+		case q.Index >= 0xC000:
+			if api != q.API || k.slot != q.Slot {
 				continue
 			}
 		default:
+			if api != q.API || k.slot != q.Slot || k.subslot != q.Subslot {
+				continue
+			}
 		}
 		keys = append(keys, k)
 	}
@@ -380,7 +442,7 @@ func (d *Device) diagnosis(q pnio.ReadReq) []byte {
 				usi = pnio.USIExtChannelDiagnosis
 			}
 		}
-		dds = append(dds, pnio.DiagnosisData{API: model.API, Slot: k.slot, Subslot: k.subslot, ChannelNumber: pnio.ChannelNumberSubmodule, ChannelProperties: pnio.ChanSpecAppears, USI: usi, Items: items})
+		dds = append(dds, pnio.DiagnosisData{API: d.apiOf(k.slot, k.subslot), Slot: k.slot, Subslot: k.subslot, ChannelNumber: pnio.ChannelNumberSubmodule, ChannelProperties: pnio.ChanSpecAppears, USI: usi, Items: items})
 	}
 	d.mu.Unlock()
 	// Encoded without mu: an encoder panic (too many diagnoses for a

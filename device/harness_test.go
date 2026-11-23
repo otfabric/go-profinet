@@ -205,7 +205,7 @@ func (p *peer) serve(_ context.Context, req *rpc.Request) ([]byte, error) {
 func subIO(m *model.Device) []rt.SubmoduleIO {
 	var out []rt.SubmoduleIO
 	m.Each(func(p model.PluggedSubmodule) {
-		out = append(out, rt.SubmoduleIO{API: model.API, Slot: p.Slot, Subslot: p.Submodule.Subslot, Type: p.Submodule.Type(), InputLen: p.Submodule.InputLen, OutputLen: p.Submodule.OutputLen})
+		out = append(out, rt.SubmoduleIO{API: p.Submodule.API, Slot: p.Slot, Subslot: p.Submodule.Subslot, Type: p.Submodule.Type(), InputLen: p.Submodule.InputLen, OutputLen: p.Submodule.OutputLen})
 	})
 	return out
 }
@@ -214,7 +214,12 @@ func subIO(m *model.Device) []rt.SubmoduleIO {
 // long cycle and data hold time, so that no output frames are needed.
 func (p *peer) ioCAR() *pnio.ConnectRequest {
 	p.t.Helper()
-	m := testModel()
+	return p.ioCARFor(testModel())
+}
+
+// ioCARFor returns ioCAR's Connect request for a model.
+func (p *peer) ioCARFor(m *model.Device) *pnio.ConnectRequest {
+	p.t.Helper()
 	subs := subIO(m)
 	inL, err := rt.ComputeLayout(pnio.IOCRInput, subs)
 	if err != nil {

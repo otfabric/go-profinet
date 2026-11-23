@@ -23,6 +23,48 @@ What of this list can be built without PI membership or PROFINET hardware,
 with the protocol evidence for each feature and the order of work, is in
 [docs/research/SOFTWARE-ONLY-ROADMAP.md](docs/research/SOFTWARE-ONLY-ROADMAP.md).
 
+## APIs (application processes)
+
+A submodule carries its API (`model.Submodule.API`, from GSDML
+`VirtualSubmoduleItem` `API`); API 0 is the default. The controller and
+the device address a submodule by (API, slot, subslot): the
+ExpectedSubmoduleBlockReq has one API entry per API of a slot, the IOCRs
+list each IO data object under its API, the read and write headers, the
+identification, ModuleDiffBlock, DiagnosisData and alarms carry it.
+Restrictions:
+
+- The API is an address only. No profile is implemented: what IO-Link
+  (0x4E01) or another profile defines for its submodules, records or
+  diagnoses is the application's.
+- A subslot number is unique in its slot whatever the API
+  (`model.Device.Validate`), so the device can find a submodule by slot and
+  subslot; a device that numbers subslots per API cannot be modelled.
+- The DAP's submodules (identity, interface, ports) are API 0: the device
+  serves the I&M0 filter data and the PDEV records there. `ToModel` refuses
+  a DAP submodule of another API (`ErrUnsupported`); no file of the local
+  GSDML corpus has one.
+- A module without submodules has no API of its own: it is in API 0 (the
+  ExpectedSubmoduleBlockReq, the identification and the ModuleDiffBlock),
+  as before APIs. That keeps the encoding of v0.19.0; it is not taken from
+  IEC 61158-6-10 or a reference implementation.
+- Which part of the identification and diagnosis a read returns follows
+  the read header's address and the index range: a subslot-level index
+  (0x8000) the header's API, slot and subslot; a slot-level one (0xC000)
+  its API and slot; an AR-level one (0xE000) every API; an API-level one
+  (0xF000) the header's API; 0xF80C everything. A subslot-level read whose
+  API is not the submodule's, or another read in an API the device does not
+  have, is refused with "invalid area/API". Not checked against IEC
+  61158-6-10 (not read) nor an independent device with an API other than
+  0: no peer of profinet-interop has one. tshark and scapy decode the
+  frames without a malformed frame (the interop suite's codec scenario);
+  the field values they decode are not compared.
+- `controller.Parameter` has no API: a parameter is written at the API of
+  the model's submodule in its slot and subslot (API 0 where the model has
+  none). `RecordClient.ReadDiagnosis` reads a subslot at API 0;
+  `ReadSubmoduleDiagnosis` takes the API. profinetctl is not updated: its
+  device view reads RealIdentificationData for API 0 (index 0xF000), which
+  leaves out the submodules of other APIs.
+
 ## Without PI membership
 
 Several artefacts are published by PROFIBUS & PROFINET International to

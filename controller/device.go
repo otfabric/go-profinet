@@ -26,7 +26,8 @@ import (
 )
 
 // Parameter is a record written to a device before the end of
-// parameterization.
+// parameterization. Its API is the API of the model's submodule in the
+// slot and subslot (API 0 for a subslot the model does not have).
 type Parameter struct {
 	Slot, Subslot uint16
 	Index         pnio.Index
@@ -880,7 +881,7 @@ func (d *Device) resolve(ctx context.Context) (dcp.Identity, error) {
 func (d *Device) subIO() []rt.SubmoduleIO {
 	var out []rt.SubmoduleIO
 	d.cfg.Model.Each(func(p model.PluggedSubmodule) {
-		out = append(out, rt.SubmoduleIO{API: model.API, Slot: p.Slot, Subslot: p.Submodule.Subslot, Type: p.Submodule.Type(), InputLen: p.Submodule.InputLen, OutputLen: p.Submodule.OutputLen})
+		out = append(out, rt.SubmoduleIO{API: p.Submodule.API, Slot: p.Slot, Subslot: p.Submodule.Subslot, Type: p.Submodule.Type(), InputLen: p.Submodule.InputLen, OutputLen: p.Submodule.OutputLen})
 	})
 	return out
 }
@@ -1032,8 +1033,10 @@ func (d *Device) properSubmodules(diff *pnio.ModuleDiffBlock) map[subKey]bool {
 	for _, api := range diff.APIs {
 		for _, m := range api.Modules {
 			if m.State != pnio.ModuleStateProper {
+				// The module is wrong or missing in this API: its
+				// submodules of the API are not proper.
 				for k := range proper {
-					if k.slot == m.Slot {
+					if sm, ok := d.cfg.Model.Submodule(k.slot, k.subslot); ok && k.slot == m.Slot && sm.API == api.API {
 						delete(proper, k)
 					}
 				}
@@ -1155,7 +1158,7 @@ func (d *Device) takeReleased(a *arState, n pnio.AlarmNotification) {
 		if p.Slot != n.Slot || p.Subslot != n.Subslot {
 			continue
 		}
-		if err := a.records.Write(ctx, a.uuid, Record{API: model.API, Slot: p.Slot, Subslot: p.Subslot, Index: p.Index}, p.Data); err != nil {
+		if err := a.records.Write(ctx, a.uuid, d.record(p), p.Data); err != nil {
 			d.c.log.Warnf("controller: %s: parameter %d/%d %s of a released submodule: %v", d.cfg.StationName, p.Slot, p.Subslot, p.Index, err)
 			return
 		}
@@ -1267,7 +1270,7 @@ func (d *Device) parameterize(ctx context.Context, a *arState) error {
 			}
 		}
 		cctx, cancel := context.WithTimeout(ctx, d.cfg.RPCTimeout)
-		err := a.records.Write(cctx, a.uuid, Record{API: model.API, Slot: p.Slot, Subslot: p.Subslot, Index: p.Index}, p.Data)
+		err := a.records.Write(cctx, a.uuid, d.record(p), p.Data)
 		cancel()
 		if err != nil {
 			return fmt.Errorf("controller: %s: parameter %d/%d %s: %w", d.cfg.StationName, p.Slot, p.Subslot, p.Index, err)
@@ -1389,7 +1392,7 @@ func (d *Device) Reparameterize(ctx context.Context, params []Parameter) error {
 	}
 	for _, p := range params {
 		if err := call(fmt.Sprintf("parameter %d/%d %s", p.Slot, p.Subslot, p.Index), func(ctx context.Context) error {
-			return a.records.Write(ctx, a.uuid, Record{API: model.API, Slot: p.Slot, Subslot: p.Subslot, Index: p.Index}, p.Data)
+			return a.records.Write(ctx, a.uuid, d.record(p), p.Data)
 		}); err != nil {
 			return err
 		}
@@ -1428,6 +1431,16 @@ func (d *Device) parameters() []Parameter {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.cfg.Parameters
+}
+
+// record returns the address of a parameter: the API of the model's
+// submodule at its slot and subslot, API 0 when the model has none there.
+func (d *Device) record(p Parameter) Record {
+	api := model.API
+	if sm, ok := d.cfg.Model.Submodule(p.Slot, p.Subslot); ok {
+		api = sm.API
+	}
+	return Record{API: api, Slot: p.Slot, Subslot: p.Subslot, Index: p.Index}
 }
 
 // mergeParameters replaces the parameters of the same slot, subslot and

@@ -85,6 +85,12 @@ ErrorCode 0xDB (connect), ErrorDecode 0x81 (PNIO), ErrorCode1 the block
 them; a CMRPC error (ErrorCode1 0x40) for request-level faults (missing
 IOCR, out of ARs, unknown AR UUID, state conflict).
 
+A record request is addressed by (API, slot, subslot). The device answers
+a slot or subslot it does not have with "invalid slot/subslot"
+(`pnio.RWInvalidSlot`), and an API that is not the addressed submodule's
+(index below 0xC000) or that no submodule of the device has (the other
+indices) with "invalid area/API" (`pnio.RWInvalidArea`).
+
 ## Network input
 
 Malformed frames and datagrams never return an error to the application and
@@ -130,7 +136,7 @@ the embedded-status encoders of `pnio` (`EncodeUnsigned8S`, …); a model with m
 (`model.Validate`, and so `device.New` and `Controller.AddDevice`); an MRP
 profile with a negative `TestInterval`. As `ErrMalformed`: a GSDML module
 or device access point with more than 1440 submodules, or a Const
-ByteOffset or Ref BitOffset that is no number, or a VisibleString,
+ByteOffset, Ref BitOffset or submodule `API` that is no number, or a VisibleString,
 UTF8String or OctetString Ref default longer than its Length
 (`gsdml.ToModel`, and `gsdml.SubmoduleParameters` for the same records),
 a nil document or one without device access points (`gsdml.AnalyzeModels`; the
@@ -169,7 +175,8 @@ version does not have, or a value that does not parse as its type. As
 `ErrUnsupported`: a GSDML document whose document type declaration has an
 internal subset (`gsdml.Parse`, `typed.ParseNode`; docs/GSDML.md); a Ref whose DataType has no
 verified DefaultValue encoding, such as `Integer16_S`, `TimeStamp` or `N2`
-(`gsdml.ToModel`; docs/GSDML.md); a parameter record of no octets in a
+(`gsdml.ToModel`; docs/GSDML.md); a DAP submodule of an API other than 0
+(`gsdml.ToModel`; `model.Validate` refuses one as `ErrInvalidConfig`); a parameter record of no octets in a
 model generated for PNIO_Version V2.31 or later, whose schemas require a
 `Const` or a `Ref` in every `ParameterRecordDataItem` (`gsdml.FromModel`).
 

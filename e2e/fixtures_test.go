@@ -54,7 +54,7 @@ func exerciseFixture(t *testing.T, cd *controller.Device, m *model.Device, setIn
 			}
 		}
 		for _, r := range s.Records {
-			b, err := cd.ReadRecord(ctx, controller.Record{Slot: p.Slot, Subslot: s.Subslot, Index: r.Index}, 0)
+			b, err := cd.ReadRecord(ctx, controller.Record{API: s.API, Slot: p.Slot, Subslot: s.Subslot, Index: r.Index}, 0)
 			if err != nil || len(b) != int(r.Length) {
 				t.Fatalf("record %d/%d %s: % x %v", p.Slot, s.Subslot, r.Index, b, err)
 			}

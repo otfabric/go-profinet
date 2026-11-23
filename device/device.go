@@ -165,6 +165,7 @@ type Device struct {
 	log     profinet.Logger
 	met     profinet.Metrics
 	model   *model.Device
+	apis    []uint32 // of the plugged submodules (model.APIs)
 	handler Handler
 	object  rpc.UUID
 
@@ -340,6 +341,7 @@ func New(cfg Config) (*Device, error) {
 		log:        log,
 		met:        met,
 		model:      cfg.Model,
+		apis:       cfg.Model.APIs(),
 		handler:    h,
 		object:     pnio.ObjectUUID(max(cfg.Model.Identity.Instance, 1), cfg.Model.Identity.DeviceID, cfg.Model.Identity.VendorID),
 		mux:        cfg.Mux,

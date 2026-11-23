@@ -28,8 +28,17 @@ m, err := gsdml.ToModel(doc, "DAP 1") // "" for the first device access point
 - the modules that the DAP fixes or uses in slots (`FixedInSlots`,
   `UsedInSlots`) as the plugged `Slots`, and the other usable modules as the
   `Catalog`;
-- per submodule: the IO data lengths (`DataItemSize` of each DataItem) and
-  the parameter records with their default values (Const and Ref).
+- per submodule: its API (`VirtualSubmoduleItem` `API`, an Unsigned32;
+  absent is API 0), the IO data lengths (`DataItemSize` of each DataItem)
+  and the parameter records with their default values (Const and Ref).
+
+A submodule's API is how the controller and the device address it: the
+expected and real identification, the IO data objects of the IOCRs, the
+record headers, diagnoses and alarms use (API, slot, subslot). An API that
+is no Unsigned32 fails with `ErrMalformed`; a DAP submodule of an API other
+than 0 with `ErrUnsupported` (the model's DAP is API 0; no file of the
+local corpus has one). The API is an address only: what a profile (IO-Link,
+0x4E01, for one) defines for its submodules is not implemented.
 
 A module several references name is converted once. The records of one
 model hold at most `MaxModelRecordOctets` (16 MiB) of default values, counted
@@ -409,6 +418,9 @@ for _, w := range plan.Writes {
 }
 ```
 
+A write carries no API: the controller writes a parameter at the API of
+the model's submodule in its slot and subslot.
+
 - The model must be of the file's device: its VendorID and DeviceID, and
   the DAP's ModuleIdentNumber. Module ident numbers alone do not tell two
   devices apart.
@@ -457,8 +469,9 @@ name := gsdml.FileName(m, "", time.Now()) // GSDML-V2.35-<vendor>-<family>-<date
 
 `FromModel` writes the identity, one DAP with the interface and port
 submodules, every module type with its submodules, IO data (as
-`OctetString` items of the submodule's lengths), parameter records, the
-certification info and the external texts. profinet-py parses go-profinet's
+`OctetString` items of the submodule's lengths), the API of a submodule
+other than API 0, parameter records, the certification info and the
+external texts. profinet-py parses go-profinet's
 generated files and connects with them (the interop suite).
 
 ## Validation
