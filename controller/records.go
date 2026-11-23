@@ -264,6 +264,23 @@ func (r *RecordClient) ReadIM0(ctx context.Context, ar rpc.UUID, slot, subslot u
 	return pnio.DecodeIM0(blk)
 }
 
+// ReadAPIData reads the APIs of the device (APIData, index 0xF821),
+// within an AR or, with a nil ar, implicitly. The read header addresses
+// API 0, slot 0, subslot 1 (the DAP), as for I&M0. A device that does not
+// support the record answers with a PNIO error (*pnio.StatusError).
+func (r *RecordClient) ReadAPIData(ctx context.Context, ar rpc.UUID) ([]uint32, error) {
+	b, err := r.Read(ctx, ar, Record{Slot: 0, Subslot: 1, Index: pnio.IndexAPIData}, 0)
+	if err != nil {
+		return nil, err
+	}
+	blk, _, err := pnio.ReadBlock(b)
+	if err != nil {
+		return nil, err
+	}
+	d, err := pnio.DecodeAPIData(blk)
+	return d.APIs, err
+}
+
 // ReadDiagnosis reads the diagnosis of the device (index 0xF80C), or of
 // one submodule of API 0 when slot and subslot are given with sub true
 // (0x800C); ReadSubmoduleDiagnosis reads a submodule of any API.

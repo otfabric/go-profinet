@@ -70,6 +70,7 @@ against (see [the matrix](#interop-matrix)).
 | WriteMultiple (0xE040) | ✅ | ✅ | p-net |
 | I&M0 (0xAFF0), I&M1–4 (0xAFF1–0xAFF4), I&M0FilterData (0xF840) | ✅ | ✅ (I&M1–4) | p-net, pnio-rs, profinet-py |
 | RealIdentificationData (0xF000, 0xC001, 0x8001), ExpectedIdentificationData | ✅ | n/a | p-net, profinet-py |
+| APIData (0xF821), within an AR and by ReadImplicit | ✅ | n/a | p-net (decoded: API 0, `TestPnetController`); tshark decodes the APIs of a two-API block (`TestCodecDecoders`, profinet-interop v0.10.0 `fields`) |
 | ModuleDiff (0xE002) | ✅ | n/a | profinet-py |
 | Diagnosis: channel, all, maintenance and qualified (0x800A–0x800C, 0xC00A–0xC00C, 0xE00A–0xE00C, 0xF00A–0xF00C, 0xF80C) | ✅ | n/a | p-net |
 | PDPortDataReal (0x802A), PDRealData (0xF841) | ✅ | n/a | p-net (decoded) |
@@ -123,10 +124,12 @@ stack. Every exchange is captured and decoded by scapy and tshark; a frame
 either cannot decode, or that tshark warns about, fails the test unless it
 is an attributed deviation of the peer.
 
-The Interop workflow builds the images of profinet-interop v0.8.0
-(`INTEROP_REF`). The counts below are the matrix of that release's run
-(2026-11-12: the Interop and Kernel MRP workflows of the commit that moved
-the pin, released as go-profinet v0.8.1).
+The Interop workflow builds the images of the profinet-interop release
+`INTEROP_REF` names (v0.10.0). The counts below are older: the matrix of
+the profinet-interop v0.8.0 run (2026-11-12: the Interop and Kernel MRP
+workflows of the commit that moved the pin to v0.8.0, released as
+go-profinet v0.8.1); later checks, the APIData ones among them, are not
+counted in it.
 
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
 |------|---------|----------------|-----:|-----:|----:|---------------:|

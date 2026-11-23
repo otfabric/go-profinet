@@ -87,6 +87,10 @@ func (d *Device) readRecordData(ctx context.Context, a *ar, q pnio.ReadReq) ([]b
 		return d.im0Filter(), nil
 	case pnio.IndexRealIdentAPI, pnio.IndexRealIdentAR, pnio.IndexRealIdentSlot, pnio.IndexRealIdentSubslot:
 		return d.realIdent(q), nil
+	case pnio.IndexAPIData:
+		// The APIs of the device, API 0 among them, inside an AR or not
+		// (as p-net answers it).
+		return (&pnio.APIData{APIs: d.apis}).Append(nil), nil
 	case pnio.IndexExpectedIdentAR, pnio.IndexExpectedIdentSlot, pnio.IndexExpectedIdentSubslot:
 		if a == nil {
 			return nil, rwErr(pnio.RWStateConflict)

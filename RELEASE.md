@@ -26,6 +26,53 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.21.0
+
+**Date:** 2026-11-23
+**Previous release:** v0.20.0
+
+## Summary
+
+APIData (index 0xF821), the record that lists the APIs of a device: a
+codec, the device's answer and `RecordClient.ReadAPIData`. A tool can now
+find a device's APIs before it reads RealIdentificationData (0xF000) for
+each. The interop suite checks p-net's answer and the APIs tshark decodes
+from the block, against profinet-interop v0.10.0.
+
+## Changes
+
+### Added
+
+- **`pnio.APIData`**, `Append` and **`pnio.DecodeAPIData`**: block
+  0x001A, version 1.0 (NumberOfAPIs, then one Unsigned32 API each), as
+  Wireshark's PNIO dissector reads it and p-net answers it. Another block
+  type or a truncated or longer body is `ErrMalformed`, another version
+  `ErrUnsupported`. A fuzz seed in `FuzzBlocks` and golden vectors (p-net's
+  answer and a two-API block).
+- **`controller.RecordClient.ReadAPIData`**: reads 0xF821 within an AR or,
+  with a nil AR UUID, implicitly.
+- `BlockAPIData.String()` is `APIData`.
+
+### Changed
+
+- The device answers a read of 0xF821, within an AR or implicitly, with
+  its APIs in ascending order, API 0 first; before, the index was the
+  application's (`Handler`), which answered "invalid index" by default.
+- Interop: `TestPnetController` reads APIData from p-net outside and
+  inside the AR; `TestCodecDecoders` adds an APIData read response with
+  APIs 0 and 0x4E01 to `codecs.pcap` and checks the values tshark decodes
+  (profinet-interop v0.10.0, contract 1.4, `fields`). `INTEROP_REF` is
+  v0.10.0.
+
+### Breaking
+
+Consumer assessment: the API changes are additions. One behaviour
+changes: a `device.Handler` that served index 0xF821 itself is no longer
+called for it; the device answers with the model's APIs. No otfabric
+consumer serves 0xF821 (profinetctl does not run a device).
+
+---
+
 ## v0.20.0
 
 **Date:** 2026-11-23

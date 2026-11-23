@@ -572,6 +572,29 @@ func (r *result) na(feature, why string) {
 	r.mu.Unlock()
 }
 
+// fieldFrame is one frame of tshark's fields report (contract 1.4): every
+// occurrence of each field asked for, in frame order, as tshark prints it.
+type fieldFrame struct {
+	Frame  int                 `json:"frame"`
+	Fields map[string][]string `json:"fields"`
+}
+
+// tsharkFields runs tshark's fields command on a capture of the share: the
+// frames that match the display filter, with the values tshark decodes for
+// the fields. An adapter without the command (before contract 1.4) or a
+// filter or field tshark does not know fails the test.
+func (e *env) tsharkFields(file, filter string, fields ...string) []fieldFrame {
+	e.t.Helper()
+	out := e.run("tshark-fields", image("tshark"), 252, 2*time.Minute, append([]string{"fields", "/share/" + file, filter}, fields...)...)
+	var r struct {
+		Frames []fieldFrame `json:"frames"`
+	}
+	if err := json.Unmarshal(lastLine(out), &r); err != nil {
+		e.t.Fatalf("tshark fields output: %v: %s", err, out)
+	}
+	return r.Frames
+}
+
 // keepCaptures copies the test's captures to PROFINET_INTEROP_RESULTS,
 // when set.
 func (e *env) keepCaptures() {

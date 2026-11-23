@@ -5,12 +5,14 @@ package device
 import (
 	"bytes"
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/otfabric/go-profinet/alarm"
 	"github.com/otfabric/go-profinet/controller"
 	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/pnio"
+	"github.com/otfabric/go-profinet/rpc"
 )
 
 // apiIOLink is the API of the IO-Link profile submodules of apiModel.
@@ -271,5 +273,32 @@ func TestModuleDiffEmptyModule(t *testing.T) {
 	diff, _ := d.moduleDiff(exp(apiIOLink), nil)
 	if diff == nil || len(diff.APIs) != 1 || diff.APIs[0].API != apiIOLink || diff.APIs[0].Modules[0].State != pnio.ModuleStateNoModule {
 		t.Fatalf("API %#x: %+v", apiIOLink, diff)
+	}
+}
+
+// APIData (0xF821) lists the APIs of the device, API 0 first, within an AR
+// and implicitly; a device of API 0 alone lists API 0.
+func TestAPIData(t *testing.T) {
+	n := newNet(t)
+	d, _ := n.device(nil, func(c *Config) { c.Model = apiModel() })
+	p := n.peer(d, "192.168.0.2", true)
+	ctx := context.Background()
+	if apis, err := p.rc.ReadAPIData(ctx, rpc.NilUUID); err != nil || !slices.Equal(apis, []uint32{0, apiIOLink}) {
+		t.Fatalf("implicit %v %v", apis, err)
+	}
+	req := p.ioCARFor(apiModel())
+	p.establish(req)
+	if apis, err := p.rc.ReadAPIData(ctx, req.AR.ARUUID); err != nil || !slices.Equal(apis, []uint32{0, apiIOLink}) {
+		t.Fatalf("in the AR %v %v", apis, err)
+	}
+	// The device-level index in an API the device does not have.
+	_, err := p.rc.Read(ctx, rpc.NilUUID, controller.Record{API: 0x1234, Subslot: 1, Index: pnio.IndexAPIData}, 0)
+	wantStatus(t, err, pnio.RWInvalidArea, 0)
+
+	n2 := newNet(t)
+	d2, _ := n2.device(nil)
+	p2 := n2.peer(d2, "192.168.0.2", true)
+	if apis, err := p2.rc.ReadAPIData(ctx, rpc.NilUUID); err != nil || !slices.Equal(apis, []uint32{0}) {
+		t.Fatalf("API 0 only %v %v", apis, err)
 	}
 }

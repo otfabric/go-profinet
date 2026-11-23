@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,7 +64,7 @@ func TestPnetController(t *testing.T) {
 	im1 := pnio.IM1{TagFunction: "otf function", TagLocation: "otf location"}
 	im1Hex := hex.EncodeToString(im1.Append(nil))
 	out := e.otf("ctrl", 2, 90*time.Second, "controller", "-station", "pnet-dut", "-model", "/otfnode-testdata/pnet-model.json",
-		"-implicit", "0:1:0xAFF0", "-wm", "1:1:124:0a0b0c0d", "-wm", "2:1:125:00000003", "-read", "1:1:124",
+		"-implicit", "0:1:0xAFF0", "-implicit", "0:1:0xF821", "-read", "0:1:0xF821", "-wm", "1:1:124:0a0b0c0d", "-wm", "2:1:125:00000003", "-read", "1:1:124",
 		"-write", "0:1:0xAFF1:"+im1Hex, "-read", "0:1:0xAFF1",
 		"-im0", "-param", "1:1:123:01020304", "-read", "1:1:123", "-write", "2:1:125:00000002", "-read", "2:1:125",
 		"-read", "0:1:0xF000", "-read", "0:0x8001:0x802A", "-read", "0:1:0xF841", "-read", "1:1:0x7777", "-write", "1:1:0x7777:00", "-diag",
@@ -95,11 +96,29 @@ func TestPnetController(t *testing.T) {
 	e.expect("Read of an unknown index answers a PNIORW read error", strings.HasPrefix(str(byKey["read 1/1/30583"]["status"]), "DE 80"), "%v", byKey["read 1/1/30583"])
 	e.expect("Write of an invalid index is rejected with a PNIO status", strings.HasPrefix(str(byKey["write 1/1/30583"]["status"]), "DF 80"), "%v", byKey["write 1/1/30583"])
 	impl, _ := r["implicit"].([]any)
-	var implData string
-	if len(impl) == 1 {
-		implData = str(impl[0].(map[string]any)["data"])
+	implData := map[float64]string{}
+	for _, x := range impl {
+		m := x.(map[string]any)
+		implData[m["index"].(float64)] = str(m["data"])
 	}
-	e.expect("ReadImplicit of I&M0 (no AR)", strings.HasPrefix(implData, "00200038"), "%v", impl)
+	e.expect("ReadImplicit of I&M0 (no AR)", len(impl) == 2 && strings.HasPrefix(implData[0xAFF0], "00200038"), "%v", impl)
+	// APIData: p-net has API 0 alone.
+	apis := func(h string) ([]uint32, error) {
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			return nil, err
+		}
+		blk, _, err := pnio.ReadBlock(b)
+		if err != nil {
+			return nil, err
+		}
+		d, err := pnio.DecodeAPIData(blk)
+		return d.APIs, err
+	}
+	a, err := apis(implData[0xF821])
+	e.expect("APIData (0xF821) by ReadImplicit (no AR) decoded: API 0", err == nil && slices.Equal(a, []uint32{0}), "%v %v %s", a, err, implData[0xF821])
+	a, err = apis(str(byKey["read 0/1/63521"]["data"]))
+	e.expect("APIData (0xF821) in the AR decoded: API 0", err == nil && slices.Equal(a, []uint32{0}), "%v %v %v", a, err, byKey["read 0/1/63521"])
 	wmr, _ := r["writeMultiple"].(map[string]any)
 	e.expect("WriteMultiple of two records", wmr != nil && wmr["error"] == nil && fmt.Sprint(wmr["status"]) == "[OK OK]" && byKey["read 1/1/124"]["data"] == "0a0b0c0d", "%v %v", wmr, byKey["read 1/1/124"])
 	e.expect("Write I&M1 in the AR, read it back", byKey["write 0/1/45041"]["error"] == nil && byKey["read 0/1/45041"]["data"] == im1Hex, "%v %v", byKey["write 0/1/45041"], byKey["read 0/1/45041"])

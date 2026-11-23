@@ -58,6 +58,12 @@ Restrictions:
   0: no peer of profinet-interop has one. tshark and scapy decode the
   frames without a malformed frame (the interop suite's codec scenario);
   the field values they decode are not compared.
+- APIData (index 0xF821) lists the device's APIs, API 0 among them, in
+  ascending order, inside an AR or by ReadImplicit;
+  `RecordClient.ReadAPIData` reads it. The layout is the one Wireshark's
+  PNIO dissector reads, and p-net answers the read with it; IEC 61158-6-10
+  was not read. A device of two APIs has been checked against tshark's
+  decoding only: p-net has API 0 alone.
 - `controller.Parameter` has no API: a parameter is written at the API of
   the model's submodule in its slot and subslot (API 0 where the model has
   none). `RecordClient.ReadDiagnosis` reads a subslot at API 0;

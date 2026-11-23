@@ -1,10 +1,11 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.18.0 (2026-11-22); profinetctl v0.17.1 pins
+what. Status: go-profinet v0.20.0 (2026-11-23); profinetctl v0.17.1 pins
 go-profinet v0.17.0 (its main pins v0.18.0, not yet released). Main pins
-profinet-interop v0.9.2 (contract 1.3; its mrp image carries one
-microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1; scapy 2.8.0).
+profinet-interop v0.10.0 (contract 1.4, tshark's `fields`; its mrp image
+carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
+scapy 2.8.0).
 
 The interop evidence is older than the code, and is kept at the versions
 it was measured on:
@@ -20,6 +21,9 @@ it was measured on:
   with profinet-interop v0.9.2. v0.13.0–v0.18.0 changed GSDML handling,
   the parameterization API and the pnio codecs of the `_S` DataTypes;
   they did not change the controller, device, RPC or DCP packages.
+- The pull request workflow's interop job passed on the tree of v0.20.0
+  (61a3bab, profinet-interop v0.9.2). The matrix was not regenerated from
+  it.
 
 How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
@@ -33,7 +37,9 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.18.0** | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none released (main pins it) | **yes** |
+| **v0.20.0** | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | **yes** |
+| v0.19.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no: v0.20.0 sends the submodule APIs of a GSDML file |
+| v0.18.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none released (main pins it) | no |
 | v0.17.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | v0.17.0, v0.17.1 | no: v0.18.0 makes `Check` run the parameter record rules |
 | v0.16.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no |
 | v0.15.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no |
@@ -95,6 +101,7 @@ matrix (section 5).
 | Connect: IOCARSingle, legacy (RT_CLASS_1) and advanced (RT_CLASS_2) startup | ✅ | ✅ | ✅ `connect`, `ar` | ✅ | p-net, pnio-rs, profinet-py |
 | Device access AR (IOSAR) | ✅ | ✅ | ✅ record and I&M commands | ✅ | profinet-py |
 | Records: user, I&M0–4, WriteMultiple, ReadImplicit, ModuleDiff, identification, diagnosis | ✅ | ✅ | ✅ | ✅ | p-net, pnio-rs, profinet-py |
+| APIData (0xF821): the APIs of a device, within an AR or implicitly (`RecordClient.ReadAPIData`) | ✅ | ✅ | — | ✅ | p-net (API 0, outside and inside an AR); tshark decodes a two-API block's values (`TestCodecDecoders`, `fields`) |
 | Submodules of an API other than 0 (`model.Submodule.API`, GSDML `VirtualSubmoduleItem` `API`): expected and real identification, IOCR data objects, records, ModuleDiff, diagnosis and alarms addressed by (API, slot, subslot) | ✅ | ✅ | ◐ records take an API; the device view reads API 0 | ✅ | none: no peer has such a submodule; tshark and scapy decode the frames (decoders only) |
 | Alarms: both priorities, process and diagnosis, acknowledgement | ✅ | ✅ | ✅ `alarms` | ✅ chaos | p-net, profinet-py |
 | Cyclic data RT_CLASS_1/2, IOPS/IOCS, DataStatus, watchdog | ✅ | ✅ | ✅ `io` | ✅ | p-net (1 ms), pnio-rs, profinet-py |
@@ -206,6 +213,7 @@ text is not available to the project.
 | Connect, PrmEnd, ApplicationReady, Release, abort, CM activity timeout | Wireshark; reference stacks | — |
 | Re-parameterization | Wireshark; p-net's CMPBE | no independent device accepts PrmBegin |
 | Submodule APIs | the API fields of the blocks and headers as Wireshark dissects them; the scope of a read by index range (subslot, slot, AR, API, device) follows the header's address (IEC 61158-6-10 not read) | no profile behaviour; DAP submodules API 0; a subslot number unique in its slot across APIs (LIMITATIONS.md) |
+| APIData (0xF821) | Wireshark's `dissect_APIData_block` (block version 1.0: NumberOfAPIs, then one Unsigned32 API each); p-net's answer to the read (IEC 61158-6-10 not read) | the read header addresses slot 0, subslot 1 at API 0; no padding is accepted after the APIs |
 | Records, I&M0–4, diagnosis | Wireshark; reference stacks | I&M5 (Wireshark and profinet-py disagree), I&M6/7 (not public), LogBook entries (time stamp layouts disagree) deferred |
 | Alarms | Wireshark; reference stacks | — |
 | Cyclic data | Wireshark; reference stacks | timing of a general-purpose OS ([CYCLIC.md](CYCLIC.md), [BENCHMARKS.md](BENCHMARKS.md)) |
