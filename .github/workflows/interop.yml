@@ -29,7 +29,7 @@ permissions:
   contents: read
 
 env:
-  INTEROP_REF: ${{ inputs.interop_ref || 'e5b6dcce1f5aa6e40cbe482384cf740fe4b1f0c7' }}
+  INTEROP_REF: ${{ inputs.interop_ref || 'v0.13.0' }}
   GOWORK: "off"
 
 jobs:
