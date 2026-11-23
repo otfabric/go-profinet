@@ -155,7 +155,7 @@ l2-test: ## Run the real Layer 2 tests on a veth pair in a privileged container 
 # INTEROP_REF into PROFINET_INTEROP_DIR, unless that directory exists,
 # and builds every adapter image as profinet-interop-<adapter>:dev.
 INTEROP_REPO          ?= https://github.com/otfabric/profinet-interop.git
-INTEROP_REF           ?= v0.12.1
+INTEROP_REF           ?= e5b6dcce1f5aa6e40cbe482384cf740fe4b1f0c7
 PROFINET_INTEROP_DIR  ?= ../profinet-interop
 PROFINET_INTEROP_RESULTS ?= interop-results
 
