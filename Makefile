@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: gsdml-schemas gsdml-schemas-verify gsdml-differential gsdml-generate gsdml-generate-check gsdml-schemas-check help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
+.PHONY: gsdml-corpus gsdml-schemas gsdml-schemas-verify gsdml-differential gsdml-generate gsdml-generate-check gsdml-schemas-check help all build examples fmt fmt-check lint lint-ci vet vuln test test-e2e coverage cover coverage-check bench fuzz check clean release-notes-check generate generate-check coverpkg-check l2-test interop interop-images test-interop interop-matrix cross e2e docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -116,6 +116,11 @@ gsdml-schemas: ## Fetch the GSDML reference schemas (private otfabric/profinet-g
 
 gsdml-schemas-verify: ## Check the fetched GSDML schemas: pinned commit, checksums, well-formedness, every DeviceProfile compiles (needs xmllint)
 	@sh scripts/gsdml-schemas.sh verify
+
+gsdml-corpus: ## Run the GSDML pipeline over a local corpus: GSDML_CORPUS_CACHE (profinet-interop corpus-fetch cache) or GSDML_CORPUS (a directory); writes gsdml-corpus.json and gsdml-corpus.md (internal/cmd/gsdmlcorpus)
+	@test -n "$(GSDML_CORPUS_CACHE)$(GSDML_CORPUS)" || { echo "set GSDML_CORPUS_CACHE=dir or GSDML_CORPUS=dir"; exit 2; }
+	@go build -o bin/gsdmlcorpus ./internal/cmd/gsdmlcorpus
+	@bin/gsdmlcorpus $(if $(GSDML_CORPUS_CACHE),-cache "$(GSDML_CORPUS_CACHE)",-dir "$(GSDML_CORPUS)") -out gsdml-corpus.json -md gsdml-corpus.md
 
 gsdml-differential: ## Validate the fixtures (and GSDML_CORPUS, a directory, if set) with xmllint, gsdml.Validate and gsdml/typed; fail on any difference
 	@sh scripts/gsdml-schemas.sh differential
