@@ -66,12 +66,13 @@ against (see [the matrix](#interop-matrix)).
 | Record | Read | Write | Interop |
 |--------|:---:|:---:|---------|
 | User records of the model (0x0000–0x7FFF), application records (Handler) | ✅ | ✅ | p-net, pnio-rs, profinet-py |
+| User records of a submodule in an API other than 0 (0x4E01) | ✅ (controller) | ✅ (controller) | p-net, built for two APIs, with its sample application patched to pass each slot's API to its I/O calls: written before PrmEnd and in Data, read back, and tshark decodes API 0x4E01, slot 1, subslot 1 in every request and response (`TestPnetAPI`, profinet-interop v0.12.0). p-net's sample application keeps its records by slot and subslot, so this shows the API on the wire and p-net accepting it, not that p-net scopes records by API. p-net answers a Read in an API it does not have without a PNIOStatus (waiver `pnet-read-unknown-api-no-status`). go-profinet's device in a non-zero API: decoders only |
 | Profile records of the model (0xB000–0xBFFF), application records (Handler) | ✅ | ✅ | none: tshark decodes a Write of 0xB600 in API 0x4E01 with its values (`TestCodecDecoders`, profinet-interop v0.11.0 `fields`); p-net hands the application indexes up to 0x7FFF only, by its source (`pf_fspm_cm_read_ind`, `pf_cmwrr_write`: `PF_IDX_USER_MAX`), so it answers a read of 0xB600 with invalid index (not run) |
 | ReadImplicit (no AR) | ✅ | n/a | profinet-py, p-net |
 | WriteMultiple (0xE040) | ✅ | ✅ | p-net |
 | I&M0 (0xAFF0), I&M1–4 (0xAFF1–0xAFF4), I&M0FilterData (0xF840) | ✅ | ✅ (I&M1–4) | p-net, pnio-rs, profinet-py |
-| RealIdentificationData (0xF000, 0xC001, 0x8001), ExpectedIdentificationData | ✅ | n/a | p-net, profinet-py |
-| APIData (0xF821), within an AR and by ReadImplicit | ✅ | n/a | p-net (decoded: API 0, `TestPnetController`); tshark decodes the APIs of a two-API block (`TestCodecDecoders`, profinet-interop v0.10.0 `fields`) |
+| RealIdentificationData (0xF000, 0xC001, 0x8001, 0xE001), ExpectedIdentificationData | ✅ | n/a | p-net, profinet-py; with a submodule in API 0x4E01, p-net for the AR (0xE001) and for that API (0xF000) (`TestPnetAPI`) |
+| APIData (0xF821), within an AR and by ReadImplicit | ✅ | n/a | p-net: API 0 (`TestPnetController`), and APIs 0 and 0x4E01 with p-net built for two APIs (`TestPnetAPI`, profinet-interop v0.12.0); tshark decodes the APIs of a two-API block (`TestCodecDecoders`, profinet-interop v0.10.0 `fields`) |
 | ModuleDiff (0xE002) | ✅ | n/a | profinet-py |
 | Diagnosis: channel, all, maintenance and qualified (0x800A–0x800C, 0xC00A–0xC00C, 0xE00A–0xE00C, 0xF00A–0xF00C, 0xF80C) | ✅ | n/a | p-net |
 | PDPortDataReal (0x802A), PDRealData (0xF841) | ✅ | n/a | p-net (decoded) |
@@ -126,31 +127,31 @@ either cannot decode, or that tshark warns about, fails the test unless it
 is an attributed deviation of the peer.
 
 The Interop workflow builds the images of the profinet-interop release
-`INTEROP_REF` names (v0.11.1). The counts below are the matrix published in
-profinet-interop v0.11.1: the Interop and Kernel MRP jobs of go-profinet's
-pull request workflow, run 45200308175 (2026-11-23), on PR #109 at 417e513,
-whose tree is that of the v0.22.0 release commit e7313fc, with the images
-of profinet-interop v0.11.0.
+`INTEROP_REF` names (v0.12.1). The counts below are the matrix published in
+profinet-interop v0.12.1: the Interop and Kernel MRP jobs of go-profinet's
+pull request workflow, run 45278328978 (2026-11-23), on PR #115 at 97f3d34
+(v0.22.1 with `TestPnetAPI` and otfnode's `API@` record addresses), with
+the images of profinet-interop v0.12.0.
 
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
 |------|---------|----------------|-----:|-----:|----:|---------------:|
-| rt-labs p-net | `ea5e554` | IO-Controller, DCP requester, LLDP agent | 58 | 0 | 1 | 0 |
+| rt-labs p-net | `ea5e554` | IO-Controller, DCP requester, LLDP agent | 71 | 0 | 1 | 1 |
 | pnio-rs | v0.1.0 | IO-Controller, DCP requester | 13 | 0 | 3 | 0 |
 | profinet-py | 0.6.6 | IO-Device, DCP responder | 32 | 0 | 1 | 3 |
 | pnio-dcp | 1.2.0 | DCP responder | 8 | 0 | 0 | 0 |
 | umrp | v4.0 | MRP manager, client and MRA | 32 | 0 | 0 | 2 |
 | microchip-ung/mrp | `177717e` (since profinet-interop v0.9.1 with the fix `ee224a1`, microchip-ung/mrp#4) | MRP manager, client and MRA (kernel, micro-VM) | 31 | 0 | 1 | 0 |
 | Net-SNMP | 5.9.3 | SNMP agent of the IO-Device | 29 | 0 | 0 | 0 |
-| scapy | 2.8.0 | (decoder of every capture) | 20 | 0 | 0 | 7 |
-| tshark | 4.0.17 | (decoder of every capture) | 19 | 0 | 0 | 0 |
+| scapy | 2.8.0 | (decoder of every capture) | 21 | 0 | 0 | 7 |
+| tshark | 4.0.17 | (decoder of every capture) | 20 | 0 | 0 | 0 |
 | tshark and scapy | | (decoders of our Hello, SNMP, UDP-RT, DHCP, APIData and profile-record frames) | 10 | 0 | 0 | 2 |
 
 The full matrix, feature by feature, with the evidence of each check, is
-[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.11.1/docs/MATRIX.md)
-(39 test runs, 272 checks: 252 pass, 0 fail, 6 n/a, 14 deviations; the Interop workflow on amd64,
+[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.12.1/docs/MATRIX.md)
+(40 test runs, 288 checks: 267 pass, 0 fail, 6 n/a, 15 deviations; the Interop workflow on amd64,
 the mrp rows from the Kernel MRP workflow's micro-VMs); the notes on each
 peer are in its
-[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.11.1/docs/INTEROPERABILITY.md).
+[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.12.1/docs/INTEROPERABILITY.md).
 The "n/a" are peer limits: pnio-rs has no diagnosis records and no DCP Set,
 p-net and pnio-rs refuse PrmBegin in Data, profinet-py ignores the GSDML's
 UsedInSlots, and the kernel flushes its FDB where the mrp adapter cannot

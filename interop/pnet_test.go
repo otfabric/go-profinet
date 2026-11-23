@@ -139,6 +139,144 @@ func TestPnetController(t *testing.T) {
 	e.oracles(stop())
 }
 
+// apiIOLink is the API of IO-Link (0x4E01), the non-zero API of the
+// p-net scenario.
+const apiIOLink = 0x4E01
+
+// TestPnetAPI: go-profinet as IO-Controller of p-net with the IO module's
+// submodule in API 0x4E01 and the rest in API 0 (pnet-model-api.json).
+// p-net, built with PNET_MAX_API=2 (profinet-interop v0.12.0), creates the
+// API the Connect expects (pf_cmdev.c, pf_cmdev_exp_apis_configure) and
+// checks the API of every Read and Write against its APIs (pf_cmrpc.c:
+// invalid area/API, 0xB4, for one it does not have). Its sample
+// application keys its records by slot and subslot, not by API.
+func TestPnetAPI(t *testing.T) {
+	e := newEnv(t)
+	dev := pnet(e, "pnet-api")
+	stop := e.capture(dev, "pnet-api.pcap")
+	at := func(rec string) string { return fmt.Sprintf("%#x@%s", apiIOLink, rec) }
+	out := e.otf("ctrl", 2, 90*time.Second, "controller", "-station", "pnet-api", "-model", "/otfnode-testdata/pnet-model-api.json",
+		"-param", "1:1:123:01020304", "-read", at("1:1:123"),
+		"-write", at("1:1:124:0a0b0c0d"), "-read", at("1:1:124"),
+		"-implicit", "0:1:0xF821", "-read", "0:1:0xF821", "-read", "0:1:0xE001", "-read", at("1:1:0xF000"),
+		"-output", "1:1:0:5a", "-output", "2:1:0:1122334455667788", "-duration", "4s")
+	r := report(t, out)
+	e.expect("Connect with a submodule in API 0x4E01 (two APIs in the expected configuration and the IOCRs), PrmEnd, ApplicationReady", r["running"] == true, "running=%v error=%v", r["running"], r["error"])
+	if r["running"] != true {
+		return
+	}
+	recs, _ := r["records"].([]any)
+	byKey := map[string]map[string]any{}
+	for _, x := range recs {
+		m := x.(map[string]any)
+		api, _ := m["api"].(float64)
+		byKey[fmt.Sprintf("%v %#x/%v/%v/%v", m["op"], uint32(api), m["slot"], m["subslot"], m["index"])] = m
+	}
+	t.Logf("records %v", byKey)
+	e.expect("Parameter write before PrmEnd in API 0x4E01, read back in API 0x4E01", byKey["read 0x4e01/1/1/123"]["data"] == "01020304", "%v", byKey["read 0x4e01/1/1/123"])
+	e.expect("Write record in Data in API 0x4E01, read back", byKey["write 0x4e01/1/1/124"]["error"] == nil && byKey["read 0x4e01/1/1/124"]["data"] == "0a0b0c0d", "%v %v", byKey["write 0x4e01/1/1/124"], byKey["read 0x4e01/1/1/124"])
+	apis := func(h string) ([]uint32, error) {
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			return nil, err
+		}
+		blk, _, err := pnio.ReadBlock(b)
+		if err != nil {
+			return nil, err
+		}
+		d, err := pnio.DecodeAPIData(blk)
+		return d.APIs, err
+	}
+	impl, _ := r["implicit"].([]any)
+	var implicitAPIData string
+	if len(impl) == 1 {
+		implicitAPIData = str(impl[0].(map[string]any)["data"])
+	}
+	a, err := apis(implicitAPIData)
+	e.expect("APIData (0xF821) by ReadImplicit decoded: APIs 0 and 0x4E01", err == nil && slices.Equal(a, []uint32{0, apiIOLink}), "%v %v %v", a, err, impl)
+	a, err = apis(str(byKey["read 0x0/0/1/63521"]["data"]))
+	e.expect("APIData (0xF821) in the AR decoded: APIs 0 and 0x4E01", err == nil && slices.Equal(a, []uint32{0, apiIOLink}), "%v %v %v", a, err, byKey["read 0x0/0/1/63521"])
+	// RealIdentificationData: 0xE001 for the AR, 0xF000 for the API the
+	// read names (Wireshark's pn_io_index table: "RealIdentificationData
+	// for one AR", "... for one API").
+	ident := func(key string) (map[uint32]string, error) {
+		b, err := hex.DecodeString(str(byKey[key]["data"]))
+		if err != nil {
+			return nil, err
+		}
+		blk, _, err := pnio.ReadBlock(b)
+		if err != nil {
+			return nil, err
+		}
+		d, err := pnio.DecodeIdentificationData(blk)
+		out := map[uint32]string{}
+		for _, a := range d.APIs {
+			for _, sl := range a.Slots {
+				for _, sm := range sl.Submodules {
+					out[a.API] += fmt.Sprintf("%d/%d:%#x/%#x ", sl.Slot, sm.Subslot, sl.IdentNumber, sm.IdentNumber)
+				}
+			}
+		}
+		return out, err
+	}
+	const ioModule = "1/1:0x32/0x132 "
+	ar, err := ident("read 0x0/0/1/57345")
+	e.expect("RealIdentificationData for the AR (0xE001) decoded: the IO module in API 0x4E01, the DAP and the echo module in API 0", err == nil && len(ar) == 2 && ar[apiIOLink] == ioModule && strings.Contains(ar[0], "2/1:0x40/0x140"), "%v %v", ar, err)
+	one, err := ident("read 0x4e01/1/1/61440")
+	e.expect("RealIdentificationData for API 0x4E01 (0xF000) decoded: the IO module alone", err == nil && len(one) == 1 && one[apiIOLink] == ioModule, "%v %v", one, err)
+	stats, _ := r["stats"].(map[string]any)
+	cons, _ := stats["Consumer"].(map[string]any)
+	prov, _ := stats["Provider"].(map[string]any)
+	e.expect("Cyclic data with submodules of two APIs", cons["Received"].(float64) > 100 && cons["Malformed"] == 0.0 && cons["Expired"] == 0.0 && prov["Sent"].(float64) > 100 && prov["SendErrors"] == 0.0, "%v %v", cons, prov)
+	in, _ := r["inputs"].(map[string]any)
+	// The IO module's input in API 0x4E01: p-net's sample application
+	// counts its one octet up at each data update (samples/pn_dev/app_data.c,
+	// app_data_get_input_data: inputdata[0] = counter++, bit 7 the button)
+	// and sets its IOPS good, so the data go-profinet consumes changes.
+	io, _ := in["1:1"].(map[string]any)
+	values, _ := io["values"].(float64)
+	e.expect("Inputs of the submodule in API 0x4E01 (slot 1, subslot 1): IOPS good, one octet, changing while the AR runs",
+		io != nil && io["iops"] == 128.0 && len(str(io["data"])) == 2 && values > 1, "%v", io)
+	echo, _ := in["2:1"].(map[string]any)
+	e.expect("Echo module (API 0) returns our outputs next to a submodule of API 0x4E01", echo != nil && echo["iops"] == 128.0 && echo["data"] != "0000000000000000", "%v", echo)
+	e.expect("Release ends the AR at p-net", e.eventually(dev, 5*time.Second, named("release", "closed")), "")
+	pcap := stop()
+	e.oracles(pcap)
+	// The values tshark decodes from the record requests and responses of
+	// indexes 123 and 124 (the parameter write, the Write in Data and the
+	// reads): each IODHeader names API 0x4E01, slot 1, subslot 1.
+	fr := e.tsharkFields(pcap, "pn_io.index == 0x007b || pn_io.index == 0x007c", "pn_io.api", "pn_io.slot_nr", "pn_io.subslot_nr")
+	e.expect("tshark fields: records 123 and 124 written and read in API 0x00004e01, slot 1, subslot 1", len(fr) >= 8 && !slices.ContainsFunc(fr, func(f fieldFrame) bool {
+		return !allEqual(f.Fields["pn_io.api"], "0x00004e01") || !allEqual(f.Fields["pn_io.slot_nr"], "0x0001") || !allEqual(f.Fields["pn_io.subslot_nr"], "0x0001")
+	}), "%+v", fr)
+	// The Connect request: its expected configuration and IOCRs name both
+	// APIs.
+	fr = e.tsharkFields(pcap, "dcerpc.pkt_type == 0 && dcerpc.opnum == 0 && pn_io.iocr_type", "pn_io.api")
+	e.expect("tshark fields: the Connect request names APIs 0x00000000 and 0x00004e01", len(fr) == 1 &&
+		slices.Contains(fr[0].Fields["pn_io.api"], "0x00004e01") && slices.Contains(fr[0].Fields["pn_io.api"], "0x00000000"), "%+v", fr)
+
+	// A Read in an API p-net does not have, in an AR of its own and not
+	// captured: p-net answers it with an RPC response without NDR data
+	// (no PNIOStatus), which tshark reports as malformed. Its
+	// pf_cmrpc_rm_read_ind sets "invalid area/API" (0xB4) for it, but
+	// only the branch of a valid request writes the PNIOStatus into the
+	// response.
+	out = e.otf("ctrl-api", 2, 90*time.Second, "controller", "-station", "pnet-api", "-model", "/otfnode-testdata/pnet-model-api.json",
+		"-read", "0x4E02@1:1:123", "-duration", "1s")
+	r = report(t, out)
+	recs, _ = r["records"].([]any)
+	var bad map[string]any
+	if len(recs) == 1 {
+		bad = recs[0].(map[string]any)
+	}
+	if strings.Contains(str(bad["error"]), "NDR response of 0 octets") {
+		e.result.deviation("Read in an API the device does not have (0x4E02)",
+			"p-net answers with an RPC response without NDR data, no PNIOStatus (pf_cmrpc.c, pf_cmrpc_rm_read_ind: the invalid area/API branch, 0xB4, writes no response); go-profinet reports it as malformed: "+str(bad["error"]))
+	} else {
+		e.expect("Read in an API the device does not have (0x4E02): refused", strings.HasPrefix(str(bad["status"]), "DE 80 B4"), "%v", bad)
+	}
+}
+
 // TestPnetReparameterize: go-profinet's controller tries to
 // re-parameterize p-net in Data (PrmBegin, a write, PrmEnd). p-net (the
 // pinned tree) answers any DControl whose ControlCommand is not PrmEnd
@@ -325,4 +463,9 @@ func TestPnetConfigurationMismatch(t *testing.T) {
 	e.expect("Unexpected module in slot 2: p-net plugs it (no ModuleDiff), the AR runs", r["running"] == true && r["moduleDiff"] == nil, "running=%v diff=%v", r["running"], r["moduleDiff"])
 	r = report(t, e.otf("device", 2, 90*time.Second, "controller", "-station", "pnet-dut", "-model", wrongDevice, "-timeout", "5s"))
 	e.expect("Model of another DeviceID: the controller refuses the device", r["running"] == false && strings.Contains(str(r["error"]), "device"), "running=%v error=%v", r["running"], r["error"])
+}
+
+// allEqual reports whether vs has values and every one is v.
+func allEqual(vs []string, v string) bool {
+	return len(vs) > 0 && !slices.ContainsFunc(vs, func(s string) bool { return s != v })
 }

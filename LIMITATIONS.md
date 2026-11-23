@@ -74,8 +74,11 @@ Restrictions:
   ascending order, inside an AR or by ReadImplicit;
   `RecordClient.ReadAPIData` reads it. The layout is the one Wireshark's
   PNIO dissector reads, and p-net answers the read with it; IEC 61158-6-10
-  was not read. A device of two APIs has been checked against tshark's
-  decoding only: p-net has API 0 alone.
+  was not read. A device of two APIs is p-net built for two APIs
+  (`TestPnetAPI`), whose sample application keeps records by slot and
+  subslot: that a device scopes records by API is not tested against an
+  independent device. go-profinet's device answering with two APIs has been
+  checked against tshark's decoding only.
 - `controller.Parameter` has no API: a parameter is written at the API of
   the model's submodule in its slot and subslot (API 0 where the model has
   none). `RecordClient.ReadDiagnosis` reads a subslot at API 0;

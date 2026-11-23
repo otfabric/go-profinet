@@ -1,27 +1,33 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.22.0 (2026-11-23); profinetctl v0.19.0 pins
+what. Status: go-profinet v0.22.1 (2026-11-23); profinetctl v0.19.0 pins
 go-profinet v0.22.0. Main pins
-profinet-interop v0.11.1 (contract 1.4, tshark's `fields`; its mrp image
+profinet-interop v0.12.1 (contract 1.4, tshark's `fields`; its mrp image
 carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
 scapy 2.8.0).
 
-The interop evidence is that of go-profinet v0.22.0:
+The interop evidence is that of go-profinet v0.22.1 with `TestPnetAPI`:
 
-- The interop matrix below, published in profinet-interop v0.11.1, comes
+- The interop matrix below, published in profinet-interop v0.12.1, comes
   from the Interop and Kernel MRP jobs of go-profinet's pull request
-  workflow, run 45200308175 (2026-11-23). That run tested PR #109 at
-  417e513, whose tree is the tree of the v0.22.0 release commit e7313fc,
-  with the images of profinet-interop v0.11.0. The matrix has 272 checks:
-  252 pass, 0 fail, 6 n/a and 14 peer deviations.
+  workflow, run 45278328978 (2026-11-23). That run tested PR #115 at
+  97f3d34 (v0.22.1 with `TestPnetAPI` and otfnode's `API@` record
+  addresses; the library is unchanged) with the images of
+  profinet-interop v0.12.0. The matrix has 288 checks: 267 pass, 0 fail,
+  6 n/a and 15 peer deviations.
 - The Interop and Kernel MRP workflows run on pull requests that change
   code, weekly and by hand, not on pushes to `main`; a release is
   covered by the pull request run of its tree.
-- For the non-zero API (0x4E01) and the profile records (0xB000–0xBFFF)
-  the evidence is a decoder's: tshark decodes go-profinet's frames, and
-  no independent peer exchanges them (sections 2 and 5,
-  [INTEROPERABILITY.md](../INTEROPERABILITY.md)).
+- go-profinet's controller is tested against an independent device in a
+  non-zero API. p-net is built for two APIs, with its sample application
+  patched to pass each slot's API. In API 0x4E01 the test covers the
+  Connect, records, APIData, RealIdentificationData and cyclic data
+  (`TestPnetAPI`, profinet-interop v0.12.0).
+- The evidence is a decoder's only for two cases: go-profinet's device in
+  a non-zero API, and the profile records (0xB000–0xBFFF). tshark decodes
+  go-profinet's frames there, and no independent peer exchanges them
+  (sections 2 and 5, [INTEROPERABILITY.md](../INTEROPERABILITY.md)).
 
 How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
@@ -103,7 +109,7 @@ matrix (section 5).
 | Records: user, I&M0–4, WriteMultiple, ReadImplicit, ModuleDiff, identification, diagnosis | ✅ | ✅ | ✅ | ✅ | p-net, pnio-rs, profinet-py |
 | APIData (0xF821): the APIs of a device, within an AR or implicitly (`RecordClient.ReadAPIData`) | ✅ | ✅ | — | ✅ | p-net (API 0, outside and inside an AR); tshark decodes a two-API block's values (`TestCodecDecoders`, `fields`) |
 | Parameter records in the profile range 0xB000–0xBFFF (`pnio.Index.IsSubslotProfileIndex`): in a model, from and to GSDML, written at Connect, served and written by the device, the Handler for the ones the model lacks | ✅ | ✅ | — | ✅ (`TestProfileRecords`) | wire format only: tshark decodes the API, slot, subslot, index, length and data of a Write of 0xB600 in API 0x4E01 (`TestCodecDecoders`, `fields`); no peer accepts such a record (p-net hands the application indexes up to 0x7FFF only) |
-| Submodules of an API other than 0 (`model.Submodule.API`, GSDML `VirtualSubmoduleItem` `API`): expected and real identification, IOCR data objects, records, ModuleDiff, diagnosis and alarms addressed by (API, slot, subslot) | ✅ | ✅ | ◐ records take an API; the device view reads API 0 | ✅ | none: no peer has such a submodule; tshark and scapy decode the frames (decoders only) |
+| Submodules of an API other than 0 (`model.Submodule.API`, GSDML `VirtualSubmoduleItem` `API`): expected and real identification, IOCR data objects, records, ModuleDiff, diagnosis and alarms addressed by (API, slot, subslot) | ✅ | ✅ | ◐ records take an API; the device view reads API 0 | ✅ | controller: p-net with the IO module in API 0x4E01: Connect, records, APIData, RealIdentificationData (0xE001, 0xF000), cyclic data with the IO module's input in API 0x4E01 (IOPS good, its data changing) (`TestPnetAPI`; p-net built for two APIs, its sample patched to pass each slot's API); device: none, tshark and scapy decode the frames (decoders only) |
 | Alarms: both priorities, process and diagnosis, acknowledgement | ✅ | ✅ | ✅ `alarms` | ✅ chaos | p-net, profinet-py |
 | Cyclic data RT_CLASS_1/2, IOPS/IOCS, DataStatus, watchdog | ✅ | ✅ | ✅ `io` | ✅ | p-net (1 ms), pnio-rs, profinet-py |
 | Shared device (several IOCARs, one owner per submodule) | ✅ | ✅ | ◐ `connect --slot` | ✅ | p-net |
@@ -148,23 +154,23 @@ libraries (go-modbus, go-ethernetip, go-canbus, …):
 
 Each peer runs in a container of
 [profinet-interop](https://github.com/otfabric/profinet-interop) against
-go-profinet (the Interop workflow builds v0.11.1; the counts below are the
-matrix of go-profinet v0.22.0's run of 2026-11-23, published in
-profinet-interop v0.11.1); every exchange is captured and decoded
+go-profinet (the Interop workflow builds v0.12.1; the counts below are the
+matrix of go-profinet PR #115's run of 2026-11-23, published in
+profinet-interop v0.12.1); every exchange is captured and decoded
 by tshark and scapy. Full evidence, check by check:
-[MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.11.1/docs/MATRIX.md).
+[MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.12.1/docs/MATRIX.md).
 
 | Peer | go-profinet as | DCP | LLDP | AR, startup | Records, I&M | Alarms | Cyclic | Shared device | Port checks | Re-param. | MRP | MRA | SNMP | pass | fail | n/a | dev. |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|---:|
-| rt-labs p-net `ea5e554` (device) | controller | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1 ms | ✅ | ✅ | n/a¹ | | | | 58 | 0 | 1 | 0 |
+| rt-labs p-net `ea5e554` (device) | controller | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1 ms | ✅ | ✅ | n/a¹ | | | | 71 | 0 | 1 | 1 |
 | pnio-rs v0.1.0 (device) | controller | ◐² | | ✅ | ✅³ | | ✅ | | | n/a¹ | | | | 13 | 0 | 3 | 0 |
 | profinet-py 0.6.6 (controller) | device | ✅ | | ✅ | ✅⁴ | ✅ | ✅ | | | ✅ | | | | 32 | 0 | 1 | 3 |
 | pnio-dcp 1.2.0 (DCP tool) | device | ✅ | | | | | | | | | | | | 8 | 0 | 0 | 0 |
 | umrp v4.0 (MRP node) | MRP node | | | | | | | | | | ✅ | ✅⁵ | | 32 | 0 | 0 | 2 |
 | microchip-ung/mrp `177717e` on the Linux bridge (MRP node) | MRP node | | | | | | | | | | ✅⁶ | ✅ | | 31 | 0 | 1 | 0 |
 | Net-SNMP 5.9.3 (SNMP manager) | device | | ✅ LLDP-MIB | | | | | | | | | | ✅ | 29 | 0 | 0 | 0 |
-| tshark 4.0.17, scapy 2.8.0 (decoders) | every role | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅⁷ | ✅⁷ | ✅ | 49 | 0 | 0 | 9 |
-| **total** | | | | | | | | | | | | | | **252** | **0** | **6** | **14** |
+| tshark 4.0.17, scapy 2.8.0 (decoders) | every role | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅⁷ | ✅⁷ | ✅ | 51 | 0 | 0 | 9 |
+| **total** | | | | | | | | | | | | | | **267** | **0** | **6** | **15** |
 
 ✅ tested and passing · ◐ partly · empty: the peer does not have the
 feature. **n/a** and **dev.** are profinet-interop's outcomes: the peer
