@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -94,14 +95,16 @@ type DAPRow struct {
 	// per configured slot.
 	RecordOctets int `json:"record_octets"`
 	// APIs are the APIs other than 0 of the submodules of the DAP and of
-	// the modules it can use, sorted. The model has none of them: every
-	// model.Submodule is of API 0 (model.API), so a converted DAP with
-	// APIs converted without them.
+	// the modules it can use, sorted.
 	APIs []string `json:"apis,omitempty"`
 	// PluggedAPIs are those of APIs that are in the DAP's plugged
 	// configuration: the DAP's submodules and the modules its references
 	// put in slots, not the modules only in the catalog.
 	PluggedAPIs []string `json:"plugged_apis,omitempty"`
+	// ModelAPIs are the APIs other than 0 of the converted model's
+	// plugged submodules (model.Device.APIs); a converted DAP whose
+	// ModelAPIs differ from its PluggedAPIs lost or invented an API.
+	ModelAPIs []string `json:"model_apis,omitempty"`
 	// HighRecords counts the records of the DAP and of the modules it can
 	// use whose index is a number above 0x7FFF; InvalidRecords those whose
 	// index is no Unsigned16.
@@ -205,6 +208,15 @@ func analyze(data []byte) FileResult {
 			visit(mi.VirtualSubmoduleList, p)
 		}
 		row.APIs, row.PluggedAPIs = sortedSet(apis), sortedSet(plugged)
+		if rep.Model != nil {
+			m := map[string]bool{}
+			for _, a := range rep.Model.APIs() {
+				if a != 0 {
+					m[fmt.Sprintf("0x%X", a)] = true
+				}
+			}
+			row.ModelAPIs = sortedSet(m)
+		}
 		for _, m := range rep.Modules {
 			if len(m.ConfiguredSlots) > 0 {
 				row.Plugged++
@@ -467,22 +479,24 @@ type Summary struct {
 	Fidelity Fidelity `json:"fidelity"`
 }
 
-// Fidelity counts content a ToModel conversion does not carry: submodules
-// of an API other than 0 (the model has API 0 only), and records above
-// 0x7FFF (ToModel refuses them).
+// Fidelity counts content that tests a ToModel conversion: submodules of
+// an API other than 0, which the model must keep, and records above 0x7FFF
+// (ToModel refuses them).
 type Fidelity struct {
 	// FilesAPI and DAPsAPI count the files and DAPs with a submodule of
 	// an API other than 0; ConvertedAPI the DAPs among them ToModel
-	// converts, without those APIs.
+	// converts.
 	FilesAPI     int `json:"files_api"`
 	DAPsAPI      int `json:"daps_api"`
 	ConvertedAPI int `json:"converted_api"`
 	// DAPsPluggedAPI and ConvertedPluggedAPI count the same for an API in
-	// the DAP's plugged configuration, not only in a catalog module: the
-	// DAPs whose converted model, as plugged, addresses a submodule with
-	// the wrong API.
+	// the DAP's plugged configuration, not only in a catalog module.
 	DAPsPluggedAPI      int `json:"daps_plugged_api"`
 	ConvertedPluggedAPI int `json:"converted_plugged_api"`
+	// APIMismatch counts the converted DAPs whose model's APIs are not
+	// the APIs of their plugged configuration (ModelAPIs, PluggedAPIs);
+	// zero when the model keeps every API.
+	APIMismatch int `json:"api_mismatch"`
 	// APIs counts the files by API.
 	APIs map[string]int `json:"apis"`
 	// FilesHighRecords and DAPsHighRecords count the files and DAPs with
@@ -596,6 +610,9 @@ func Summarize(results []FileResult) Summary {
 					s.Fidelity.ConvertedPluggedAPI++
 				}
 			}
+			if d.Outcome == gsdml.OutcomeConverted && !slices.Equal(d.ModelAPIs, d.PluggedAPIs) {
+				s.Fidelity.APIMismatch++
+			}
 			if d.HighRecords > 0 {
 				s.Fidelity.DAPsHighRecords++
 				if d.Outcome == gsdml.OutcomeConverted {
@@ -660,10 +677,11 @@ func Markdown(s Summary, source string) string {
 		w("| %s | %d | %d |\n", v, s.ByVersion[v][0], s.ByVersion[v][1])
 	}
 	f := s.Fidelity
-	w("\n## Fidelity\n\n| What the model does not carry | Files | DAPs | of them converted |\n|---|---|---|---|\n")
-	w("| a submodule of an API other than 0, in the DAP or a module it can use (the model has API 0 only) | %d | %d | %d |\n", f.FilesAPI, f.DAPsAPI, f.ConvertedAPI)
+	w("\n## Fidelity\n\n| Content | Files | DAPs | of them converted |\n|---|---|---|---|\n")
+	w("| a submodule of an API other than 0, in the DAP or a module it can use | %d | %d | %d |\n", f.FilesAPI, f.DAPsAPI, f.ConvertedAPI)
 	w("| … of them in the plugged configuration (the DAP's submodules, modules in slots) | | %d | %d |\n", f.DAPsPluggedAPI, f.ConvertedPluggedAPI)
 	w("| a record whose index is a number above 0x7FFF (ToModel refuses it) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
+	w("\nConverted DAPs whose model does not keep the APIs of their plugged configuration: %d.\n", f.APIMismatch)
 	if len(f.APIs) > 0 {
 		w("\n| API | Files |\n|---|---|\n")
 		for _, k := range sortedKeys(f.APIs) {

@@ -22,6 +22,7 @@ import (
 
 	"github.com/otfabric/go-profinet/dcp"
 	"github.com/otfabric/go-profinet/ethernet"
+	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/mrp"
 	"github.com/otfabric/go-profinet/pcap"
 	"github.com/otfabric/go-profinet/pnio"
@@ -341,10 +342,66 @@ func TestCodecDecoders(t *testing.T) {
 	rr := pnio.ReadRes{Seq: 9, ARUUID: rpc.NewRandomUUID(), Slot: 0, Subslot: 0x8000, Index: pnio.IndexPDInterfaceMrpDataReal, Length: uint32(len(real))}
 	rbody := pnio.AppendNDRResponse(nil, binary.LittleEndian, pnio.Status{}, pnio.DefaultArgsMaximum, append(rr.Append(nil), real...))
 	add(ipv4UDP(dst, src, [4]byte{10, 0, 0, 2}, [4]byte{10, 0, 0, 1}, rpc.Port, 49152, rpcPDU(rpc.TypeResponse, pnio.OpRead, rbody)))
+
+	// A submodule of API 0x4E01 (IO-Link) beside API 0 in one slot: the
+	// IOCAR Connect request with its ExpectedSubmoduleBlockReq and IOCR
+	// API lists, a Write request, and the Read responses of
+	// RealIdentificationData and DiagnosisData in that API.
+	const apiIOL = 0x4E01
+	m := &model.Device{
+		Identity:     model.Identity{VendorID: 0xF000, DeviceID: 2},
+		Capabilities: model.Capabilities{MaxARs: 1, ConformanceClass: "A", Ports: 1},
+		DAP:          model.StandardDAP("DAP", 0x100, 1),
+		Slots: []model.Slot{{Number: 1, Module: model.Module{IdentNumber: 0x40, Submodules: []model.Submodule{
+			{IdentNumber: 0x41, Subslot: 1},
+			{IdentNumber: 0x42, API: apiIOL, Subslot: 2, InputLen: 4, OutputLen: 2},
+		}}}},
+	}
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	var subs []rt.SubmoduleIO
+	m.Each(func(p model.PluggedSubmodule) {
+		subs = append(subs, rt.SubmoduleIO{API: p.Submodule.API, Slot: p.Slot, Subslot: p.Submodule.Subslot, Type: p.Submodule.Type(), InputLen: p.Submodule.InputLen, OutputLen: p.Submodule.OutputLen})
+	})
+	iocr := func(typ pnio.IOCRType, ref, frameID uint16) pnio.IOCRBlockReq {
+		l, err := rt.ComputeLayout(typ, subs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pnio.IOCRBlockReq{Type: typ, Reference: ref, LT: pnio.LT, Properties: uint32(pnio.RTClass1), DataLength: l.DataLength, FrameID: frameID,
+			SendClockFactor: 32, ReductionRatio: 128, Phase: 1, FrameSendOffset: 0xFFFFFFFF, WatchdogFactor: 3, DataHoldFactor: 3, TagHeader: 6 << 13, APIs: l.IOCRAPIs()}
+	}
+	car := pnio.ConnectRequest{
+		AR: pnio.ARBlockReq{Type: pnio.ARTypeIOCARSingle, ARUUID: rpc.NewRandomUUID(), SessionKey: 1, InitiatorMAC: src, InitiatorObject: pnio.ObjectUUID(1, 1, 0xF000),
+			Properties: pnio.ARPropStateActive | pnio.ARPropPrmServerCMInit, ActivityTimeoutFactor: 100, UDPRTPort: pnio.LT, StationName: "plc"},
+		IOCRs:    []pnio.IOCRBlockReq{iocr(pnio.IOCRInput, 1, 0x8001), iocr(pnio.IOCROutput, 2, 0x8002)},
+		AlarmCR:  &pnio.AlarmCRBlockReq{Type: 1, LT: pnio.LT, RTATimeoutFactor: 1, RTARetries: 3, LocalAlarmReference: 1, MaxAlarmDataLength: 200, TagHeaderHigh: 6 << 13, TagHeaderLow: 5 << 13},
+		Expected: m.Expected(),
+	}
+	add(ipv4UDP(src, dst, [4]byte{10, 0, 0, 1}, [4]byte{10, 0, 0, 2}, 49152, rpc.Port,
+		rpcPDU(rpc.TypeRequest, pnio.OpConnect, pnio.AppendNDRRequest(nil, binary.LittleEndian, pnio.DefaultArgsMaximum, car.Append(nil)))))
+	wq := pnio.WriteReq{Seq: 20, ARUUID: car.AR.ARUUID, API: apiIOL, Slot: 1, Subslot: 2, Index: 0x20, Length: 2}
+	add(ipv4UDP(src, dst, [4]byte{10, 0, 0, 1}, [4]byte{10, 0, 0, 2}, 49152, rpc.Port,
+		rpcPDU(rpc.TypeRequest, pnio.OpWrite, pnio.AppendNDRRequest(nil, binary.LittleEndian, pnio.DefaultArgsMaximum, append(wq.Append(nil), 0, 9)))))
+	for i, r := range []struct {
+		api  uint32
+		idx  pnio.Index
+		data []byte
+	}{
+		{0, pnio.IndexRealIdentAR, func() []byte { id := m.RealIdentification(); return id.Append(nil) }()},
+		{apiIOL, pnio.IndexDiagAllSubslot, (&pnio.DiagnosisData{API: apiIOL, Slot: 1, Subslot: 2, ChannelNumber: pnio.ChannelNumberSubmodule, ChannelProperties: pnio.ChanSpecAppears,
+			USI: pnio.USIChannelDiagnosis, Items: []pnio.DiagnosisItem{{ChannelNumber: 1, ChannelProperties: pnio.ChanDirInput | pnio.ChanSpecAppears, ErrorType: pnio.ChannelErrLineBreak}}}).Append(nil)},
+	} {
+		rr := pnio.ReadRes{Seq: uint16(30 + i), ARUUID: car.AR.ARUUID, API: r.api, Slot: 1, Subslot: 2, Index: r.idx, Length: uint32(len(r.data))}
+		add(ipv4UDP(dst, src, [4]byte{10, 0, 0, 2}, [4]byte{10, 0, 0, 1}, rpc.Port, 49152,
+			rpcPDU(rpc.TypeResponse, pnio.OpRead, pnio.AppendNDRResponse(nil, binary.LittleEndian, pnio.Status{}, pnio.DefaultArgsMaximum, append(rr.Append(nil), r.data...)))))
+	}
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
 	e.expect("MRP Test, TopologyChange, LinkDown, LinkUp; PTCP DelayReq, DelayRes; IOCARSR Connect with SRInfoBlock and MCRBlockReq; MRP records (PDInterfaceMrpDataAdjust/Check/Real, PDPortMrpDataAdjust) encoded (go-profinet)", true, "")
+	e.expect("Submodule of API 0x4E01 beside API 0 in one slot: IOCAR Connect (ExpectedSubmoduleBlockReq, IOCR API lists), Write, RealIdentificationData and DiagnosisData Read responses encoded (go-profinet)", true, "")
 	e.oracles("codecs.pcap")
 }
 

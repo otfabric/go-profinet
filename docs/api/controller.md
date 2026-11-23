@@ -583,7 +583,7 @@ type Parameter struct {
 }
 ```
 
-Parameter is a record written to a device before the end of parameterization.
+Parameter is a record written to a device before the end of parameterization. Its API is the API of the model's submodule in the slot and subslot (API 0 for a subslot the model does not have).
 
 ### type PeerCheck
 
@@ -700,7 +700,7 @@ Read reads a record within an AR (ar is the AR UUID) or, with a nil ar, implicit
 func (r *RecordClient) ReadDiagnosis(ctx context.Context, ar rpc.UUID, slot, subslot uint16, sub bool) ([]pnio.DiagnosisData, error)
 ```
 
-ReadDiagnosis reads the diagnosis of the device (index 0xF80C), or of one submodule when slot and subslot are given with sub true (0x800C).
+ReadDiagnosis reads the diagnosis of the device (index 0xF80C), or of one submodule of API 0 when slot and subslot are given with sub true (0x800C); ReadSubmoduleDiagnosis reads a submodule of any API.
 
 #### func (RecordClient) ReadIM0
 
@@ -709,6 +709,14 @@ func (r *RecordClient) ReadIM0(ctx context.Context, ar rpc.UUID, slot, subslot u
 ```
 
 ReadIM0 reads I&M0 of a submodule (the DAP: slot 0, subslot 1).
+
+#### func (RecordClient) ReadSubmoduleDiagnosis
+
+```go
+func (r *RecordClient) ReadSubmoduleDiagnosis(ctx context.Context, ar rpc.UUID, api uint32, slot, subslot uint16) ([]pnio.DiagnosisData, error)
+```
+
+ReadSubmoduleDiagnosis reads the diagnosis of the submodule at (api, slot, subslot) (index 0x800C).
 
 #### func (RecordClient) Write
 

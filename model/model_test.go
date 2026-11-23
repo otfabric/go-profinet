@@ -76,6 +76,11 @@ func TestValidateErrors(t *testing.T) {
 		{"subslot 0", func(d *Device) { d.Slots[0].Module.Submodules[0].Subslot = 0 }, "subslot 0 is not allowed"},
 		{"duplicate subslot", func(d *Device) { d.Slots[0].Module.Submodules[0].Subslot = 1 }, "subslot 1 used twice"},
 		{"duplicate DAP subslot", func(d *Device) { d.DAP.Submodules[1].Subslot = SubslotDAP }, "slot 0: subslot 1 used twice"},
+		{"subslot twice in two APIs", func(d *Device) {
+			d.Slots[0].Module.Submodules[0].API = 0x4E01
+			d.Slots[0].Module.Submodules[0].Subslot = 1
+		}, "subslot 1 used twice"},
+		{"DAP submodule of another API", func(d *Device) { d.DAP.Submodules[2].API = 0x3A00 }, "API 0x3a00, the DAP's submodules belong to API 0"},
 		{"input too long", func(d *Device) { d.Slots[0].Module.Submodules[0].InputLen = 1440 }, "longer than the C_SDU"},
 		{"output too long", func(d *Device) { d.Slots[0].Module.Submodules[0].OutputLen = 1440 }, "longer than the C_SDU"},
 		{"record index", func(d *Device) { d.Slots[1].Module.Submodules[0].Records[0].Index = 0x8000 }, "outside 0..0x7FFF"},

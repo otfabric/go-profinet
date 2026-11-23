@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/otfabric/go-profinet"
-	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/pnio"
 )
 
@@ -128,7 +127,7 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	a.ackWait[k] = ch
 	a.mu.Unlock()
 	n := pnio.AlarmNotification{
-		High: al.High, Type: al.Type, API: model.API, Slot: al.Slot, Subslot: al.Subslot,
+		High: al.High, Type: al.Type, API: d.apiOf(al.Slot, al.Subslot), Slot: al.Slot, Subslot: al.Subslot,
 		ModuleIdentNumber: modIdent, SubmoduleIdentNumber: subIdent,
 		Specifier: al.Specifier&^pnio.AlarmSpecSeqMask | seq,
 		HasItem:   al.HasItem, USI: al.USI, Data: al.Data,

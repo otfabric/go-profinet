@@ -234,6 +234,8 @@ Config configures a [Device](#type-device).
 ```go
 type Device struct {
 
+	// of the plugged submodules (model.APIs)
+
 	// mrpMu serializes MRP entity replacement and its stop.
 
 	// snmpStart is when the SNMP agent started (sysUpTime 0).

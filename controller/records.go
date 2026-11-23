@@ -265,12 +265,23 @@ func (r *RecordClient) ReadIM0(ctx context.Context, ar rpc.UUID, slot, subslot u
 }
 
 // ReadDiagnosis reads the diagnosis of the device (index 0xF80C), or of
-// one submodule when slot and subslot are given with sub true (0x800C).
+// one submodule of API 0 when slot and subslot are given with sub true
+// (0x800C); ReadSubmoduleDiagnosis reads a submodule of any API.
 func (r *RecordClient) ReadDiagnosis(ctx context.Context, ar rpc.UUID, slot, subslot uint16, sub bool) ([]pnio.DiagnosisData, error) {
 	rec := Record{Index: pnio.IndexDiagDMQSDevice}
 	if sub {
 		rec = Record{Slot: slot, Subslot: subslot, Index: pnio.IndexDiagDMQSSubslot}
 	}
+	return r.readDiagnosis(ctx, ar, rec)
+}
+
+// ReadSubmoduleDiagnosis reads the diagnosis of the submodule at (api,
+// slot, subslot) (index 0x800C).
+func (r *RecordClient) ReadSubmoduleDiagnosis(ctx context.Context, ar rpc.UUID, api uint32, slot, subslot uint16) ([]pnio.DiagnosisData, error) {
+	return r.readDiagnosis(ctx, ar, Record{API: api, Slot: slot, Subslot: subslot, Index: pnio.IndexDiagDMQSSubslot})
+}
+
+func (r *RecordClient) readDiagnosis(ctx context.Context, ar rpc.UUID, rec Record) ([]pnio.DiagnosisData, error) {
 	b, err := r.Read(ctx, ar, rec, 0)
 	if err != nil {
 		return nil, err

@@ -248,6 +248,10 @@ func (c *conv) dapModel(dapID string) (*model.Device, *DeviceAccessPointItem, er
 			if err != nil {
 				return nil, nil, err
 			}
+			if s.API != model.API {
+				// The model serves the DAP's records at API 0 (model.API).
+				return nil, nil, fmt.Errorf("gsdml: %w: DAP %s submodule %s of API %#x: the model's DAP submodules are API 0", profinet.ErrUnsupported, clip(dap.ID), clip(vs.ID), s.API)
+			}
 			m.DAP.Submodules = append(m.DAP.Submodules, s)
 		}
 	}
@@ -470,6 +474,13 @@ func (c *conv) toSubmodule(vs *VirtualSubmoduleItem, defSubslot uint16) (model.S
 		return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s SubmoduleIdentNumber %q", profinet.ErrMalformed, vs.ID, vs.SubmoduleIdentNumber)
 	}
 	s := model.Submodule{Name: c.textOf(vs.ModuleInfo), IdentNumber: id, Subslot: defSubslot}
+	// API: the application process the submodule belongs to; absent is
+	// the profile-independent API 0.
+	if vs.API != "" || emptyIn(vs.empty, "API") {
+		if s.API, err = ParseUint32(vs.API); err != nil {
+			return model.Submodule{}, fmt.Errorf("gsdml: %w: submodule %s API %q", profinet.ErrMalformed, clip(vs.ID), clip(vs.API))
+		}
+	}
 	if vs.FixedInSubslots != "" || emptyIn(vs.empty, "FixedInSubslots") {
 		l, err := ParseValueList(vs.FixedInSubslots, 64)
 		if err != nil {
@@ -982,6 +993,10 @@ func recordsDescribable(m *model.Device, version string) error {
 func (g *gen) submodule(id string, s *model.Submodule) *VirtualSubmoduleItem {
 	vs := &VirtualSubmoduleItem{ID: id, SubmoduleIdentNumber: hex32(s.IdentNumber), MayIssueProcessAlarm: "true", IOData: &IOData{},
 		ModuleInfo: &ModuleInfo{Name: &Name{TextID: g.text(id+"_Name", nonEmpty(s.Name, id))}, InfoText: &InfoText{TextID: g.text(id+"_Info", nonEmpty(s.Info, s.Name))}}}
+	if s.API != model.API {
+		// GSDML's API attribute is an Unsigned32, written in decimal.
+		vs.API = strconv.FormatUint(uint64(s.API), 10)
+	}
 	if s.InputLen > 0 {
 		vs.IOData.Input = &Input{Consistency: "All items consistency", DataItems: []*DataItem{{DataType: string(DataTypeOctetString), Length: strconv.Itoa(int(s.InputLen)), TextID: g.text(id+"_In", "Input data")}}}
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -317,8 +318,13 @@ func (d *Device) moduleDiff(exp []pnio.ExpectedSubmoduleBlockReq, locked map[key
 	}
 	for _, b := range exp {
 		for _, em := range b.Modules {
+			// A module is plugged in an API when one of its submodules
+			// belongs to it.
 			rm, ok := d.model.Module(em.Slot)
-			if em.API != model.API || !ok {
+			if ok {
+				ok = slices.ContainsFunc(rm.Submodules, func(s model.Submodule) bool { return s.API == em.API })
+			}
+			if !ok {
 				dm := pnio.DiffModule{Slot: em.Slot, IdentNumber: em.IdentNumber, State: pnio.ModuleStateNoModule}
 				addModule(em.API, dm)
 				continue
@@ -329,6 +335,10 @@ func (d *Device) moduleDiff(exp []pnio.ExpectedSubmoduleBlockReq, locked map[key
 			}
 			for _, es := range em.Submodules {
 				rs, ok := rm.Submodule(es.Subslot)
+				if ok && rs.API != em.API {
+					// The subslot's submodule belongs to another API.
+					ok = false
+				}
 				st := pnio.SubmStateFormat
 				switch {
 				case !ok:

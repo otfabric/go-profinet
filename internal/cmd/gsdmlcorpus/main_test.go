@@ -80,13 +80,13 @@ func TestAnalyze(t *testing.T) {
 }
 
 // Submodules of an API other than 0 and records above 0x7FFF: counted, and
-// a DAP that converts with them is counted as converted without them
-// (both DAPs of the fixture use MOD_DI16).
+// a DAP that converts with an API keeps it in its model (both DAPs of the
+// fixture use MOD_DI16).
 func TestFidelity(t *testing.T) {
 	t.Parallel()
 	b := fixture(t, modular, `<VirtualSubmoduleItem ID="SM_DI16"`, `<VirtualSubmoduleItem API="19969" ID="SM_DI16"`)
 	r := analyze(b)
-	if r.APIs["0x4E01"] != 1 || r.RecordIndexes[userRange] == 0 || r.DAPs[0].Outcome != "converted" || !slicesEqual(r.DAPs[0].APIs, []string{"0x4E01"}) || !slicesEqual(r.DAPs[0].PluggedAPIs, []string{"0x4E01"}) {
+	if r.APIs["0x4E01"] != 1 || r.RecordIndexes[userRange] == 0 || r.DAPs[0].Outcome != "converted" || !slicesEqual(r.DAPs[0].APIs, []string{"0x4E01"}) || !slicesEqual(r.DAPs[0].PluggedAPIs, []string{"0x4E01"}) || !slicesEqual(r.DAPs[0].ModelAPIs, []string{"0x4E01"}) {
 		t.Fatalf("%+v", r)
 	}
 	// MOD_DIO8 is only in DAP_1P's catalog, and plugged in slot 4 of
@@ -95,11 +95,22 @@ func TestFidelity(t *testing.T) {
 	if d := cat.DAPs[0]; !slicesEqual(d.APIs, []string{"0x3A00"}) || len(d.PluggedAPIs) != 0 {
 		t.Fatalf("DAP_1P %+v", d)
 	}
-	if d := cat.DAPs[1]; !slicesEqual(d.PluggedAPIs, []string{"0x3A00"}) {
+	if d := cat.DAPs[1]; !slicesEqual(d.PluggedAPIs, []string{"0x3A00"}) || !slicesEqual(d.ModelAPIs, []string{"0x3A00"}) {
 		t.Fatalf("DAP_2P %+v", d)
 	}
-	if f := Summarize([]FileResult{cat}).Fidelity; f.DAPsAPI != 2 || f.ConvertedAPI != 2 || f.DAPsPluggedAPI != 1 || f.ConvertedPluggedAPI != 1 {
+	if d := cat.DAPs[0]; len(d.ModelAPIs) != 0 {
+		t.Fatalf("DAP_1P model %+v", d)
+	}
+	if f := Summarize([]FileResult{cat}).Fidelity; f.DAPsAPI != 2 || f.ConvertedAPI != 2 || f.DAPsPluggedAPI != 1 || f.ConvertedPluggedAPI != 1 || f.APIMismatch != 0 {
 		t.Fatalf("plugged %+v", f)
+	}
+	// A converted model without its plugged API is a mismatch.
+	lost := FileResult{DAPs: []DAPRow{{Outcome: gsdml.OutcomeConverted, PluggedAPIs: []string{"0x3A00"}}, {Outcome: gsdml.OutcomeMalformed, PluggedAPIs: []string{"0x3A00"}}}}
+	if f := Summarize([]FileResult{lost}).Fidelity; f.APIMismatch != 1 {
+		t.Fatalf("lost %+v", f)
+	}
+	if md := Markdown(Summarize([]FileResult{lost}), ""); !strings.Contains(md, "keep the APIs of their plugged configuration: 1.") {
+		t.Fatal(md)
 	}
 	// A record above 0x7FFF: ToModel refuses the module.
 	h := analyze(fixture(t, modular, `<ParameterRecordDataItem Index="100" Length="2">`, `<ParameterRecordDataItem Index="46592" Length="2">`))
@@ -121,7 +132,7 @@ func TestFidelity(t *testing.T) {
 		t.Fatal("indexRange")
 	}
 	inv := analyze(fixture(t, modular, `<VirtualSubmoduleItem ID="SM_DI16"`, `<VirtualSubmoduleItem API="x" ID="SM_DI16"`))
-	if inv.APIs["invalid"] != 1 {
+	if inv.APIs["invalid"] != 1 || inv.DAPs[0].Outcome != gsdml.OutcomeMalformed {
 		t.Fatalf("%+v", inv.APIs)
 	}
 	s := Summarize([]FileResult{r, h, r})

@@ -26,6 +26,76 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.20.0
+
+**Date:** 2026-11-23
+**Previous release:** v0.19.0
+
+## Summary
+
+A submodule carries its API (application process identifier), and the
+controller and the device address it by (API, slot, subslot) on the wire.
+API 0 stays the default: a model without APIs behaves as before. A model
+converted from GSDML keeps the `VirtualSubmoduleItem` `API`, which
+`ToModel` dropped before.
+
+## Changes
+
+### Added
+
+- **`model.Submodule.API`** (JSON `api`, left out for API 0) and
+  **`model.Device.APIs`**.
+- **`controller.RecordClient.ReadSubmoduleDiagnosis`**: the diagnosis of a
+  submodule of any API (`ReadDiagnosis` reads a subslot at API 0).
+
+### Changed
+
+- `model.Device.Expected` puts one API entry per API of a slot in the
+  slot's ExpectedSubmoduleBlockReq; `RealIdentification` groups the slots
+  by API, in API order.
+- The controller lists each IO data object in the IOCRs under its
+  submodule's API and writes `DeviceConfig.Parameters` (and
+  `Reparameterize`) at the API of the model's submodule in their slot and
+  subslot. A ModuleDiffBlock that reports a module missing in one API no
+  longer drops the module's submodules of other APIs.
+- The device routes records by (API, slot, subslot): a request for a
+  submodule in another API than its own, or in an API it has no submodule
+  of, is answered with "invalid area/API". Slot- and subslot-level
+  identification and diagnosis reads return the header's API only,
+  API-level reads (0xF000, 0xF00A–0xF00C) the header's API; AR- and
+  device-level reads are unchanged. The ModuleDiffBlock compares the API;
+  DiagnosisData and alarms carry the submodule's API.
+- `gsdml.ToModel` reads `VirtualSubmoduleItem` `API`; an API that is no
+  Unsigned32 is now `ErrMalformed`, a DAP submodule of an API other than
+  0 `ErrUnsupported`. `FromModel` writes the API of a submodule other than
+  API 0. On the local corpus of public GSDML files the same 773 device
+  access points convert as with v0.19.0; the 115 of them with a submodule
+  of another API in their plugged configuration now keep it.
+- `model.Device.Validate` refuses a DAP submodule of an API other than 0.
+- `gsdmlcorpus`: a converted DAP's `model_apis` and the summary's
+  `api_mismatch` (converted DAPs whose model's APIs are not those of their
+  plugged configuration).
+
+### Breaking
+
+Consumer assessment: gorelease is expected to report only additions (run
+before the release); the changes are in behaviour and affect only models
+and files with an API other than 0. profinetctl builds its models with
+`ToModel` and so sends the file's APIs once it moves to this version; its
+device view reads index 0xF000 at API 0 and so lists the API 0 submodules
+only (LIMITATIONS.md).
+
+- A controller configured from a GSDML file with a submodule of an API
+  other than 0 now sends that API in the Connect request and the record
+  headers; with v0.19.0 it sent API 0.
+- A go-profinet device answers 0xF000 (RealIdentificationData for one API)
+  and the API-level diagnosis indices with the header's API only. For a
+  model of API 0 alone the answers are those of v0.19.0.
+- No independent peer with an API other than 0 is in the interop matrix;
+  tshark and scapy decode such frames (LIMITATIONS.md, APIs).
+
+---
+
 ## v0.19.0
 
 **Date:** 2026-11-23
