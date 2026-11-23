@@ -1,16 +1,25 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.12.0 (2026-11-21) and profinetctl v0.14.0.
-v0.12.0 pins profinet-interop v0.8.0; main pins v0.9.2 (contract 1.3; its mrp image
-carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
-scapy 2.8.0), from the next release. The interop matrix below is still
-that of the profinet-interop v0.8.0 run of 2026-11-12 against go-profinet
-v0.8.1. The Interop workflow has since passed on v0.12.0 (commit f9a5d82,
-2026-11-21, profinet-interop v0.8.0), but the matrix was not regenerated
-from that run. v0.9.1 (DCP responder) and v0.11.0 (ModuleDiffBlock) changed
-wire behaviour after the matrix run, so the matrix's counts for those parts
-are evidence for v0.8.1 only.
+what. Status: go-profinet v0.18.0 (2026-11-22); profinetctl v0.17.1 pins
+go-profinet v0.17.0 (its main pins v0.18.0, not yet released). Main pins
+profinet-interop v0.9.2 (contract 1.3; its mrp image carries one
+microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1; scapy 2.8.0).
+
+The interop evidence is older than the code, and is kept at the versions
+it was measured on:
+
+- The interop matrix below is that of the profinet-interop v0.8.0 run of
+  2026-11-12 against go-profinet v0.8.1. v0.9.1 (DCP responder) and
+  v0.11.0 (ModuleDiffBlock) changed wire behaviour after it, so the
+  matrix's counts for those parts are evidence for v0.8.1 only.
+- The Interop workflow last passed on commit 735ba8d (2026-11-22, the
+  commit before v0.13.0, profinet-interop v0.9.0), and before that on
+  v0.12.0 (f9a5d82, profinet-interop v0.8.0). The matrix was not
+  regenerated from either run, and it has not run on v0.13.0–v0.18.0 or
+  with profinet-interop v0.9.2. v0.13.0–v0.18.0 changed GSDML handling,
+  the parameterization API and the pnio codecs of the `_S` DataTypes;
+  they did not change the controller, device, RPC or DCP packages.
 
 How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
@@ -24,7 +33,14 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.12.0** | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.14.0 | **yes** |
+| **v0.18.0** | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none released (main pins it) | **yes** |
+| v0.17.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | v0.17.0, v0.17.1 | no: v0.18.0 makes `Check` run the parameter record rules |
+| v0.16.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no |
+| v0.15.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no |
+| v0.14.1 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | v0.15.1, v0.16.0 | no |
+| v0.14.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.0 (1.3) | v0.15.0 | no |
+| v0.13.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.0 (1.3) | none | no |
+| v0.12.0 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.14.0 | no |
 | v0.11.0 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | none | no: v0.12.0 refuses GSDML input it used to turn into defaults |
 | v0.10.0 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.13.1 | no: v0.11.0 changes the ModuleDiffBlock of the device |
 | v0.9.1 | 1.26 or later (CI: 1.26–1.27) | v0.8.0 (1.3) | v0.11.1–v0.13.0 | no: v0.10.0 bounds work and memory and fixes lifecycles |
@@ -92,6 +108,7 @@ matrix (section 5).
 | GSDML: parse, validate, check, model, generate, GSDX inspection | ✅ library | ✅ library | ✅ `gsdml` | ✅ fixtures | pnio-rs's GSDML; profinet-py parses go-profinet's |
 | GSDML parameter records: fields, AllowedValues, ValueItem texts, records built from chosen values (`gsdml.SubmoduleParameters`, `ParameterRecord.Set`, typed setters, `Encode`, `Field`); record checks: layout, overlaps, defaults against AllowedValues (`ParameterRecord.Check`, and `gsdml.Check` for every record of a document) | ✅ library | n/a | — | ✅ fixture with hand-derived golden octets, fuzz | none: no engineering tool or captured parameter write compared yet |
 | GSDML parameterization plan: records to write for a plugged model, checked against the device identity and slot rules, values only for Changeable fields, ordered by TransferSequence (`gsdml.PlanParameters`) | ✅ library | n/a | — | ✅ fixture; e2e: a plan written by the controller to a go-profinet device and read back | none: no plan written to an independent device; TransferSequence rule from ISO 15745-4 Amd 1 Table D.28 as the maintainer read it |
+| GSDML conversion report: per device access point and module, why `ToModel` does or does not convert (`gsdml.AnalyzeModels`; outcomes converted, malformed, unsupported, resource_exhausted, with a reference and a module status per reference and a blocked flag per DAP) | ✅ library | n/a | — | ✅ fixtures: equivalence with `ToModel` (structural and JSON), each outcome, reference and module errors apart, the aggregate record limit with and without a malformed module | none: not yet run over a vendor corpus (profinet-interop) |
 | GSDML typed model and schema validation, V1.0–V2.46 (`gsdml/typed`, `gsdml/versions`, `gsdml.CheckBytes`), generated from the reference schemas | ✅ library | ✅ library | — | ✅ fixtures, mutants | libxml2's xmllint agrees on every file and mutant of the differential test |
 | System redundancy S2 | 🧪 | 🧪 | — | ✅ | none exists |
 | RT_CLASS_UDP, MCR, PTCP delay frames | ⚙ | ⚙ | — | refusal | decoders only |

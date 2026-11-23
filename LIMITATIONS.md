@@ -88,7 +88,10 @@ older versions do not require, a choice of `ChannelDiagList` items it
 takes as one required item, and required attributes given empty, which
 it reports missing. `make gsdml-differential` checks that these are the
 only differences (docs/research/GSDML-SCHEMA-PROPOSAL.md). `ToModel`
-converts 129 of the 130 files. `gsdml.Validate` is not PI's GSDML
+converts 129 of the 130 files. `ToModel` is all or nothing per device
+access point: one module it cannot convert fails the DAP. `AnalyzeModels`
+reports, per DAP and module, why; it is a diagnostic and returns no model
+for a DAP `ToModel` refuses. `gsdml.Validate` is not PI's GSDML
 checker, and a file it accepts may still fail PI's. Elements and attributes
 outside the catalog are kept verbatim and reported as unvalidated by
 `gsdml.Check`; its semantic rules are a small set, each with its basis

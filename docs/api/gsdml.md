@@ -428,6 +428,93 @@ func (l *Legality) UnmarshalText(b []byte) error
 
 UnmarshalText reads the names MarshalText writes.
 
+### type ModelReport
+
+```go
+type ModelReport struct {
+	// DAP is the device access point's ID, and Path its element path.
+	DAP  string `json:"dap"`
+	Path string `json:"path"`
+	// Outcome is always the classification of ToModel's error for the
+	// DAP; Err is that error and Error its text, empty when it converted.
+	// What else AnalyzeModels finds never changes them.
+	Outcome Outcome `json:"outcome"`
+	Error   string  `json:"error,omitempty"`
+	Err     error   `json:"-"`
+	// DAPErr is the error of the DAP's own content (identity,
+	// capabilities, submodules), without its modules, and DAPError its
+	// text; nil when that converts.
+	DAPError string `json:"dap_error,omitempty"`
+	DAPErr   error  `json:"-"`
+	// Blocked reports that at least one of Modules has a reference or
+	// module error: each one ToModel would refuse the DAP for, whichever
+	// it reaches first. A DAP can be blocked and have another Outcome,
+	// for example resource_exhausted when the plugged records exceed
+	// MaxModelRecordOctets before ToModel reaches the reference.
+	Blocked bool `json:"blocked"`
+	// Modules are the DAP's UseableModules references, in file order.
+	Modules []ModuleReport `json:"modules"`
+	// Model is ToModel's model when Outcome is OutcomeConverted, nil
+	// otherwise: AnalyzeModels never returns a partial model.
+	Model *model.Device `json:"-"`
+}
+```
+
+ModelReport is what AnalyzeModels found for one device access point.
+
+#### func AnalyzeModels
+
+```go
+func AnalyzeModels(doc *Document) ([]ModelReport, error)
+```
+
+AnalyzeModels converts every device access point of a document with ToModel and reports, for each, the outcome and why: every module reference gets its own status and that of the module it names, converted on its own, so that one that does not convert does not hide the others.
+
+It is a diagnostic: ToModel stays the conversion to use. A report's Outcome and Err are always ToModel's, and its Model is ToModel's, only for a DAP that converts.
+
+A module several references name is converted once. It returns an error matching profinet.ErrMalformed for a nil document and for one without device access points.
+
+### type ModuleReport
+
+```go
+type ModuleReport struct {
+	// Target is the reference's ModuleItemTarget, Path the reference's
+	// element path, and ModulePath the path of the module it names (empty
+	// when it names none).
+	Target     string `json:"target"`
+	Path       string `json:"path"`
+	ModulePath string `json:"module_path,omitempty"`
+	// ReferenceOutcome is the reference's own: malformed when it names no
+	// module or its slot attributes do not parse. ReferenceErr is that
+	// error and ReferenceError its text.
+	ReferenceOutcome Outcome `json:"reference_outcome"`
+	ReferenceError   string  `json:"reference_error,omitempty"`
+	ReferenceErr     error   `json:"-"`
+	// ModuleOutcome is the conversion of the module on its own, with the
+	// whole MaxModelRecordOctets; empty when the reference names no
+	// module. ModuleErr is its error and ModuleError its text.
+	ModuleOutcome Outcome `json:"module_outcome,omitempty"`
+	ModuleError   string  `json:"module_error,omitempty"`
+	ModuleErr     error   `json:"-"`
+	// ModuleIdent is the module's ModuleIdentNumber, 0 when it does not
+	// parse or the reference names no module.
+	ModuleIdent uint32 `json:"module_ident"`
+	// ConfiguredSlots are the slots the reference asks for (FixedInSlots,
+	// else UsedInSlots, else a single AllowedInSlots), less slot 0, slots
+	// above 0x7FFF and slots an earlier reference asked for: the slots
+	// ToModel would plug the module in. They are requested positions, not
+	// a model: only when the DAP's Outcome is OutcomeConverted are they
+	// the slots of its Model. None for a module that is only in the
+	// catalog, or when the slot attributes do not parse.
+	ConfiguredSlots []uint16 `json:"configured_slots,omitempty"`
+	// RecordOctets are the octets of the module's parameter records, for
+	// one slot, when it converts.
+	RecordOctets int `json:"record_octets"`
+}
+```
+
+ModuleReport is what AnalyzeModels found for one module reference of a device access point: the reference itself, and the module it names.
+
 ### type Node
 
 ```go
@@ -439,6 +526,34 @@ type Node struct {
 ```
 
 Node is an XML element the catalog does not define, kept verbatim.
+
+### type Outcome
+
+```go
+type Outcome string
+```
+
+Outcome is the result of converting a device access point or a module of a GSDML document to a model.
+
+```go
+const (
+	// OutcomeConverted: converted as ToModel converts it.
+	OutcomeConverted Outcome = "converted"
+	// OutcomeMalformed: the description is not valid (an error matching
+	// profinet.ErrMalformed, or any error not one of the others).
+	OutcomeMalformed Outcome = "malformed"
+	// OutcomeUnsupported: the content may be valid, but go-profinet does
+	// not implement it (profinet.ErrUnsupported), for example a field
+	// without a verified encoding.
+	OutcomeUnsupported Outcome = "unsupported"
+	// OutcomeResourceExhausted: the conversion went beyond a limit of
+	// go-profinet (profinet.ErrResourceExhausted), for example
+	// MaxModelRecordOctets.
+	OutcomeResourceExhausted Outcome = "resource_exhausted"
+)
+```
+
+The outcomes of AnalyzeModels.
 
 ### type ParameterConst
 

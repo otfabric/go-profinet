@@ -142,16 +142,31 @@ func recordOctets(subs []model.Submodule) int {
 // a C_SDU carries, and one matching profinet.ErrResourceExhausted for
 // parameter records beyond MaxModelRecordOctets.
 func ToModel(doc *Document, dapID string) (*model.Device, error) {
-	bad := func(format string, a ...any) error {
-		return fmt.Errorf("gsdml: %w: "+format, append([]any{profinet.ErrMalformed}, a...)...)
-	}
 	c := newConv(doc)
+	m, dap, err := c.dapModel(dapID)
+	if err != nil {
+		return nil, err
+	}
+	return c.addModules(m, dap)
+}
+
+// malformed is an error matching profinet.ErrMalformed.
+func malformed(format string, a ...any) error {
+	return fmt.Errorf("gsdml: %w: "+format, append([]any{profinet.ErrMalformed}, a...)...)
+}
+
+// dapModel is the first part of ToModel: the model of the device access
+// point dapID with its identity, capabilities and submodules, without the
+// modules it can use.
+func (c *conv) dapModel(dapID string) (*model.Device, *DeviceAccessPointItem, error) {
+	bad := malformed
+	doc := c.doc
 	if doc.ProfileBody == nil || doc.ProfileBody.DeviceIdentity == nil || doc.ProfileBody.ApplicationProcess == nil {
-		return nil, bad("no ProfileBody, DeviceIdentity or ApplicationProcess")
+		return nil, nil, bad("no ProfileBody, DeviceIdentity or ApplicationProcess")
 	}
 	ap := doc.ProfileBody.ApplicationProcess
 	if ap.DeviceAccessPointList == nil || len(ap.DeviceAccessPointList.DeviceAccessPointItems) == 0 {
-		return nil, bad("no device access point")
+		return nil, nil, bad("no device access point")
 	}
 	var dap *DeviceAccessPointItem
 	for _, d := range ap.DeviceAccessPointList.DeviceAccessPointItems {
@@ -161,15 +176,15 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 		}
 	}
 	if dap == nil {
-		return nil, fmt.Errorf("gsdml: device access point %q: %w", dapID, profinet.ErrNotFound)
+		return nil, nil, fmt.Errorf("gsdml: device access point %q: %w", dapID, profinet.ErrNotFound)
 	}
 	vid, err := ParseUint16(doc.ProfileBody.DeviceIdentity.VendorID)
 	if err != nil {
-		return nil, bad("VendorID: %v", err)
+		return nil, nil, bad("VendorID: %v", err)
 	}
 	did, err := ParseUint16(doc.ProfileBody.DeviceIdentity.DeviceID)
 	if err != nil {
-		return nil, bad("DeviceID: %v", err)
+		return nil, nil, bad("DeviceID: %v", err)
 	}
 	m := &model.Device{}
 	m.Identity.VendorID, m.Identity.DeviceID = vid, did
@@ -200,12 +215,12 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	// one (Validate reports it) leaves 0, a malformed one is refused.
 	if dap.ObjectUUIDLocalIndex != "" {
 		if m.Identity.Instance, err = ParseUint16(dap.ObjectUUIDLocalIndex); err != nil {
-			return nil, bad("DAP %s ObjectUUID_LocalIndex %q", clip(dap.ID), clip(dap.ObjectUUIDLocalIndex))
+			return nil, nil, bad("DAP %s ObjectUUID_LocalIndex %q", clip(dap.ID), clip(dap.ObjectUUIDLocalIndex))
 		}
 	}
 	if dap.MinDeviceInterval != "" {
 		if m.Capabilities.MinDeviceInterval, err = ParseUint16(dap.MinDeviceInterval); err != nil {
-			return nil, bad("DAP %s MinDeviceInterval %q", clip(dap.ID), clip(dap.MinDeviceInterval))
+			return nil, nil, bad("DAP %s MinDeviceInterval %q", clip(dap.ID), clip(dap.MinDeviceInterval))
 		}
 	}
 	m.Capabilities.MaxARs = 1
@@ -215,23 +230,23 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	}
 	lldp, err := parseBool(dap.LLDPNoDSupported, emptyIn(dap.empty, "LLDP_NoD_Supported"), false)
 	if err != nil {
-		return nil, bad("DAP %s LLDP_NoD_Supported: %v", clip(dap.ID), err)
+		return nil, nil, bad("DAP %s LLDP_NoD_Supported: %v", clip(dap.ID), err)
 	}
 	m.Capabilities.LLDP = lldp || m.Capabilities.ConformanceClass != "A"
 
 	dapIdent, err := ParseUint32(dap.ModuleIdentNumber)
 	if err != nil {
-		return nil, bad("DAP %s ModuleIdentNumber: %v", dap.ID, err)
+		return nil, nil, bad("DAP %s ModuleIdentNumber: %v", dap.ID, err)
 	}
 	m.DAP = model.Module{Name: c.textOf(dap.ModuleInfo), IdentNumber: dapIdent}
 	if n := dapSubmodules(dap); n > maxModuleSubmodules {
-		return nil, bad("DAP %s has %d submodules, more than the %d a C_SDU carries", clip(dap.ID), n, maxModuleSubmodules)
+		return nil, nil, bad("DAP %s has %d submodules, more than the %d a C_SDU carries", clip(dap.ID), n, maxModuleSubmodules)
 	}
 	if dap.VirtualSubmoduleList != nil {
 		for _, vs := range dap.VirtualSubmoduleList.VirtualSubmoduleItems {
 			s, err := c.toSubmodule(vs, 1)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			m.DAP.Submodules = append(m.DAP.Submodules, s)
 		}
@@ -240,18 +255,18 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 		for _, it := range sd.InterfaceSubmoduleItems {
 			s, err := c.systemSubmodule(it.TextID, it.subslotNumberOrDefault(), it.SubmoduleIdentNumber)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			m.DAP.Submodules = append(m.DAP.Submodules, s)
 			m.Capabilities.SupportedRTClasses = strings.FieldsFunc(it.SupportedRTClasses, func(r rune) bool { return r == ' ' || r == ';' })
 			if m.Capabilities.DCPHello, err = parseBool(it.DCPHelloSupported, emptyIn(it.empty, "DCP_HelloSupported"), false); err != nil {
-				return nil, bad("DAP %s interface DCP_HelloSupported: %v", clip(dap.ID), err)
+				return nil, nil, bad("DAP %s interface DCP_HelloSupported: %v", clip(dap.ID), err)
 			}
 			if ar := it.ApplicationRelations; ar != nil {
 				if ar.NumberOfAR != "" || emptyIn(ar.empty, "NumberOfAR") {
 					n, err := ParseUint16(ar.NumberOfAR)
 					if err != nil {
-						return nil, bad("DAP %s NumberOfAR %q", clip(dap.ID), clip(ar.NumberOfAR))
+						return nil, nil, bad("DAP %s NumberOfAR %q", clip(dap.ID), clip(ar.NumberOfAR))
 					}
 					if n > 0 { // 0 ARs leaves the one every device has
 						m.Capabilities.MaxARs = int(n)
@@ -263,7 +278,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 						err = bad("DAP %s ReductionRatio %q", clip(dap.ID), clip(tp.ReductionRatio))
 					}
 					if err != nil {
-						return nil, fmt.Errorf("gsdml: DAP %s ReductionRatio: %w", clip(dap.ID), err)
+						return nil, nil, fmt.Errorf("gsdml: DAP %s ReductionRatio: %w", clip(dap.ID), err)
 					}
 					for _, v := range rr {
 						if v > math.MaxUint16 {
@@ -277,13 +292,21 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 		for _, it := range sd.PortSubmoduleItems {
 			s, err := c.systemSubmodule(it.TextID, it.SubslotNumber, it.SubmoduleIdentNumber)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			m.DAP.Submodules = append(m.DAP.Submodules, s)
 			m.Capabilities.Ports++
 		}
 	}
 
+	return m, dap, nil
+}
+
+// addModules is the second part of ToModel: the modules the device access
+// point can use, plugged in their slots and in the catalog.
+func (c *conv) addModules(m *model.Device, dap *DeviceAccessPointItem) (*model.Device, error) {
+	bad := malformed
+	ap := c.doc.ProfileBody.ApplicationProcess
 	modules := map[string]*ModuleItem{}
 	if ap.ModuleList != nil {
 		for _, mi := range ap.ModuleList.ModuleItems {
@@ -314,30 +337,7 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 				converted[r.ModuleItemTarget] = mod
 				octets[r.ModuleItemTarget] = recordOctets(mod.Submodules)
 			}
-			// The configuration: the slots the module is fixed in, else
-			// the slots it is used in, else its only allowed slot.
-			for _, a := range []string{"FixedInSlots", "UsedInSlots", "AllowedInSlots"} {
-				if emptyIn(r.empty, a) {
-					return nil, bad("module %s %s is empty", clip(r.ModuleItemTarget), a)
-				}
-			}
-			slots := r.FixedInSlots
-			if slots == "" {
-				slots = r.UsedInSlots
-			}
-			if slots == "" && r.AllowedInSlots != "" {
-				// More than one allowed slot leaves the module unplugged;
-				// a list that is no ValueList is refused.
-				allowed, err := ParseValueList(r.AllowedInSlots, 2)
-				switch {
-				case errors.Is(err, profinet.ErrResourceExhausted):
-				case err != nil:
-					return nil, fmt.Errorf("gsdml: module %s AllowedInSlots: %w", clip(r.ModuleItemTarget), err)
-				case len(allowed) == 1:
-					slots = r.AllowedInSlots
-				}
-			}
-			list, err := ParseValueList(slots, 4096)
+			list, err := configuredSlots(r)
 			if err != nil {
 				return nil, err
 			}
@@ -356,6 +356,35 @@ func ToModel(doc *Document, dapID string) (*model.Device, error) {
 		sort.Slice(m.Slots, func(i, j int) bool { return m.Slots[i].Number < m.Slots[j].Number })
 	}
 	return m, nil
+}
+
+// configuredSlots returns the slots a module reference configures: the
+// slots the module is fixed in, else the slots it is used in, else its
+// only allowed slot (more than one allowed slot leaves it unplugged). The
+// values are as listed; ToModel plugs those from 1 to 0x7FFF into slots
+// no earlier reference took.
+func configuredSlots(r *ModuleItemRef) ([]uint32, error) {
+	for _, a := range []string{"FixedInSlots", "UsedInSlots", "AllowedInSlots"} {
+		if emptyIn(r.empty, a) {
+			return nil, malformed("module %s %s is empty", clip(r.ModuleItemTarget), a)
+		}
+	}
+	slots := r.FixedInSlots
+	if slots == "" {
+		slots = r.UsedInSlots
+	}
+	if slots == "" && r.AllowedInSlots != "" {
+		// a list that is no ValueList is refused
+		allowed, err := ParseValueList(r.AllowedInSlots, 2)
+		switch {
+		case errors.Is(err, profinet.ErrResourceExhausted):
+		case err != nil:
+			return nil, fmt.Errorf("gsdml: module %s AllowedInSlots: %w", clip(r.ModuleItemTarget), err)
+		case len(allowed) == 1:
+			slots = r.AllowedInSlots
+		}
+	}
+	return ParseValueList(slots, 4096)
 }
 
 // dapSubmodules returns the number of submodules of a device access
