@@ -1,8 +1,8 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.20.0 (2026-11-23); profinetctl v0.17.1 pins
-go-profinet v0.17.0 (its main pins v0.18.0, not yet released). Main pins
+what. Status: go-profinet v0.21.0 (2026-11-23); profinetctl v0.17.1 pins
+go-profinet v0.17.0 (its main pins v0.21.0, not yet released). Main pins
 profinet-interop v0.10.0 (contract 1.4, tshark's `fields`; its mrp image
 carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
 scapy 2.8.0).
@@ -37,9 +37,10 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.20.0** | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | **yes** |
+| **v0.21.0** | 1.26 or later (CI: 1.26–1.27) | v0.10.0 (1.4) | none released (main pins it) | **yes** |
+| v0.20.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no: v0.21.0 answers APIData (0xF821) itself |
 | v0.19.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no: v0.20.0 sends the submodule APIs of a GSDML file |
-| v0.18.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none released (main pins it) | no |
+| v0.18.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no |
 | v0.17.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | v0.17.0, v0.17.1 | no: v0.18.0 makes `Check` run the parameter record rules |
 | v0.16.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no |
 | v0.15.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no |
