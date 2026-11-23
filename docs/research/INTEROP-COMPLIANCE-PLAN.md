@@ -449,8 +449,8 @@ the `_S` encodings, which need the bit positions.
 | B1 | Bump INTEROP_REF to v0.9.0 | docs/tooling | P1 | S | go-profinet | — |
 | B2 | Refresh FEATURE-STATUS header and COVERAGE.md | docs/tooling | P2 | S | go-profinet | — |
 | B3 | Bump go-profinet to v0.12.0 | docs/tooling | P1 | S | profinet-interop, profinetctl | — |
-| C1 | Corpus manifest and fetch tool (no vendor files) | new feature | P1 | M | profinet-interop | Q5, Q6 |
-| C2 | Corpus run producing the §7 matrix (manual/scheduled workflow) | new feature | P1 | M | profinet-interop | C1, D7 |
+| C1 | Corpus manifest and fetch tool (no vendor files); in profinet-interop v0.10.0 (`corpus/`, docs/CORPUS.md there) | new feature | P1 | M | profinet-interop | Q5, Q6 |
+| C2 | Corpus run producing the §7 matrix; the run is `make gsdml-corpus` in go-profinet (`internal/cmd/gsdmlcorpus`), since profinet-interop may not know a library under test (its R1); a workflow waits for Q5/Q6 | new feature | P1 | M | go-profinet | C1, D7 |
 | C3 | `gsdml check --json` | API improvement | P2 | S | profinetctl | — |
 | C4 | Per-DAP / per-module conversion report (D7); done in v0.19.0 (`gsdml.AnalyzeModels`) | API improvement | P2 | M | go-profinet | — |
 | C5 | Minimised regression cases from corpus failures | test | P1 | per case | go-profinet | C2 |

@@ -1,4 +1,6 @@
 /bin/
+/gsdml-corpus.json
+/gsdml-corpus.md
 coverage.out
 coverage.html
 *.pcap
