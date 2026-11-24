@@ -64,7 +64,18 @@ type mrpState struct {
 	check *pnio.PDInterfaceMrpDataCheck
 	// closed is set by stopMRP: no entity starts after it.
 	closed bool
+	// gen counts the entity starts asked for (setMRPRole); a recovery
+	// gives up once a newer one was asked for.
+	gen uint64
 }
+
+// The backoff of the recovery of an MRP entity (recoverMRP): the first
+// retry after mrpRetryMin, each next one after twice as long, at most
+// mrpRetryMax.
+const (
+	mrpRetryMin = 200 * time.Millisecond
+	mrpRetryMax = 30 * time.Second
+)
 
 // startMRP checks the configuration and starts the entity of the
 // configured role.
@@ -109,7 +120,11 @@ func (d *Device) startMRP() error {
 }
 
 // setMRPRole stops the running entity and starts one of the new role.
-// The caller holds d.mrpMu, so one entity runs at a time.
+// The caller holds d.mrpMu, so one entity runs at a time. The new
+// entity's configuration is checked first (mrp.Config.Validate): one
+// that mrp.New refuses is refused here with the running entity and the
+// configuration left as they were. Only a start that fails for another
+// reason leaves no entity running.
 func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 	d.mu.Lock()
 	st := d.mrpSt
@@ -117,10 +132,22 @@ func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 		d.mu.Unlock()
 		return profinet.ErrClosed
 	}
+	c := st.cfg
+	c.Role, c.Domain, c.DomainName = role, domain, name
+	var mc mrp.Config
+	if role != mrp.RoleDisabled {
+		ports := [2]*l2.Mux{d.ports[c.RingPorts[0]-1].mux, d.ports[c.RingPorts[1]-1].mux}
+		mc = mrp.Config{Role: role, Ports: ports, Index: [2]int{c.RingPorts[0] - 1, c.RingPorts[1] - 1},
+			Switch: d.cfg.Bridge, MAC: d.mux.HardwareAddr(), Domain: c.Domain, Prio: c.Prio, Profile: c.Profile, Logger: d.log}
+		if err := mc.Validate(); err != nil {
+			d.mu.Unlock()
+			return err
+		}
+	}
+	st.gen++
 	old := st.ent
 	st.ent = nil
-	st.cfg.Role, st.cfg.Domain, st.cfg.DomainName = role, domain, name
-	c := st.cfg
+	st.cfg = c
 	d.pd.gen++
 	d.mu.Unlock()
 	if old != nil {
@@ -133,13 +160,11 @@ func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 		}
 		return nil
 	}
-	ports := [2]*l2.Mux{d.ports[c.RingPorts[0]-1].mux, d.ports[c.RingPorts[1]-1].mux}
 	newEntity := mrp.New
 	if d.mrpNew != nil {
 		newEntity = d.mrpNew
 	}
-	ent, err := newEntity(mrp.Config{Role: role, Ports: ports, Index: [2]int{c.RingPorts[0] - 1, c.RingPorts[1] - 1},
-		Switch: d.cfg.Bridge, MAC: d.mux.HardwareAddr(), Domain: c.Domain, Prio: c.Prio, Profile: c.Profile, Logger: d.log})
+	ent, err := newEntity(mc)
 	if err != nil {
 		return err
 	}
@@ -152,8 +177,9 @@ func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 }
 
 func (d *Device) stopMRP() {
+	// Close cancelled d.ctx first: a recovery waiting for its next attempt
+	// ends at once, one in an attempt finds st.closed once it holds mrpMu.
 	d.mrpMu.Lock()
-	defer d.mrpMu.Unlock()
 	d.mu.Lock()
 	var ent *mrp.Entity
 	if d.mrpSt != nil {
@@ -164,6 +190,66 @@ func (d *Device) stopMRP() {
 	if ent != nil {
 		_ = ent.Close()
 	}
+	d.mrpMu.Unlock()
+	d.mrpWG.Wait()
+}
+
+// recoverMRP starts the entity of the configuration again after a
+// failed write left none running (its start and the restore of the
+// previous one both failed for a reason of the moment), retrying with a
+// backoff from mrpRetryMin up to mrpRetryMax. Each attempt holds mrpMu,
+// so it runs between record writes, never beside another entity. The
+// recovery ends when the entity runs, when a start fails for good
+// (ErrInvalidConfig: the configuration cannot run, and retrying it
+// would change nothing), when a newer configuration was asked for (gen
+// is no longer st.gen: the write that asked for it decides), or when the
+// device closes. Until an entity runs, the ring ports keep their
+// forwarding state; the entity it starts sets them as it decides.
+func (d *Device) recoverMRP(gen uint64) {
+	d.mrpWG.Add(1)
+	go func() {
+		defer d.mrpWG.Done()
+		delay := mrpRetryMin
+		if d.mrpRetry != 0 {
+			delay = d.mrpRetry
+		}
+		for attempt := 1; ; attempt++ {
+			t := time.NewTimer(delay)
+			select {
+			case <-d.ctx.Done():
+				t.Stop()
+				return
+			case <-t.C:
+			}
+			delay = min(2*delay, mrpRetryMax)
+			d.mrpMu.Lock()
+			d.mu.Lock()
+			st := d.mrpSt
+			stale := st.closed || st.gen != gen || st.ent != nil
+			c := st.cfg
+			d.mu.Unlock()
+			if stale {
+				d.mrpMu.Unlock()
+				return
+			}
+			err := d.setMRPRole(c.Role, c.Domain, c.DomainName)
+			d.mu.Lock()
+			gen = st.gen
+			d.mu.Unlock()
+			d.mrpMu.Unlock()
+			switch {
+			case err == nil:
+				d.pokePDev()
+				d.log.Infof("device: MRP: %s running again after %d attempts", c.Role, attempt)
+				return
+			case errors.Is(err, profinet.ErrInvalidConfig) || errors.Is(err, profinet.ErrClosed):
+				d.log.Errorf("device: MRP: recovering %s: %v; no MRP entity runs", c.Role, err)
+				return
+			default:
+				d.log.Infof("device: MRP: recovering %s, attempt %d: %v", c.Role, attempt, err)
+			}
+		}
+	}()
 }
 
 // MRPStatus returns the status of the device's MRP entity; ok is false
@@ -478,14 +564,29 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 		st.cfg, st.adjust, st.check = prevCfg, prevAdjust, prevCheck
 		d.pd.gen++
 		d.mu.Unlock()
+		d.mu.Lock()
+		running := st.ent != nil
+		d.mu.Unlock()
+		if running {
+			// The new configuration was refused before the old entity
+			// stopped (setMRPRole validates it first): nothing changed.
+			return true, rwErr(pnio.RWInvalidParameter)
+		}
 		if rerr := d.setMRPRole(prevCfg.Role, prevCfg.Domain, prevCfg.DomainName); rerr != nil {
-			// The configuration stays as it was asked for; nothing runs, so
-			// nothing is advertised (mrpLLDP), reported as real or checked.
-			// The ring ports keep the forwarding state the last entity left:
+			// The configuration stays as it was; nothing runs, so nothing
+			// is advertised (mrpLLDP), reported as real or checked. The
+			// ring ports keep the forwarding state the last entity left:
 			// forwarding both could close a loop the manager had opened,
 			// blocking one could cut the only path; which is right without
-			// an entity is not established.
+			// an entity is not established. A failure of the moment is
+			// retried (recoverMRP); one of the configuration is not.
 			d.log.Errorf("device: MRP: restoring %s: %v; no MRP entity runs", prevCfg.Role, rerr)
+			if !errors.Is(rerr, profinet.ErrInvalidConfig) && !errors.Is(rerr, profinet.ErrClosed) {
+				d.mu.Lock()
+				gen := st.gen
+				d.mu.Unlock()
+				d.recoverMRP(gen)
+			}
 		}
 		return true, rwErr(pnio.RWInvalidParameter)
 	}

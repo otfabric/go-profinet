@@ -233,13 +233,22 @@ const (
 	StateDE      = "DE"       // client: a port went down
 )
 
-// New starts an entity.
-func New(cfg Config) (*Entity, error) {
+// Validate reports whether New accepts cfg, with the error New would
+// return (matching profinet.ErrInvalidConfig), without starting anything.
+// A configuration it accepts may still fail to start for a reason of the
+// moment, such as a port that cannot take another subscription.
+func (cfg Config) Validate() error {
+	_, err := cfg.normalized()
+	return err
+}
+
+// normalized checks cfg and fills in its defaults.
+func (cfg Config) normalized() (Config, error) {
 	if cfg.Role != RoleClient && cfg.Role != RoleManager && cfg.Role != RoleAuto {
-		return nil, fmt.Errorf("mrp: role %s: %w", cfg.Role, profinet.ErrInvalidConfig)
+		return cfg, fmt.Errorf("mrp: role %s: %w", cfg.Role, profinet.ErrInvalidConfig)
 	}
 	if cfg.Ports[0] == nil || cfg.Ports[1] == nil || cfg.Switch == nil || cfg.MAC.IsZero() || cfg.Index[0] == cfg.Index[1] {
-		return nil, fmt.Errorf("mrp: two ring ports, a switch and a MAC address are required: %w", profinet.ErrInvalidConfig)
+		return cfg, fmt.Errorf("mrp: two ring ports, a switch and a MAC address are required: %w", profinet.ErrInvalidConfig)
 	}
 	if cfg.Domain == ([16]byte{}) {
 		cfg.Domain = DefaultDomain
@@ -254,20 +263,29 @@ func New(cfg Config) (*Entity, error) {
 		cfg.Profile = Profile200
 	}
 	if cfg.Profile.TestInterval < 0 {
-		return nil, fmt.Errorf("mrp: profile %q: test interval %v: %w", cfg.Profile.Name, cfg.Profile.TestInterval, profinet.ErrInvalidConfig)
+		return cfg, fmt.Errorf("mrp: profile %q: test interval %v: %w", cfg.Profile.Name, cfg.Profile.TestInterval, profinet.ErrInvalidConfig)
 	}
 	if cfg.Profile.TestShortInterval < 0 {
-		return nil, fmt.Errorf("mrp: profile %q: short test interval %v: %w", cfg.Profile.Name, cfg.Profile.TestShortInterval, profinet.ErrInvalidConfig)
+		return cfg, fmt.Errorf("mrp: profile %q: short test interval %v: %w", cfg.Profile.Name, cfg.Profile.TestShortInterval, profinet.ErrInvalidConfig)
 	}
 	// The TopologyChange and LinkChange frames carry these intervals as
 	// 16-bit millisecond counts.
 	for _, d := range []time.Duration{cfg.Profile.TopChangeInterval, cfg.Profile.LinkInterval} {
 		if d < 0 || d > maxFrameInterval {
-			return nil, fmt.Errorf("mrp: profile %q: interval %v outside 0 to %v: %w", cfg.Profile.Name, d, maxFrameInterval, profinet.ErrInvalidConfig)
+			return cfg, fmt.Errorf("mrp: profile %q: interval %v outside 0 to %v: %w", cfg.Profile.Name, d, maxFrameInterval, profinet.ErrInvalidConfig)
 		}
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = profinet.NopLogger()
+	}
+	return cfg, nil
+}
+
+// New starts an entity.
+func New(cfg Config) (*Entity, error) {
+	cfg, err := cfg.normalized()
+	if err != nil {
+		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	acting := RoleClient
