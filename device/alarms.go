@@ -120,6 +120,18 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 		prio = 1
 	}
 	a.mu.Lock()
+	if a.alarmSem[prio] == nil {
+		a.alarmSem[prio] = make(chan struct{}, 1)
+	}
+	sem := a.alarmSem[prio]
+	a.mu.Unlock()
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+	defer func() { <-sem }()
+	a.mu.Lock()
 	seq := a.alarmSeq[prio]
 	a.alarmSeq[prio] = (seq + 1) & pnio.AlarmSpecSeqMask
 	k := ackKey{high: al.High, seq: seq}
@@ -213,30 +225,136 @@ const AlarmAckTimeout = 5 * time.Second
 // then reported as an error matching profinet.ErrInvalidState); a
 // controller that connects later reads it in the ModuleDiffBlock and the
 // diagnosis records.
+//
+// Diagnosis operations are reported in the order they change the state:
+// AddDiagnosis and RemoveDiagnosis wait, until ctx ends, for the alarms of
+// the previous one (an error of ctx then, nothing recorded). An alarm that
+// is not delivered while the AR lives (no or a refused AlarmAck, ctx
+// ending) is owed: the next diagnosis operation of the submodule, an
+// identical AddDiagnosis included, sends it first, so repeating the call
+// retries the report.
 func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pnio.DiagnosisItem) error {
 	if _, ok := d.model.Submodule(slot, subslot); !ok {
 		return fmt.Errorf("device: diagnosis %d/%d: %w", slot, subslot, profinet.ErrNotFound)
 	}
 	item.ChannelProperties = item.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecAppears
-	old, replaced, changed, spec := d.upsertDiagnosis(key{slot, subslot}, item)
-	if !changed {
-		return nil
-	}
-	if err := d.diagAlarm(ctx, pnio.AlarmDiagnosis, slot, subslot, item, spec); err != nil || !replaced {
+	if err := d.lockDiag(ctx); err != nil {
 		return err
 	}
-	old.ChannelProperties = old.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecOtherRemain
-	return d.diagAlarm(ctx, pnio.AlarmDiagnosis, slot, subslot, old, spec)
+	defer d.unlockDiag()
+	k := key{slot, subslot}
+	owner := d.alarmOwner(k)
+	d.mu.Lock()
+	old, replaced, changed, spec := d.upsertDiagnosis(k, item)
+	var notes []diagNote
+	if changed {
+		notes = append(notes, diagNote{pnio.AlarmDiagnosis, item, spec})
+	}
+	if replaced {
+		old.ChannelProperties = old.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecOtherRemain
+		notes = append(notes, diagNote{pnio.AlarmDiagnosis, old, spec})
+	}
+	notes = d.takeOwed(k, owner, notes)
+	d.mu.Unlock()
+	return d.reportDiag(ctx, k, notes)
 }
 
-// upsertDiagnosis makes item an active diagnosis of the submodule, in one
-// step under d.mu. changed is false when an identical diagnosis is already
-// active; replaced reports that item took the place of old, the active
-// diagnosis with the same identity. spec is the AlarmSpecifier of the
-// submodule's active diagnoses afterwards.
+// diagNote is a diagnosis alarm to send.
+type diagNote struct {
+	t    pnio.AlarmType
+	item pnio.DiagnosisItem
+	spec uint16
+}
+
+// owedDiag are the diagnosis alarms of a submodule a failed report left
+// undelivered, for the AR that owned it then.
+type owedDiag struct {
+	ar    *ar
+	notes []diagNote
+}
+
+// maxOwedDiag bounds the undelivered diagnosis alarms kept per submodule;
+// beyond it the oldest are dropped (and logged).
+const maxOwedDiag = 64
+
+// lockDiag takes diagSem, waiting at most until ctx ends.
+func (d *Device) lockDiag(ctx context.Context) error {
+	select {
+	case d.diagSem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-d.ctx.Done():
+		return fmt.Errorf("device: diagnosis: %w", profinet.ErrClosed)
+	}
+}
+
+func (d *Device) unlockDiag() { <-d.diagSem }
+
+// alarmOwner is the AR a diagnosis alarm of the submodule goes to (the
+// primary of an AR set), nil when none.
+func (d *Device) alarmOwner(k key) *ar {
+	a := d.ownerOf(k.slot, k.subslot)
+	if a != nil && a.sr != nil {
+		a = d.srPrimaryOf(a)
+	}
+	return a
+}
+
+// takeOwed returns the submodule's undelivered alarms followed by notes,
+// and forgets them. The alarms owed to an AR that no longer owns the
+// submodule (owner, the alarmOwner taken before d.mu) are dropped: a new
+// owner reads the diagnoses in its ModuleDiffBlock and records. d.mu held.
+func (d *Device) takeOwed(k key, owner *ar, notes []diagNote) []diagNote {
+	o, ok := d.diagOwed[k]
+	if !ok {
+		return notes
+	}
+	delete(d.diagOwed, k)
+	if o.ar != owner {
+		return notes
+	}
+	return append(o.notes, notes...)
+}
+
+// reportDiag sends the diagnosis alarms in order, while holding diagSem,
+// and calls afterDiagChange first. On the first failure the alarms not
+// delivered, that one included, are owed to the submodule's AR: the next
+// diagnosis operation of the submodule, an identical AddDiagnosis
+// included, sends them first. Nothing is owed when no AR can receive the
+// alarm (ErrInvalidState) or it cannot be encoded (ErrInvalidConfig).
+func (d *Device) reportDiag(ctx context.Context, k key, notes []diagNote) error {
+	if d.afterDiagChange != nil {
+		d.afterDiagChange()
+	}
+	for i, n := range notes {
+		err := d.diagAlarm(ctx, n.t, k.slot, k.subslot, n.item, n.spec)
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, profinet.ErrInvalidState) || errors.Is(err, profinet.ErrInvalidConfig) {
+			return err
+		}
+		rest := append([]diagNote(nil), notes[i:]...)
+		if len(rest) > maxOwedDiag {
+			d.log.Infof("device: diagnosis %d/%d: %d undelivered alarms dropped", k.slot, k.subslot, len(rest)-maxOwedDiag)
+			rest = rest[len(rest)-maxOwedDiag:]
+		}
+		owner := d.alarmOwner(k)
+		d.mu.Lock()
+		d.diagOwed[k] = owedDiag{ar: owner, notes: rest}
+		d.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// upsertDiagnosis makes item an active diagnosis of the submodule, d.mu
+// held. changed is false when an identical diagnosis is already active;
+// replaced reports that item took the place of old, the active diagnosis
+// with the same identity. spec is the AlarmSpecifier of the submodule's
+// active diagnoses afterwards.
 func (d *Device) upsertDiagnosis(k key, item pnio.DiagnosisItem) (old pnio.DiagnosisItem, replaced, changed bool, spec uint16) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
 	items := d.diags[k]
 	for i, it := range items {
 		if !sameDiagnosis(it, item) {
@@ -276,11 +394,16 @@ func sameDiagnosis(a, b pnio.DiagnosisItem) bool {
 // another diagnosis of the submodule remains, and for the last one, when
 // none remains, "disappears" in a DiagnosisDisappears alarm. It returns an
 // error matching profinet.ErrNotFound when there is none, and the first
-// alarm error otherwise (the later alarms are then not sent; the
-// diagnoses are removed either way).
+// alarm error otherwise; the diagnoses are removed either way, and the
+// alarms not delivered are owed as for AddDiagnosis.
 func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, errorType uint16) error {
-	d.mu.Lock()
+	if err := d.lockDiag(ctx); err != nil {
+		return err
+	}
+	defer d.unlockDiag()
 	k := key{slot, subslot}
+	owner := d.alarmOwner(k)
+	d.mu.Lock()
 	var kept, removed []pnio.DiagnosisItem
 	for _, it := range d.diags[k] {
 		if it.ChannelNumber == channel && it.ErrorType == errorType {
@@ -289,23 +412,24 @@ func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, er
 		}
 		kept = append(kept, it)
 	}
-	d.diags[k] = kept
-	spec := diagSpecifier(kept)
-	d.mu.Unlock()
 	if len(removed) == 0 {
+		d.mu.Unlock()
 		return fmt.Errorf("device: diagnosis %d/%d channel %d type %d: %w", slot, subslot, channel, errorType, profinet.ErrNotFound)
 	}
+	d.diags[k] = kept
+	spec := diagSpecifier(kept)
+	var notes []diagNote
 	for i, it := range removed {
 		chSpec, t := pnio.ChanSpecOtherRemain, pnio.AlarmDiagnosis
 		if len(kept) == 0 && i == len(removed)-1 {
 			chSpec, t = pnio.ChanSpecDisappears, pnio.AlarmDiagnosisDisappears
 		}
 		it.ChannelProperties = it.ChannelProperties&^pnio.ChanSpecMask | chSpec
-		if err := d.diagAlarm(ctx, t, slot, subslot, it, spec); err != nil {
-			return err
-		}
+		notes = append(notes, diagNote{t, it, spec})
 	}
-	return nil
+	notes = d.takeOwed(k, owner, notes)
+	d.mu.Unlock()
+	return d.reportDiag(ctx, k, notes)
 }
 
 // Diagnoses returns the recorded diagnoses of a submodule.

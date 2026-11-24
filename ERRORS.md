@@ -243,8 +243,10 @@ first and report it second; an error describes the report, not the state:
 | `AddDiagnosis`, unknown slot or subslot | `ErrNotFound`; nothing recorded |
 | `AddDiagnosis`, new or changed diagnosis, no AR in Data owns the submodule | `ErrInvalidState`; the diagnosis is recorded |
 | `AddDiagnosis`, diagnosis identical to an active one | nil, with or without an AR; nothing sent (since v0.25.0) |
-| `AddDiagnosis`, changed diagnosis whose first alarm (the new one appears) fails | that error; the second alarm (the old one disappears) is not sent, the new value is recorded |
+| `AddDiagnosis`, changed diagnosis whose first or second alarm fails | that error; the new value is recorded, and the alarms not delivered are owed: the next diagnosis call of the submodule (an identical `AddDiagnosis` included) sends them first |
+| either, ctx ends while another diagnosis call reports | `ctx.Err()`; nothing recorded |
 | `RemoveDiagnosis`, no diagnosis of that channel and error type | `ErrNotFound` |
+| `RemoveDiagnosis`, an alarm fails | that error; the diagnoses are removed, the alarms not delivered are owed as above |
 | either, alarm not acknowledged | `ErrTimeout`, `ErrAborted` or a `*pnio.StatusError` as for `SendAlarm` |
 
 ## Lifecycle errors

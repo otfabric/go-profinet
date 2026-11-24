@@ -71,6 +71,17 @@ fault only when a fault diagnosis is active.
   alarm each ("disappears, others remain"), the last "disappears" in a
   DiagnosisDisappears alarm when none remains. Before, it removed every
   diagnosis of the channel and error type but reported only one.
+- **Diagnosis reports are ordered and retried**: `AddDiagnosis` and
+  `RemoveDiagnosis` report in the order they change the state (each waits,
+  within its context, for the previous one's alarms); an alarm that is not
+  delivered while the AR lives is owed and sent first by the next
+  diagnosis call of the submodule, an identical `AddDiagnosis` included.
+  Before, a removal's alarm could overtake the addition it undid, and an
+  undelivered "disappears" of a replacement was never sent.
+- **Alarms of one priority wait for the previous AlarmAck** (`SendAlarm`,
+  diagnosis alarms), as p-net's alarm machine (`pf_alarm.c`) sends them.
+  Before, a second alarm could go out while the first awaited its
+  AlarmAck.
 - **Qualified diagnoses** are sent and served as QualifiedChannelDiagnosis
   (USI 0x8003); the `Qualifier` was dropped before.
 - README: the p-net column describes v2.0.0 (MRP client, S2, Device
@@ -94,7 +105,11 @@ diagnosis), `TestDiagnosisAlarmSpecifier` (specifier 0xA800 for a
 maintenance-required diagnosis), `TestDiagnosisWithoutAR` (32 concurrent
 identical adds recorded 32 entries), `TestDiagnosisRecordQualified` (the
 qualifier dropped); `TestDiagnosisIdempotent` also checks one alarm per
-removed diagnosis. The behaviour follows p-net v2.0.0's source; it is not
+removed diagnosis. `TestDiagnosisOrder` (a removal's alarm before the
+addition's), `TestDiagnosisOwed` (the undelivered alarm never sent) and
+`TestAlarmsSerializedToAck` (a second alarm before the first AlarmAck)
+fail before the change; `TestARDiagnosisStateScope` pins the per-submodule
+ARDiagnosisState. The behaviour follows p-net v2.0.0's source; it is not
 tested against p-net v2.0.0, PI's test bundle or a PLC.
 
 ---
