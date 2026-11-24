@@ -104,9 +104,15 @@ writes, within the 200 ms and 500 ms profiles.
   Before, a removal's alarm could overtake the addition it undid, and an
   undelivered "disappears" of a replacement was never sent.
 - **Alarms of one priority wait for the previous AlarmAck** (`SendAlarm`,
-  diagnosis alarms), as p-net's alarm machine (`pf_alarm.c`) sends them.
-  Before, a second alarm could go out while the first awaited its
-  AlarmAck.
+  diagnosis alarms), as p-net's alarm machine (`pf_alarm.c`) sends them,
+  also when the caller of the previous one stopped waiting (its context
+  ended): it stays outstanding until its AlarmAck, the end of the AR or
+  the device's AlarmAck timer. Before, a second alarm could go out
+  while the first awaited its AlarmAck.
+- **Diagnosis alarms stay with their AR**: the alarms of a diagnosis
+  operation go to, and are owed to, the AR that owned the submodule when
+  the operation changed the state; a repeated `RemoveDiagnosis` retries
+  owed alarms instead of returning `ErrNotFound`.
 - **Qualified diagnoses** are sent and served as QualifiedChannelDiagnosis
   (USI 0x8003); the `Qualifier` was dropped before.
 - README: the p-net column describes v2.0.0 (MRP client, S2, Device
@@ -164,7 +170,10 @@ writes, within the 200 ms and 500 ms profiles.
 - Behaviour only: a repeated identical `AddDiagnosis` returns nil and
   sends nothing; a changed one sends two alarms; the AlarmSpecifier of
   maintenance diagnosis alarms has no fault bits; a controller's LLDP
-  neighbor table keeps the device one second longer; a controller that
+  neighbor table keeps the device one second longer; a `SendAlarm` may
+  wait, within its context, for the AlarmAck of an earlier alarm of its
+  priority whose caller gave up; a repeated `RemoveDiagnosis` returns nil
+  instead of `ErrNotFound` when it delivers owed alarms; a controller that
   reconnects with a new IOCAR writes its port checks again (they are no
   longer kept from the previous AR); fragmented RPC calls in mixed byte
   order are refused; `alarm.Endpoint.Send` after a timed-out DATA PDU
@@ -185,9 +194,12 @@ identical adds recorded 32 entries), `TestDiagnosisRecordQualified` (the
 qualifier dropped); `TestDiagnosisIdempotent` also checks one alarm per
 removed diagnosis. `TestDiagnosisOrder` (a removal's alarm before the
 addition's), `TestDiagnosisOwed` (the undelivered alarm never sent) and
-`TestAlarmsSerializedToAck` (a second alarm before the first AlarmAck)
-fail before the change; `TestARDiagnosisStateScope` pins the per-submodule
-ARDiagnosisState. `TestSendAfterTransmitFailure` and
+`TestAlarmsSerializedToAck` (a second alarm before the first AlarmAck),
+`TestAlarmOutstandingAfterCancel` (the same after a cancelled wait),
+`TestRemoveDiagnosisRetry` (`ErrNotFound`, the alarm never retried) and
+`TestOwedDiagnosisStaysWithItsAR` (the new AR received the old one's
+alarm) fail before the change; `TestARDiagnosisStateScope` pins the
+per-submodule ARDiagnosisState. `TestSendAfterTransmitFailure` and
 `TestSendAfterCancelledSend` (the next alarm timed out),
 `TestPDevResetOnConnect` (a stale mismatch after the Connect) and
 `TestReassemblyMixedDRep` (mixed byte order reassembled) fail before
