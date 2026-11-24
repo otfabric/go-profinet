@@ -55,7 +55,9 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.22.0** | 1.26 or later (CI: 1.26–1.27) | v0.11.0 (1.4) | v0.19.0, v0.20.0 | **yes** |
+| **v0.23.0** | 1.26 or later (CI: 1.26–1.27) | v0.15.0 (1.5) | v0.21.0 | **yes** |
+| v0.22.1 | 1.26 or later (CI: 1.26–1.27) | v0.11.1 (1.4) | none | no: v0.23.0 refuses configurations that need configurable submodules |
+| v0.22.0 | 1.26 or later (CI: 1.26–1.27) | v0.11.0 (1.4) | v0.19.0–v0.20.1 | no: v0.22.1 checks the addresses of converted models in the corpus run (no library change) |
 | v0.21.0 | 1.26 or later (CI: 1.26–1.27) | v0.10.0 (1.4) | v0.18.0 | no: v0.22.0 accepts parameter records in the profile range 0xB000–0xBFFF |
 | v0.20.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no: v0.21.0 answers APIData (0xF821) itself |
 | v0.19.0 | 1.26 or later (CI: 1.26–1.27) | v0.9.2 (1.3) | none | no: v0.20.0 sends the submodule APIs of a GSDML file |
