@@ -26,8 +26,14 @@ import (
 // while DCP and LLDP worked), so a p-net that has not opened its port after
 // 15 s is restarted once.
 func pnet(e *env, station string) string {
-	img := image("pnet")
-	e.result.peer("p-net", img, "device")
+	return pnetImage(e, station, "pnet", "p-net")
+}
+
+// pnetImage starts the p-net image of adapter (profinet-interop-ADAPTER),
+// recorded in the results as peer.
+func pnetImage(e *env, station, adapter, peer string) string {
+	img := image(adapter)
+	e.result.peer(peer, img, "device")
 	for attempt := 1; ; attempt++ {
 		c := e.start("pnet", img, 10, "device", "--station", station)
 		e.waitEvent(c, 30*time.Second, "start", func(m map[string]any) bool { return m["event"] == "start" })

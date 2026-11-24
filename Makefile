@@ -155,7 +155,7 @@ l2-test: ## Run the real Layer 2 tests on a veth pair in a privileged container 
 # INTEROP_REF into PROFINET_INTEROP_DIR, unless that directory exists,
 # and builds every adapter image as profinet-interop-<adapter>:dev.
 INTEROP_REPO          ?= https://github.com/otfabric/profinet-interop.git
-INTEROP_REF           ?= v0.14.0
+INTEROP_REF           ?= 7453c49b104f261c95162c807d9408fa6346123e
 PROFINET_INTEROP_DIR  ?= ../profinet-interop
 PROFINET_INTEROP_RESULTS ?= interop-results
 
@@ -165,6 +165,7 @@ interop-images: ## Build the profinet-interop reference images (needs Docker)
 		git -C "$(PROFINET_INTEROP_DIR)" checkout --quiet "$(INTEROP_REF)"; \
 	fi
 	@$(MAKE) -C "$(PROFINET_INTEROP_DIR)" images
+	@$(MAKE) -C "$(PROFINET_INTEROP_DIR)" image-pnet-profile
 
 test-interop: ## Run the interop suite against the profinet-interop images (needs Docker; make interop-images first)
 	@mkdir -p "$(PROFINET_INTEROP_RESULTS)"

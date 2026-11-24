@@ -34,10 +34,13 @@ and `TestProfinetPyAPI` (the library is unchanged):
   against profinet-py, which reads and writes 0xB600 in API 0x4E01 and
   meets the device's refusals (`TestProfinetPyAPI`, profinet-interop
   v0.14.0): their transport and access rules, not a profile's meaning.
-  The controller side is a decoder's evidence only: tshark decodes
-  go-profinet's frames, and no independent IO-Device in profinet-interop
-  accepts such a record (sections
-  2 and 5, [INTEROPERABILITY.md](../INTEROPERABILITY.md)).
+  The controller side is tested against p-net extended by OT Fabric
+  (profinet-interop's profile-records variant, not counted as
+  independent): 0xB600 written at Connect and in Data in API 0x4E01 and
+  read back, with tshark's addressing and payload checks
+  (`TestPnetProfile`). Unmodified p-net refuses profile records, so no
+  unmodified independent IO-Device in profinet-interop accepts one
+  (sections 2 and 5, [INTEROPERABILITY.md](../INTEROPERABILITY.md)).
 
 How go-profinet compares with other PROFINET stacks is
 in the [README](../README.md#go-profinet-vs-p-net-pnio-rs-profinet-py-and-the-pi-community-stack);
@@ -118,7 +121,7 @@ matrix (section 5).
 | Device access AR (IOSAR) | ✅ | ✅ | ✅ record and I&M commands | ✅ | profinet-py |
 | Records: user, I&M0–4, WriteMultiple, ReadImplicit, ModuleDiff, identification, diagnosis | ✅ | ✅ | ✅ | ✅ | p-net, pnio-rs, profinet-py |
 | APIData (0xF821): the APIs of a device, within an AR or implicitly (`RecordClient.ReadAPIData`) | ✅ | ✅ | ✅ `device info` (v0.18.0) | ✅ | p-net (API 0, outside and inside an AR); tshark decodes a two-API block's values (`TestCodecDecoders`, `fields`) |
-| Parameter records in the profile range 0xB000–0xBFFF (`pnio.Index.IsSubslotProfileIndex`): in a model, from and to GSDML, written at Connect, served and written by the device, the Handler for the ones the model lacks | ✅ | ✅ | — | ✅ (`TestProfileRecords`) | device: profinet-py reads, writes and reads back 0xB600 in API 0x4E01; reads in another API, a write of a read-only record and a write of the wrong length refused (`TestProfinetPyAPI`); controller: wire format only: tshark decodes the API, slot, subslot, index, length and data of a Write of 0xB600 in API 0x4E01 (`TestCodecDecoders`, `fields`), no independent IO-Device in profinet-interop accepts such a record (p-net hands the application indexes up to 0x7FFF only) |
+| Parameter records in the profile range 0xB000–0xBFFF (`pnio.Index.IsSubslotProfileIndex`): in a model, from and to GSDML, written at Connect, served and written by the device, the Handler for the ones the model lacks | ✅ | ✅ | — | ✅ (`TestProfileRecords`) | device: profinet-py reads, writes and reads back 0xB600 in API 0x4E01; reads in another API, a write of a read-only record and a write of the wrong length refused (`TestProfinetPyAPI`); controller: against p-net extended by OT Fabric (profinet-interop's profile-records variant, not independent: its profile-record handling is OT Fabric's), 0xB600 written before PrmEnd and in Data in API 0x4E01 and read back, undeclared profile indexes and a write of the wrong length refused by its application, tshark checking the API, slot, subslot and the 16 octets of every 0xB600 request and answer (`TestPnetProfile`); unmodified p-net hands the application indexes up to 0x7FFF only and refuses 0xB600 (DF 80 B4 02); tshark decodes a Write of 0xB600 in API 0x4E01 with its values (`TestCodecDecoders`, `fields`) |
 | Submodules of an API other than 0 (`model.Submodule.API`, GSDML `VirtualSubmoduleItem` `API`): expected and real identification, IOCR data objects, records, ModuleDiff, diagnosis and alarms addressed by (API, slot, subslot) | ✅ | ✅ | ✅ `device info` discovers APIs via APIData and reads 0xF000 per API (v0.18.0; warns when unavailable); `record read`/`write` take `--api`; `im read --api` and `diagnostics --api` address a submodule in its API (v0.20.0) | ✅ | controller: p-net with the IO module in API 0x4E01: Connect, records, APIData, RealIdentificationData (0xE001, 0xF000, 0xC001, 0x8001), cyclic data with the IO module's input in API 0x4E01 (IOPS good, its data changing) (`TestPnetAPI`; p-net built for two APIs, its sample patched to pass each slot's API); device: profinet-py with slot 3 in API 0x4E01: Connect from go-profinet's GSDML, cyclic data, records written and read, reads in API 0 and 0x4E02 refused with invalid area/API, APIData, RealIdentificationData (0xF000, 0xC001, 0x8001; 0x8001 in API 0 refused), profile records 0xB600 and read-only 0xB900 (`TestProfinetPyAPI`) |
 | Alarms: both priorities, process and diagnosis, acknowledgement | ✅ | ✅ | ✅ `alarms` | ✅ chaos | p-net, profinet-py |
 | Cyclic data RT_CLASS_1/2, IOPS/IOCS, DataStatus, watchdog | ✅ | ✅ | ✅ `io` | ✅ | p-net (1 ms), pnio-rs, profinet-py |
