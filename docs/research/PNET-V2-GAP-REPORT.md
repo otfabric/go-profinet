@@ -93,7 +93,7 @@ the fix.
 | 131-02 endpoint after retry exhaustion | defect | `Send` returns `ErrInvalidState`; the AR is aborted as before | `TestSendAfterTimeoutIsTerminal` |
 | 131-03 PDev reset before the Connect completes | defect | a refused Connect undoes the reset | `TestPDevResetUndoneOnRefusedConnect` |
 | DCP Set IP/Parameter length (audit) | defect (low) | exactly 12 octets | `TestResponderSetIPLength` |
-| 132-01 TSTshortT accepted, not applied | open: maintainer decision (see the second review) | matched as part of a profile, documented as not applied; a non-matching value is refused | `TestWrittenProfile` |
+| 132-01 TSTshortT accepted, not applied | fixed in the second review (R2-132-01) | applied as the manager's additional test | `TestAdditionalTest`, `TestWrittenProfile` |
 | 132-02 MRP adjustment not transactional | defect | a write whose entity does not start restores the previous state | `TestMRPAdjustRollback` |
 | 132-03 MRP check lifecycle | defect | a domain change drops the check; the check survives a Connect | `TestMRPCheckLifecycle` |
 | 132-04 neighbor without the TLV | difference | documented, no change | `TestMRPDomainCheck` |
@@ -106,7 +106,7 @@ the fix.
 | R2-130-01 a repeated `RemoveDiagnosis` does not retry owed alarms | defect | the repeat sends what is owed and returns its result; `ErrNotFound` once nothing is owed | `TestRemoveDiagnosisRetry` |
 | R2-130-02 owed alarms cross AR ownership | defect | the operation's owner, taken before the change, receives its alarms and is the AR they are owed to | `TestOwedDiagnosisStaysWithItsAR` |
 | R2-130-03 alarm serialization after cancellation | defect | a delivered alarm stays outstanding until its AlarmAck, the end of the AR or the device's AlarmAck timer, whatever its caller does | `TestAlarmOutstandingAfterCancel` |
-| R2-132-01 TSTshortT not applied | open: maintainer decision | not implemented; evidence from microchip-ung/mrp and the options in [PNET-V2-MRP.md](PNET-V2-MRP.md) | `TestWrittenProfile` |
+| R2-132-01 TSTshortT not applied | fixed | `mrp.Profile.TestShortInterval`: a client's LinkChange makes the manager test at once and again after MRP_TSTshortT, then at MRP_TSTdefaultT (IEC 62439-2:2016 Table 45, ADD_TEST); see [PNET-V2-MRP.md](PNET-V2-MRP.md). Interop: umrp MRP suite passed; the microchip-ung/mrp rings were not applicable on this Docker host | `TestAdditionalTest` (fails before), `TestNoAdditionalTestWithoutShortInterval`, `TestWrittenProfile` |
 | R2-132-02 check write during an adjustment's rollback | defect | MRP record writes are serialized by `mrpMu` | `TestMRPCheckDuringAdjustRollback` |
 | R2-132-03 failed restoration | defect | without a running entity nothing is advertised, reported as real or checked; the ring ports keep their state | `TestMRPRestoreFails` |
 
@@ -123,7 +123,7 @@ the fix.
 | PortDataChangeNotification for remote mismatches | difference; documented in LIMITATIONS.md |
 | ARDiagnosisState over the AR | needs specification (see above) |
 | a neighbor without the MRP port status is no mismatch | difference; documented in PNET-V2-MRP.md |
-| MRP_TSTshortT not applied | limitation; documented, the MRP state machine has no short test phase |
+| CHK_RC LinkChange rows of IEC 62439-2 Table 45 not read (outside the public preview) | limitation; the manager keeps its own reactions to MRP_LinkDown (ring opened at once) and MRP_LinkUp (a test round) |
 | the controller writes the manager priority alone | follow-up: writing complete profile timers changes the controller's output and needs interop evidence |
 | owed diagnosis alarms are capped at 64 per submodule | limitation; the oldest are dropped and logged, the records stay authoritative |
 | an alarm whose transport send was cancelled before its ACK: the next alarm of the priority retransmits it and then goes out without waiting for its AlarmAck | limitation; fixing it needs the outstanding alarm to push its pending PDU itself (an `alarm.Endpoint` addition); the delivered-alarm case is fixed |
