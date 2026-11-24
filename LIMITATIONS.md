@@ -48,8 +48,9 @@ Restrictions:
   a model. go-profinet's device serves them to an independent controller:
   profinet-py reads and writes 0xB600 in API 0x4E01, and the device
   refuses another API, a read-only record and a wrong length
-  (`TestProfinetPyAPI`). No independent device accepts a record of
-  0xB000–0xBFFF, so the controller side's evidence is tshark's decoding
+  (`TestProfinetPyAPI`). No independent IO-Device in profinet-interop
+  accepts a record of 0xB000–0xBFFF (p-net hands its application indexes
+  up to 0x7FFF only), so the controller side's evidence is tshark's decoding
   of the wire format and go-profinet's own device.
 - A subslot number is unique in its slot whatever the API
   (`model.Device.Validate`), so the device can find a submodule by slot and

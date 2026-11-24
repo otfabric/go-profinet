@@ -378,9 +378,11 @@ func TestProfinetPyAPI(t *testing.T) {
 	}
 	e.expect("tshark fields: record 0x0011 read and written in API 0x00004e01, slot 3, subslot 1; the refused reads in APIs 0 and 0x00004e02", slot3 && n["0x00004e01"] >= 6 && n["0x00000000"] >= 1 && n["0x00004e02"] >= 1, "%v %+v", n, fr)
 	// The Write of 0xB600: the header's API, slot, subslot, index and
-	// RecordDataLength, and the data as profile user data (pn.user_data, as
-	// in TestCodecDecoders). The filter matches the frame only if its last
-	// 16 octets are the data written.
+	// RecordDataLength, and the field tshark names profile user data
+	// (pn.user_data, as in TestCodecDecoders; tshark decodes no profile
+	// payload). The data itself is checked by the filter, which matches the
+	// frame only if its last 16 octets are the data written: valid for
+	// this frame's layout, the record being its last field.
 	fr = e.tsharkFields(pcap, "pn_io.index == 0xb600 && dcerpc.pkt_type == 0 && frame[-16:] == "+colonHex(profileWrite),
 		"pn_io.api", "pn_io.slot_nr", "pn_io.subslot_nr", "pn_io.index", "pn_io.record_data_length", "pn.user_data")
 	e.expect("tshark fields: profinet-py's Write of 0xB600 in API 0x00004e01, slot 3, subslot 1, RecordDataLength 16, its 16 octets as profile user data",
