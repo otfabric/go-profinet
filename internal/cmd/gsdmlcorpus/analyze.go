@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/gsdml"
+	"github.com/otfabric/go-profinet/model"
 )
 
 // Schema is the name and version of the result document.
@@ -131,6 +133,108 @@ type DAPRow struct {
 	// OmittedModules counts the references whose module ToModel leaves
 	// out of the catalog (gsdml.ModuleReport.Omitted).
 	OmittedModules int `json:"omitted_modules,omitempty"`
+	// Config is the default configuration of the DAP with
+	// gsdml.NewConfiguration and Resolve.
+	Config ConfigResult `json:"config"`
+}
+
+// ConfigResult is the default configuration of a DAP: NewConfiguration
+// and Resolve without choices.
+type ConfigResult struct {
+	// Outcome is the class of the error (OutcomeInvalidConfig for one
+	// matching profinet.ErrInvalidConfig, as for a subslot several
+	// submodules are used in by default), converted when it resolves;
+	// Error its text.
+	Outcome gsdml.Outcome `json:"outcome"`
+	Error   string        `json:"error,omitempty"`
+	// Submodules counts the configurable submodules the resolved model
+	// plugs (the DAP's and its plugged modules'), Ports those of them that
+	// are ports; CatalogSubmodules those of its catalog modules.
+	Submodules        int `json:"submodules,omitempty"`
+	Ports             int `json:"ports,omitempty"`
+	CatalogSubmodules int `json:"catalog_submodules,omitempty"`
+	// CatalogModules is the size of the resolved catalog, ModelCatalog
+	// that of ToModel's when it converts.
+	CatalogModules int `json:"catalog_modules"`
+	ModelCatalog   int `json:"model_catalog,omitempty"`
+	// SameAsModel reports, for a DAP ToModel converts, that the resolved
+	// identity, capabilities, DAP and slots are ToModel's model; Equal
+	// that the catalog is too. False for a DAP ToModel refuses.
+	SameAsModel bool `json:"same_as_model"`
+	Equal       bool `json:"equal"`
+	// ModelInvalid reports a DAP ToModel converts whose model
+	// model.Device.Validate refuses, which Resolve refuses too (ToModel
+	// does not validate its model).
+	ModelInvalid bool `json:"model_invalid,omitempty"`
+	// Plan is the outcome of gsdml.PlanParameters with Defaults on the
+	// resolved model (empty when it does not resolve), PlanError its
+	// error.
+	Plan      gsdml.Outcome `json:"plan,omitempty"`
+	PlanError string        `json:"plan_error,omitempty"`
+}
+
+// OutcomeInvalidConfig classifies a default configuration that needs a
+// choice, or that model.Validate refuses (profinet.ErrInvalidConfig).
+const OutcomeInvalidConfig gsdml.Outcome = "invalid_config"
+
+// configResult resolves the default configuration of a DAP and compares
+// it with ToModel's model (nil when ToModel refuses the DAP).
+func configResult(doc *gsdml.Document, dap string, toModel *model.Device) ConfigResult {
+	var r ConfigResult
+	r.ModelInvalid = toModel != nil && toModel.Validate() != nil
+	cfg, err := gsdml.NewConfiguration(doc, dap)
+	var m *model.Device
+	if err == nil {
+		m, err = cfg.Resolve()
+	}
+	if err != nil {
+		r.Outcome, r.Error = classify(err), err.Error()
+		if errors.Is(err, profinet.ErrInvalidConfig) {
+			r.Outcome = OutcomeInvalidConfig
+		}
+		return r
+	}
+	r.Outcome = gsdml.OutcomeConverted
+	r.CatalogModules = len(m.Catalog)
+	r.Plan = gsdml.OutcomeConverted
+	if _, err := gsdml.PlanParameters(doc, m, gsdml.PlanOptions{DAP: dap, Defaults: true}); err != nil {
+		r.Plan, r.PlanError = classify(err), err.Error()
+		if errors.Is(err, profinet.ErrInvalidConfig) {
+			r.Plan = OutcomeInvalidConfig
+		}
+	}
+	// The configurable submodules are those after a module's virtual
+	// ones (ModuleOption.Module) and the DAP's placed by default. A
+	// catalog module is matched by ident number, and counted only when
+	// one module of the DAP has it.
+	byID, byIdent, idents := map[string]int{}, map[uint32]int{}, map[uint32]int{}
+	for _, mo := range cfg.Modules() {
+		byID[mo.ID] = len(mo.Module.Submodules)
+		byIdent[mo.Module.IdentNumber] = len(mo.Module.Submodules)
+		idents[mo.Module.IdentNumber]++
+	}
+	for _, o := range cfg.DAP() {
+		r.Submodules += len(o.Defaults)
+		if o.Port {
+			r.Ports += len(o.Defaults)
+		}
+	}
+	for _, s := range m.Slots {
+		id, _ := cfg.Module(s.Number)
+		r.Submodules += len(s.Module.Submodules) - byID[id]
+	}
+	for _, mod := range m.Catalog {
+		if idents[mod.IdentNumber] == 1 {
+			r.CatalogSubmodules += len(mod.Submodules) - byIdent[mod.IdentNumber]
+		}
+	}
+	if toModel != nil {
+		r.ModelCatalog = len(toModel.Catalog)
+		r.SameAsModel = reflect.DeepEqual(m.Identity, toModel.Identity) && reflect.DeepEqual(m.Capabilities, toModel.Capabilities) &&
+			reflect.DeepEqual(m.DAP, toModel.DAP) && reflect.DeepEqual(m.Slots, toModel.Slots)
+		r.Equal = r.SameAsModel && reflect.DeepEqual(m.Catalog, toModel.Catalog)
+	}
+	return r
 }
 
 // RefFailure is a reference that does not convert.
@@ -281,6 +385,7 @@ func analyze(data []byte) FileResult {
 			count(refsOf[p], inConfiguration[p])
 		}
 		row.Addresses = checkAddresses(ix, rep)
+		row.Config = configResult(doc, rep.DAP, rep.Model)
 		if rep.Outcome != gsdml.OutcomeConverted && r.Stage == "" {
 			r.Stage = StageModel
 		}
@@ -596,6 +701,84 @@ type Fidelity struct {
 	// OmittedModules those references.
 	DAPsOmittedModules int `json:"daps_omitted_modules"`
 	OmittedModules     int `json:"omitted_modules"`
+	// Configuration counts the default configurations
+	// (gsdml.NewConfiguration, Resolve) by outcome. ConfigRefusedResolved
+	// counts the DAPs ToModel refuses whose default configuration
+	// resolves, ConfigRequiredResolved those of them ToModel refuses for a
+	// configurable submodule (DAPsRequiredSubmodules). ConfigSubmodules
+	// and ConfigPorts count the configurable submodules (and ports) the
+	// resolved defaults plug, ConfigCatalogSubmodules those of their
+	// catalog modules.
+	Configuration map[string]int `json:"configuration"`
+	// ConfigPlans counts the resolved defaults by the outcome of
+	// PlanParameters with Defaults (planned: converted), ConfigPlansRefused
+	// the same for the DAPs ToModel refuses.
+	ConfigPlans             map[string]int `json:"config_plans"`
+	ConfigPlansRefused      map[string]int `json:"config_plans_refused"`
+	ConfigRefusedResolved   int            `json:"config_refused_resolved"`
+	ConfigRequiredResolved  int            `json:"config_required_resolved"`
+	ConfigSubmodules        int            `json:"config_submodules"`
+	ConfigPorts             int            `json:"config_ports"`
+	ConfigCatalogSubmodules int            `json:"config_catalog_submodules"`
+	// Of the DAPs ToModel converts: ConfigSame those whose resolved
+	// default is ToModel's model but for the catalog, ConfigDiffer those
+	// whose is not or that do not resolve (zero when the default
+	// configuration extends ToModel), ConfigGainedCatalog those whose
+	// resolved catalog has more modules (GainedModules more in all), and
+	// ConfigGainedSubmodules those whose resolved model has configurable
+	// submodules, plugged or in the catalog.
+	// ConfigModelInvalid counts those whose ToModel model
+	// model.Device.Validate refuses, and which do not resolve for it.
+	ConfigModelInvalid     int `json:"config_model_invalid"`
+	ConfigSame             int `json:"config_same"`
+	ConfigDiffer           int `json:"config_differ"`
+	ConfigGainedCatalog    int `json:"config_gained_catalog"`
+	GainedModules          int `json:"gained_modules"`
+	ConfigGainedSubmodules int `json:"config_gained_submodules"`
+}
+
+// countConfig adds a DAP's default configuration to the fidelity counts.
+func countConfig(f *Fidelity, d DAPRow) {
+	c := d.Config
+	if c.Outcome == "" {
+		return // no DAP: the document has none
+	}
+	f.Configuration[string(c.Outcome)]++
+	resolved := c.Outcome == gsdml.OutcomeConverted
+	if resolved {
+		f.ConfigPlans[string(c.Plan)]++
+		if d.Outcome != gsdml.OutcomeConverted {
+			f.ConfigPlansRefused[string(c.Plan)]++
+		}
+		f.ConfigSubmodules += c.Submodules
+		f.ConfigPorts += c.Ports
+		f.ConfigCatalogSubmodules += c.CatalogSubmodules
+	}
+	if d.Outcome != gsdml.OutcomeConverted {
+		if resolved {
+			f.ConfigRefusedResolved++
+			if d.RequiredSubmodules > 0 {
+				f.ConfigRequiredResolved++
+			}
+		}
+		return
+	}
+	if !c.SameAsModel {
+		if c.ModelInvalid && !resolved {
+			f.ConfigModelInvalid++
+		} else {
+			f.ConfigDiffer++
+		}
+		return
+	}
+	f.ConfigSame++
+	if c.CatalogModules > c.ModelCatalog {
+		f.ConfigGainedCatalog++
+		f.GainedModules += c.CatalogModules - c.ModelCatalog
+	}
+	if c.Submodules+c.CatalogSubmodules > 0 {
+		f.ConfigGainedSubmodules++
+	}
 }
 
 // SignatureCount is one kind of failure.
@@ -610,7 +793,8 @@ type SignatureCount struct {
 // Summarize counts results.
 func Summarize(results []FileResult) Summary {
 	s := Summary{FileStages: map[string]int{}, DAPOutcomes: map[string]int{}, ByVersion: map[string][2]int{}, ErrorRules: map[string]int{},
-		Fidelity: Fidelity{APIs: map[string]int{}, RecordIndexes: map[string]int{}}}
+		Fidelity: Fidelity{APIs: map[string]int{}, RecordIndexes: map[string]int{}, Configuration: map[string]int{},
+			ConfigPlans: map[string]int{}, ConfigPlansRefused: map[string]int{}}}
 	contents := map[string]bool{}
 	type key struct{ sig, kind, outcome string }
 	sigs := map[key]*SignatureCount{}
@@ -707,6 +891,7 @@ func Summarize(results []FileResult) Summary {
 		for _, d := range r.DAPs {
 			s.DAPs++
 			s.DAPOutcomes[string(d.Outcome)]++
+			countConfig(&s.Fidelity, d)
 			if d.Blocked {
 				s.DAPOutcomes["blocked"]++
 			}
@@ -817,6 +1002,16 @@ func Markdown(s Summary, source string) string {
 	w("| a configurable submodule (UseableSubmodules) in the DAP or a module it references; ToModel converts none | %d | %d | %d |\n", f.FilesConfigurable, f.DAPsConfigurable, f.ConvertedConfigurable)
 	w("\nConverted DAPs whose model does not keep the APIs of their plugged configuration: %d.\n", f.APIMismatch)
 	w("\nDAPs whose selected configuration (the DAP, its plugged modules) needs a configurable submodule (FixedInSubslots or UsedInSubslots), which ToModel refuses: %d. DAPs with a module only in the catalog that needs one: %d; converted DAPs whose catalog leaves such a module out: %d (%d module references). A converted DAP leaves its optional configurable submodules out of the model, and the address comparison below does not see them.\n", f.DAPsRequiredSubmodules, f.DAPsCatalogRequired, f.DAPsOmittedModules, f.OmittedModules)
+	w("\n### Default configurations\n\nEach DAP's default configuration, `gsdml.NewConfiguration` and `Resolve` without choices: the modules ToModel plugs, and each configurable submodule in the subslots it is fixed or used in.\n\n| Outcome | DAPs |\n|---|---|\n")
+	for _, k := range sortedKeys(f.Configuration) {
+		w("| %s | %d |\n", k, f.Configuration[k])
+	}
+	w("\n| PlanParameters (Defaults) on the resolved default | DAPs | of them refused by ToModel |\n|---|---|---|\n")
+	for _, k := range sortedKeys(f.ConfigPlans) {
+		w("| %s | %d | %d |\n", k, f.ConfigPlans[k], f.ConfigPlansRefused[k])
+	}
+	w("\nOf the DAPs ToModel refuses, %d resolve their default configuration; %d of them ToModel refuses for a configurable submodule (of %d). The resolved defaults plug %d configurable submodules (%d ports) and have %d in their catalog modules.\n", f.ConfigRefusedResolved, f.ConfigRequiredResolved, f.DAPsRequiredSubmodules, f.ConfigSubmodules, f.ConfigPorts, f.ConfigCatalogSubmodules)
+	w("\nOf the DAPs ToModel converts: %d resolve to ToModel's model but for the catalog, %d do not (none should), %d do not resolve because their ToModel model fails model.Device.Validate too; %d gain catalog modules (%d modules), %d gain configurable submodules.\n", f.ConfigSame, f.ConfigDiffer, f.ConfigModelInvalid, f.ConfigGainedCatalog, f.GainedModules, f.ConfigGainedSubmodules)
 	w("\n### Addresses\n\nEvery converted DAP's plugged configuration, as the file states it (API, slot, subslot, SubmoduleIdentNumber, record indexes), against the submodules a device built from its model serves.\n\n")
 	w("| Converted DAPs compared | Submodule addresses | Record indexes | DAPs failed | Lost | Extra | Changed | Records lost | Records extra | Unread |\n|---|---|---|---|---|---|---|---|---|---|\n")
 	w("| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n", f.DAPsAddressChecked, f.Addresses, f.AddressRecords, f.DAPsAddressFailed, f.AddressLost, f.AddressExtra, f.AddressChanged, f.AddressRecordsLost, f.AddressRecordsExtra, f.AddressUnread)

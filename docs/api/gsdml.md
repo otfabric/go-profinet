@@ -236,7 +236,7 @@ ToModel converts the device access point dapID (the first one when empty) of a d
 
 It returns an error matching profinet.ErrMalformed for a module or a device access point with more than 1440 submodules, which is more than a C\_SDU carries, and one matching profinet.ErrResourceExhausted for parameter records beyond MaxModelRecordOctets.
 
-Submodules come from the VirtualSubmoduleList of the DAP and of each module. Configurable submodules (UseableSubmodules, SubmoduleItemRef) are not converted. One a configuration needs (FixedInSubslots or UsedInSubslots) fails ToModel with profinet.ErrUnsupported when it is the DAP's or a plugged module's; a module only in the catalog that needs one is left out of Catalog. Optional ones (only AllowedInSubslots) are left out of the model. A SubmoduleList no reference names does not matter. AnalyzeModels reports each with why (ModelReport.OmitsSubmodules, OmitsModules, ModuleReport.Omitted).
+Submodules come from the VirtualSubmoduleList of the DAP and of each module. Configurable submodules (UseableSubmodules, SubmoduleItemRef) are not converted. One a configuration needs (FixedInSubslots or UsedInSubslots) fails ToModel with profinet.ErrUnsupported when it is the DAP's or a plugged module's; a module only in the catalog that needs one is left out of Catalog. Optional ones (only AllowedInSubslots) are left out of the model. A SubmoduleList no reference names does not matter. AnalyzeModels reports each with why (ModelReport.OmitsSubmodules, OmitsModules, ModuleReport.Omitted). NewConfiguration and Configuration.Resolve convert them.
 
 ### func Validate
 
@@ -255,6 +255,112 @@ func ValidateBytes(data []byte) error
 ValidateBytes reads a GSDML document and validates it as CheckBytes does: nil, a \*ValidationError with the errors, or the error of ParseBytes.
 
 ## Types
+
+### type Configuration
+
+```go
+type Configuration struct {
+	// contains filtered or unexported fields
+}
+```
+
+Configuration is a configuration of one device access point of a document: what NewConfiguration makes by default, changed by Plug, Unplug, Select and ClearSubslot, and turned into a model by Resolve. The default configuration plugs the modules ToModel plugs, in the slots it plugs them in, and places each configurable submodule in the subslots it is fixed or used in. Each plugged module has its own choices: two slots with the same module may hold different submodules.
+
+A Configuration reads the document it was made from at every call; the document must not change while the Configuration is used. It is not safe for concurrent use.
+
+#### func NewConfiguration
+
+```go
+func NewConfiguration(doc *Document, dapID string) (*Configuration, error)
+```
+
+NewConfiguration makes the default configuration of the device access point dapID (the first one when empty) of a document.
+
+It returns the errors ToModel returns for the DAP and the modules it can use, except that configurable submodules are not refused: profinet.ErrNotFound for a DAP the document does not have, profinet.ErrMalformed for content that does not convert, for a reference whose subslot attributes are not ValueLists of subslot numbers (1 to 65535), and for configurable submodules of the DAP whose default subslots collide or lie outside its PhysicalSubslots, and profinet.ErrResourceExhausted beyond MaxModelRecordOctets. A configurable submodule or a module that cannot be placed is not an error here: its option carries why, and choosing it, or a default configuration that needs it, fails.
+
+#### func (Configuration) ClearSubslot
+
+```go
+func (c *Configuration) ClearSubslot(slot, subslot uint16) error
+```
+
+ClearSubslot leaves a subslot of the module in a slot (of the DAP for slot 0) empty, removing the submodule it holds by default (UsedInSubslots) or by a Select. A slot without a module, subslot 0, the subslot of a virtual or system-defined submodule and a subslot a submodule is fixed in are errors matching profinet.ErrInvalidConfig.
+
+#### func (Configuration) DAP
+
+```go
+func (c *Configuration) DAP() []SubmoduleOption
+```
+
+DAP returns the configurable submodules of the device access point, in file order.
+
+#### func (Configuration) Module
+
+```go
+func (c *Configuration) Module(slot uint16) (string, bool)
+```
+
+Module returns the ID of the module plugged in a slot.
+
+#### func (Configuration) Modules
+
+```go
+func (c *Configuration) Modules() []ModuleOption
+```
+
+Modules returns the modules the device access point can use, one per ModuleItemRef, in file order.
+
+#### func (Configuration) Plug
+
+```go
+func (c *Configuration) Plug(slot uint16, moduleID string) error
+```
+
+Plug plugs the module the DAP can use with ID moduleID into a slot, with its default submodules; a module the slot held is replaced, with the choices made for it. The slot must be 1 to 0x7FFF, in the DAP's PhysicalSlots and in the reference's AllowedInSlots (when it gives them), and must not hold a module fixed there (FixedInSlots) unless it is the same module. A module the DAP cannot use, a slot outside those, and a module that cannot be plugged (ModuleOption.Err) are errors matching profinet.ErrInvalidConfig; the configuration is then unchanged.
+
+#### func (Configuration) PlugIdent
+
+```go
+func (c *Configuration) PlugIdent(slot uint16, ident uint32) error
+```
+
+PlugIdent is Plug for the module with ModuleIdentNumber ident. Two modules of the ident are an error matching profinet.ErrInvalidConfig that names them: plug one by ID.
+
+#### func (Configuration) Resolve
+
+```go
+func (c *Configuration) Resolve() (*model.Device, error)
+```
+
+Resolve returns the model of the configuration: the DAP's identity, capabilities and submodules as ToModel builds them, with the chosen configurable submodules after the DAP's (a configurable port counts in Capabilities.Ports); the plugged modules with their virtual submodules and then their configurable ones in subslot order; and as the Catalog, per module reference in file order, the module with its default submodules, less those whose default does not resolve. Without configurable submodules it is ToModel's model.
+
+It returns an error matching profinet.ErrInvalidConfig for a subslot that several submodules are used in by default and that no Select or ClearSubslot decided (the error names them), and for a model that model.Device.Validate refuses; a placed submodule's SubmoduleOption.Err; a module's ModuleOption.Err; and profinet.ErrResourceExhausted for parameter records of more than MaxModelRecordOctets in the plugged submodules.
+
+#### func (Configuration) Select
+
+```go
+func (c *Configuration) Select(slot, subslot uint16, submoduleID string) error
+```
+
+Select puts the configurable submodule submoduleID of the module in a slot (of the DAP for slot 0) in a subslot, in place of the submodule the subslot holds by default (UsedInSubslots). It returns an error matching profinet.ErrInvalidConfig, and leaves the configuration unchanged, for a slot without a module, a submodule the module's UseableSubmodules do not name, subslot 0, the subslot of a virtual or system-defined submodule, a subslot another submodule is fixed in, a subslot the submodule is not allowed in (SubmoduleOption.Allows) or outside the PhysicalSubslots; and the option's Err for a submodule that cannot be placed.
+
+The choices belong to the module plugged in the slot: plugging another module, or the same one again, starts from its defaults.
+
+#### func (Configuration) Slots
+
+```go
+func (c *Configuration) Slots() []uint16
+```
+
+Slots returns the slots that hold a module, in ascending order.
+
+#### func (Configuration) Unplug
+
+```go
+func (c *Configuration) Unplug(slot uint16) error
+```
+
+Unplug empties a slot. A slot without a module, and one whose module is fixed there, are errors matching profinet.ErrInvalidConfig.
 
 ### type DataTypeContext
 
@@ -501,6 +607,35 @@ func (r ModelReport) OmitsSubmodules() bool
 
 OmitsSubmodules reports whether the DAP or a module it references has configurable submodules (UseableSubmodules). ToModel converts none of them: it refuses a required one and leaves an optional one out of the model.
 
+### type ModuleOption
+
+```go
+type ModuleOption struct {
+	// ID is the reference's ModuleItemTarget.
+	ID string `json:"id"`
+	// Module is the module with its virtual submodules, as ToModel
+	// converts it; the configurable ones are in Submodules.
+	Module model.Module `json:"module"`
+	// AllowedInSlots, UsedInSlots and FixedInSlots are the reference's
+	// attributes, PhysicalSubslots the module's, as the file gives them.
+	AllowedInSlots   string `json:"allowed_in_slots,omitempty"`
+	UsedInSlots      string `json:"used_in_slots,omitempty"`
+	FixedInSlots     string `json:"fixed_in_slots,omitempty"`
+	PhysicalSubslots string `json:"physical_subslots,omitempty"`
+	// Submodules are the module's configurable submodules, in file order.
+	Submodules []SubmoduleOption `json:"submodules,omitempty"`
+	// Err is why the module cannot be plugged with its configurable
+	// submodules, nil when it can, and Error its text: configurable
+	// submodules whose default subslots collide with each other or with
+	// the virtual submodules, or lie outside PhysicalSubslots
+	// (ErrMalformed).
+	Err   error  `json:"-"`
+	Error string `json:"error,omitempty"`
+}
+```
+
+ModuleOption is a module a device access point can use: a ModuleItemRef of its UseableModules and the ModuleItem it names.
+
 ### type ModuleReport
 
 ```go
@@ -688,7 +823,7 @@ func PlanParameters(doc *Document, m *model.Device, opts PlanOptions) (*Paramete
 PlanParameters builds the parameter records to write to a device whose plugged modules m describes, from the file doc m was built from. It writes nothing: the plan is for controller.DeviceConfig.Parameters (converted with controller.Parameter(w.Write)) or for review.
 
   - The model must be of the file's device (VendorID and DeviceID) and DAP (ModuleIdentNumber).
-  - Every plugged module must be one the DAP can use, in a slot of the DAP's PhysicalSlots and of the module's AllowedInSlots, and every plugged submodule must be in the file. The DAP's interface and port submodules have no parameter records here: their PDev records are the controller's (PeerChecks, MRP).
+  - Every plugged module must be one the DAP can use, in a slot of the DAP's PhysicalSlots and of the module's AllowedInSlots, and every plugged submodule must be in the file: a virtual submodule, or a configurable one (Configuration.Resolve) in a subslot its reference allows and within the PhysicalSubslots of its DAP or module. The DAP's interface and port submodules, built in or configurable, have no parameter records here: their PDev records are the controller's (PeerChecks, MRP).
   - Values may set only fields that are Changeable (Table D.31), each once: an ID and a name of one field are refused, rather than one of them winning by map order.
   - A record is written when PlanOptions.Values sets a field of it, or, with PlanOptions.Defaults, always. A record with values must build (ParameterRecord.Encode); a record written with its defaults only that cannot be built for a field without a verified encoding is left out and reported.
   - A written record with an error of ParameterRecord.Check refuses the plan; its warnings and unvalidated issues are reported.
@@ -727,7 +862,7 @@ ParameterRecord describes a parameter record of a submodule as its GSDML file de
 func SubmoduleParameters(doc *Document, dapID string, moduleIdent, submoduleIdent uint32) ([]ParameterRecord, error)
 ```
 
-SubmoduleParameters describes the parameter records of a submodule: the submodule with ident number submoduleIdent of the device access point dapID (the first one when empty), when moduleIdent is the DAP's ModuleIdentNumber, or of the module with that ident number that the DAP can use. These are the submodules and records ToModel converts.
+SubmoduleParameters describes the parameter records of a submodule: the submodule with ident number submoduleIdent of the device access point dapID (the first one when empty), when moduleIdent is the DAP's ModuleIdentNumber, or of the module with that ident number that the DAP can use. These are the submodules and records ToModel converts and, after them, the configurable submodules (a SubmoduleItem of the SubmoduleList the DAP's or module's UseableSubmodules name) that Configuration.Resolve converts.
 
 It returns an error matching profinet.ErrNotFound when the DAP, the module or the submodule does not exist, and profinet.ErrMalformed for a record ToModel refuses as malformed. A field without a verified encoding is not an error: it is not Encodable, and its record has no Default.
 
@@ -1001,6 +1136,52 @@ func (s *Severity) UnmarshalText(b []byte) error
 ```
 
 UnmarshalText reads the names MarshalText writes, so that a Report decodes from its own JSON.
+
+### type SubmoduleOption
+
+```go
+type SubmoduleOption struct {
+	// ID is the reference's SubmoduleItemTarget: the ID of the item.
+	ID string `json:"id"`
+	// Port reports a PortSubmoduleItem: a port of the DAP's interface.
+	// It has no IO data and no records here; its PDev records are the
+	// controller's, as for a built-in port.
+	Port bool `json:"port,omitempty"`
+	// Submodule is the submodule as the model holds it, converted as
+	// ToModel converts a VirtualSubmoduleItem (name, ident number, API, IO
+	// data lengths, parameter records with their defaults), with Subslot
+	// 0: the configuration places it.
+	Submodule model.Submodule `json:"submodule"`
+	// AllowedInSubslots, UsedInSubslots and FixedInSubslots are the
+	// reference's attributes as the file gives them.
+	AllowedInSubslots string `json:"allowed_in_subslots,omitempty"`
+	UsedInSubslots    string `json:"used_in_subslots,omitempty"`
+	FixedInSubslots   string `json:"fixed_in_subslots,omitempty"`
+	// Defaults are the subslots the default configuration puts the
+	// submodule in (FixedInSubslots, else UsedInSubslots); Fixed reports
+	// that they are fixed.
+	Defaults []uint16 `json:"defaults,omitempty"`
+	Fixed    bool     `json:"fixed,omitempty"`
+	// Err is why the submodule cannot be placed, nil when it can, and
+	// Error its text: a reference to no item of the SubmoduleList, an item
+	// that does not convert (ErrMalformed, ErrUnsupported,
+	// ErrResourceExhausted, as ToModel classifies them), a DAP submodule
+	// of an API other than 0 or a port of a module (ErrUnsupported).
+	Err   error  `json:"-"`
+	Error string `json:"error,omitempty"`
+
+}
+```
+
+SubmoduleOption is a configurable submodule a device access point or a module can use: a SubmoduleItemRef of its UseableSubmodules and the SubmoduleItem or PortSubmoduleItem of the SubmoduleList it names.
+
+#### func (SubmoduleOption) Allows
+
+```go
+func (o *SubmoduleOption) Allows(subslot uint16) bool
+```
+
+Allows reports whether the submodule may be chosen for a subslot: AllowedInSubslots, or without it FixedInSubslots and UsedInSubslots. The owner's PhysicalSubslots and the subslots of other submodules are Select's to check.
 
 ### type SubmoduleRef
 

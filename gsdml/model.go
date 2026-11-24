@@ -150,7 +150,8 @@ func recordOctets(subs []model.Submodule) int {
 // one is left out of Catalog. Optional ones (only AllowedInSubslots) are
 // left out of the model. A SubmoduleList no reference names does not
 // matter. AnalyzeModels reports each with why (ModelReport.OmitsSubmodules,
-// OmitsModules, ModuleReport.Omitted).
+// OmitsModules, ModuleReport.Omitted). NewConfiguration and
+// Configuration.Resolve convert them.
 func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	c := newConv(doc)
 	m, dap, err := c.dapModel(dapID)
@@ -167,8 +168,22 @@ func malformed(format string, a ...any) error {
 
 // dapModel is the first part of ToModel: the model of the device access
 // point dapID with its identity, capabilities and submodules, without the
-// modules it can use.
+// modules it can use. It refuses a DAP whose configurable submodules a
+// configuration needs (requiredSubmodules).
 func (c *conv) dapModel(dapID string) (*model.Device, *DeviceAccessPointItem, error) {
+	m, dap, err := c.dapBase(dapID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := requiredSubmodules(dap.UseableSubmodules, "DAP "+clip(dap.ID)); err != nil {
+		return nil, nil, err
+	}
+	return m, dap, nil
+}
+
+// dapBase is dapModel without the check of the DAP's configurable
+// submodules: what NewConfiguration starts from.
+func (c *conv) dapBase(dapID string) (*model.Device, *DeviceAccessPointItem, error) {
 	bad := malformed
 	doc := c.doc
 	if doc.ProfileBody == nil || doc.ProfileBody.DeviceIdentity == nil || doc.ProfileBody.ApplicationProcess == nil {
@@ -311,9 +326,6 @@ func (c *conv) dapModel(dapID string) (*model.Device, *DeviceAccessPointItem, er
 			m.DAP.Submodules = append(m.DAP.Submodules, s)
 			m.Capabilities.Ports++
 		}
-	}
-	if err := requiredSubmodules(dap.UseableSubmodules, "DAP "+clip(dap.ID)); err != nil {
-		return nil, nil, err
 	}
 	return m, dap, nil
 }

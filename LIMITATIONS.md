@@ -169,27 +169,44 @@ only differences (docs/research/GSDML-SCHEMA-PROPOSAL.md). `ToModel`
 converts 129 of the 130 files. `ToModel` is all or nothing per device
 access point: one module it cannot convert fails the DAP. `AnalyzeModels`
 reports, per DAP and module, why; it is a diagnostic and returns no model
-for a DAP `ToModel` refuses. **Configurable submodules are not
-converted.** `ToModel` builds submodules from the `VirtualSubmoduleList`
-of the DAP and of each module only. A DAP's or module's
-`UseableSubmodules` (`SubmoduleItemRef` to the `SubmoduleList`, a
-submodule an engineering tool chooses for a subslot) is parsed and
-schema-validated, but `model.Device` has no catalog of them and nothing
-selects one. Since v0.23.0 `ToModel` refuses (`ErrUnsupported`) a DAP
-whose own references, or those of a module it plugs, put a configurable
-submodule in a subslot (`FixedInSubslots` or `UsedInSubslots`): its model
-would be an incomplete configuration. A module only in the catalog that
-needs one is left out of `Catalog`, so it cannot be plugged; optional
-references (only `AllowedInSubslots`, even a single subslot) are left out
-of the model. A `SubmoduleList` no reference names does not matter.
-`AnalyzeModels` reports each reference and omitted module with why
-(docs/GSDML.md). The rule reads `FixedInSubslots` and `UsedInSubslots` as
-`ToModel` already reads `FixedInSlots` and `UsedInSlots` for modules,
-not checked against PI's specification or an engineering tool. On the local corpus (249 files,
-779 DAPs) 68 DAPs are refused for it, 238 converted DAPs lack modules in
-their catalog, and the conversion and address checks do not cover the
-optional submodules they leave out. `profinetctl connect --plug` chooses
-modules, not submodules. `gsdml.Validate` is not PI's GSDML
+for a DAP `ToModel` refuses. **`ToModel` does not convert configurable
+submodules; `gsdml.Configuration` does.** `ToModel` builds submodules from
+the `VirtualSubmoduleList` of the DAP and of each module only, and since
+v0.23.0 refuses (`ErrUnsupported`) a DAP whose own references, or those of
+a module it plugs, put a configurable submodule (`UseableSubmodules`,
+`SubmoduleItemRef` to the `SubmoduleList`) in a subslot
+(`FixedInSubslots` or `UsedInSubslots`); a module only in its catalog
+that needs one is left out of `Catalog`, and optional references are left
+out of the model. That is unchanged. Since v0.24.0
+`gsdml.NewConfiguration` resolves them: its default configuration plugs
+the modules `ToModel` plugs and puts each configurable submodule in the
+subslots it is fixed or used in; `Plug`, `Select` and `ClearSubslot`
+change it, and `Resolve` returns a validated `model.Device`. The reading
+of the subslot attributes is this package's, not checked against PI's
+specification or an engineering tool: fixed means present and not
+removable, replaceable or movable; used means present by default,
+replaceable by a submodule allowed there and removable; without
+`AllowedInSubslots` a submodule is allowed only where it is fixed or used;
+the `PhysicalSubslots` of a DAP or module bound the subslots of its
+configurable submodules but not those of its virtual ones (most corpus
+files do not list those there); a subslot several references use by
+default needs a choice. The same reading for modules is `ToModel`'s
+(`FixedInSlots`, else `UsedInSlots`, the first reference taking a slot);
+`Configuration` adds that a module fixed in a slot cannot be unplugged or
+replaced. A configurable `PortSubmoduleItem` is a port of the DAP only
+(one in a module is refused, `ErrUnsupported`), with no records, like a
+built-in port; the port's `RecordDataList`, a module's
+`SystemDefinedSubmoduleList` ports and the `ApplicationProcess`-level
+`RecordDataList` are not converted. On the local corpus (249 files, 779
+DAPs) the default configuration resolves for 778 DAPs, among them all 68
+`ToModel` refuses for a configurable submodule, and for 710 of the 711
+DAPs `ToModel` converts it is `ToModel`'s plugged configuration (the
+other's model fails `model.Device.Validate`, which `Resolve` applies and
+`ToModel` does not); 238 of them gain catalog modules. A resolved model's
+`Catalog` holds a module with its default submodules; `FromModel` and
+`model.Device.ModuleTypes` take a module type by ident number, so two
+slots of one module with different submodules are one module type there.
+`profinetctl connect --plug` chooses modules, not submodules. `gsdml.Validate` is not PI's GSDML
 checker, and a file it accepts may still fail PI's. Elements and attributes
 outside the catalog are kept verbatim and reported as unvalidated by
 `gsdml.Check`; its semantic rules are a small set, each with its basis

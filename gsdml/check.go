@@ -453,6 +453,7 @@ func semantic(doc *Document, v *validator) {
 			}
 		}
 	}
+	v.checkSubmoduleList(root, ap.SubmoduleList)
 	if ap.DeviceAccessPointList == nil {
 		return
 	}
@@ -480,10 +481,44 @@ func semantic(doc *Document, v *validator) {
 			}
 		}
 		for _, it := range sd.PortSubmoduleItems {
+			if it.SubslotNumber == "" && !emptyIn(it.empty, "SubslotNumber") {
+				v.structure(p()+"/SystemDefinedSubmoduleList/PortSubmoduleItem", "missing required attribute SubslotNumber")
+			}
 			if n, err := parseUint(it.SubslotNumber, 16); err == nil && (n < 0x8000 || n > 0x8FFF) {
 				v.warn(func() string { return p() + "/SystemDefinedSubmoduleList/PortSubmoduleItem[" + pathID(it.ID) + "]" },
 					RuleSubslot, "port submodule in subslot %#x, outside 0x8000-0x8FFF", n)
 			}
+		}
+	}
+}
+
+// structure reports a structure error at path, as the generated
+// validation reports one; CheckBytes leaves structure to the schema.
+func (v *validator) structure(path, msg string) {
+	if !v.schema {
+		v.add(path, SeverityError, RuleStructure, "%s", msg)
+	}
+}
+
+// checkSubmoduleList applies the schema's rules for the SubmoduleList
+// that the catalog, which has one PortSubmoduleItem element for both
+// places it occurs, cannot state: the list holds at least one item, and
+// its ports have no SubslotNumber (a SubmoduleItemRef places them), while
+// a SystemDefinedSubmoduleList port must have one (semantic). The facts
+// are the reference schemas' (GSDML-DeviceProfile V2.25 to V2.46:
+// SubmoduleList is a choice of SubmoduleItem and PortSubmoduleItem,
+// PortSubmoduleItemT has no SubslotNumber, BuiltInPortSubmoduleItemT
+// requires one).
+func (v *validator) checkSubmoduleList(root string, sl *SubmoduleList) {
+	if sl == nil {
+		return
+	}
+	if len(sl.SubmoduleItems) == 0 && len(sl.PortSubmoduleItems) == 0 {
+		v.structure(root+"/SubmoduleList", "missing required element SubmoduleItem or PortSubmoduleItem")
+	}
+	for _, it := range sl.PortSubmoduleItems {
+		if it.SubslotNumber != "" || emptyIn(it.empty, "SubslotNumber") {
+			v.structure(root+"/SubmoduleList/PortSubmoduleItem", "attribute SubslotNumber: a port of the SubmoduleList has none (the SubmoduleItemRef that uses it gives its subslot)")
 		}
 	}
 }

@@ -33,7 +33,8 @@ m, err := gsdml.ToModel(doc, "DAP 1") // "" for the first device access point
   or `UsedInSubslots`) fails with `ErrUnsupported`, since the model would
   lack it; a module only in the catalog that needs one is left out of
   `Catalog`; optional ones (only `AllowedInSubslots`) are left out. An
-  unreferenced `SubmoduleList` is not read;
+  unreferenced `SubmoduleList` is not read. `gsdml.Configuration`
+  ([Configurations](#configurations)) converts them;
 - per submodule: its API (`VirtualSubmoduleItem` `API`, an Unsigned32;
   absent is API 0), the IO data lengths (`DataItemSize` of each DataItem)
   and the parameter records with their default values (Const and Ref).
@@ -278,6 +279,71 @@ Each error is kept (`Err`, `DAPErr`, `ReferenceErr`, `ModuleErr`, for
 `errors.Is`); the JSON form carries their texts and the element paths.
 `AnalyzeModels` returns `ErrMalformed` for a nil document and for one
 without device access points.
+
+### Configurations
+
+`ToModel` is the configuration without choices. A `Configuration` is one
+with choices: the modules in the slots and, for each subslot of the DAP and
+of each plugged module, the configurable submodule it holds
+(`UseableSubmodules`: a `SubmoduleItemRef` naming a `SubmoduleItem` or a
+`PortSubmoduleItem` of the `SubmoduleList`). The file describes what may be
+configured; `Resolve` returns the `model.Device` of what is plugged.
+
+```go
+cfg, err := gsdml.NewConfiguration(doc, "DAP 1") // the default configuration
+for _, mo := range cfg.Modules() {                 // what the DAP can use
+	for _, o := range mo.Submodules {              // its configurable submodules
+		fmt.Println(mo.ID, o.ID, o.Submodule.IdentNumber, o.AllowedInSubslots, o.Defaults, o.Err)
+	}
+}
+err = cfg.Plug(5, "IDM_DI16")                      // or PlugIdent(5, 0x10)
+err = cfg.Select(5, 2, "IDS_CH_2WIRE")             // slot 5, subslot 2 (slot 0: the DAP)
+err = cfg.ClearSubslot(5, 3)                       // leave subslot 3 empty
+m, err := cfg.Resolve()                            // validated (model.Device.Validate)
+plan, err := gsdml.PlanParameters(doc, m, gsdml.PlanOptions{DAP: "DAP 1", Defaults: true})
+```
+
+- The default configuration plugs the modules `ToModel` plugs, in the same
+  slots, and puts each configurable submodule in the subslots it is fixed
+  in, else used in. Without configurable submodules `Resolve` returns
+  `ToModel`'s model (the tests compare them); with them, the DAP's and
+  each module's virtual (and, for the DAP, system-defined) submodules come
+  first and the configurable ones after them, in subslot order.
+- A submodule fixed in a subslot (`FixedInSubslots`) is there in every
+  configuration: it cannot be cleared, replaced or moved. One used there
+  (`UsedInSubslots`) is the default: `Select` replaces it with another
+  submodule allowed there, `ClearSubslot` removes it. `AllowedInSubslots`
+  says where a submodule may be selected; without it, where it is fixed or
+  used. The `PhysicalSubslots` of a DAP or module, when given, bound the
+  subslots of its configurable submodules. This reading mirrors
+  `ToModel`'s for modules (`configuredSlots`) and is not checked against
+  PI's specification or an engineering tool (LIMITATIONS.md).
+- A subslot several references use by default has no default: `Resolve`
+  fails with `ErrInvalidConfig` naming them until a `Select` or
+  `ClearSubslot` decides it. Defaults that collide with each other or with
+  a virtual submodule, or lie outside `PhysicalSubslots`, are errors of the
+  file (`ErrMalformed`): of the DAP, `NewConfiguration` fails; of a module,
+  its `ModuleOption.Err` says so, and it cannot be plugged.
+- The choices belong to the module in the slot: two slots of one module
+  can hold different submodules, and `Plug` starts a slot from its
+  module's defaults. A module fixed in a slot (`FixedInSlots`) cannot be
+  unplugged or replaced; `Plug` checks `PhysicalSlots` and
+  `AllowedInSlots`, as `PlanParameters` does.
+- A configurable submodule is converted as a `VirtualSubmoduleItem` is (its
+  API, IO data, records with their defaults). A configurable port
+  (`PortSubmoduleItem`) belongs to the DAP, counts in
+  `Capabilities.Ports`, and has no records, like a built-in port; one in a
+  module is refused. A DAP submodule of an API other than 0 is refused, as
+  in `ToModel`. Such a submodule, and one whose item does not convert or
+  does not exist, carries its error in `SubmoduleOption.Err`: it does not
+  fail `NewConfiguration`, only a configuration that places it.
+- `Resolve`'s `Catalog` holds each module reference's module with its
+  default submodules, less those whose default does not resolve.
+- `SubmoduleParameters` describes the records of a configurable submodule
+  too, and `PlanParameters` plans them, checking its subslot against its
+  reference and `PhysicalSubslots`.
+
+Errors are listed in ERRORS.md (GSDML configurations).
 
 ### Parameter records
 
