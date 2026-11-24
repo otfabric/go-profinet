@@ -3,20 +3,21 @@
 What go-profinet supports, on what, how each feature is tested, and against
 what. Status: go-profinet v0.22.1 (2026-11-23); profinetctl v0.20.0 pins
 go-profinet v0.22.0. Main pins
-profinet-interop v0.14.0 (contract 1.5, tshark's `fields` and the
-profinet-py controller's records of any API; its mrp image
+profinet-interop v0.15.0 (contract 1.5, tshark's `fields`, the
+profinet-py controller's records of any API and p-net's profile-records
+variant; its mrp image
 carries one microchip-ung/mrp fix, microchip-ung/mrp#4, since v0.9.1;
 scapy 2.8.0).
 
-The interop evidence is that of go-profinet v0.22.1 with `TestPnetAPI`
-and `TestProfinetPyAPI` (the library is unchanged):
+The interop evidence is that of go-profinet v0.22.1 with `TestPnetAPI`,
+`TestProfinetPyAPI` and `TestPnetProfile` (the library is unchanged):
 
-- The interop matrix below, published in profinet-interop v0.14.0, comes
+- The interop matrix below, published in profinet-interop v0.15.0, comes
   from the Interop and Kernel MRP jobs of go-profinet's pull request
-  workflow, run 45295645172 (2026-11-24). That run tested PR #118 at
-  18d3fdb, whose tree is that of its merge commit 909ec56 (the pin
-  pointed at profinet-interop#39, whose images are v0.13.0's). The matrix has 323
-  checks: 301 pass, 0 fail, 6 n/a and 16 peer deviations.
+  workflow, run 45319782558 (2026-11-24). That run tested PR #122 at
+  d3fc3c9, which differs from its merge only in the pin (profinet-interop
+  7453c49, whose images are v0.15.0's). The matrix has 341 checks: 319
+  pass, 0 fail, 6 n/a and 16 peer deviations.
 - The Interop and Kernel MRP workflows run on pull requests that change
   code, weekly and by hand, not on pushes to `main`; a release is
   covered by the pull request run of its tree.
@@ -38,7 +39,7 @@ and `TestProfinetPyAPI` (the library is unchanged):
   (profinet-interop's profile-records variant, not counted as
   independent): 0xB600 written at Connect and in Data in API 0x4E01 and
   read back, with tshark's addressing and payload checks
-  (`TestPnetProfile`). Unmodified p-net refuses profile records, so no
+  (`TestPnetProfile`, profinet-interop v0.15.0). Unmodified p-net refuses profile records, so no
   unmodified independent IO-Device in profinet-interop accepts one
   (sections 2 and 5, [INTEROPERABILITY.md](../INTEROPERABILITY.md)).
 
@@ -167,23 +168,24 @@ libraries (go-modbus, go-ethernetip, go-canbus, …):
 
 Each peer runs in a container of
 [profinet-interop](https://github.com/otfabric/profinet-interop) against
-go-profinet (the Interop workflow builds v0.14.0; the counts below are the
-matrix of go-profinet PR #118's run of 2026-11-24, published in
-profinet-interop v0.14.0); every exchange is captured and decoded
+go-profinet (the Interop workflow builds v0.15.0; the counts below are the
+matrix of go-profinet PR #122's run of 2026-11-24, published in
+profinet-interop v0.15.0); every exchange is captured and decoded
 by tshark and scapy. Full evidence, check by check:
-[MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.14.0/docs/MATRIX.md).
+[MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.15.0/docs/MATRIX.md).
 
 | Peer | go-profinet as | DCP | LLDP | AR, startup | Records, I&M | Alarms | Cyclic | Shared device | Port checks | Re-param. | MRP | MRA | SNMP | pass | fail | n/a | dev. |
 |---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---:|---:|---:|---:|
 | rt-labs p-net `ea5e554` (device) | controller | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ 1 ms | ✅ | ✅ | n/a¹ | | | | 76 | 0 | 1 | 1 |
+| p-net `ea5e554`, profile-records variant (device; extended by OT Fabric, not independent) | controller | | | ✅ | ✅⁸ | | | | | | | | | 16 | 0 | 0 | 0 |
 | pnio-rs v0.1.0 (device) | controller | ◐² | | ✅ | ✅³ | | ✅ | | | n/a¹ | | | | 13 | 0 | 3 | 0 |
 | profinet-py 0.6.6 (controller) | device | ✅ | | ✅ | ✅⁴ | ✅ | ✅ | | | ✅ | | | | 59 | 0 | 1 | 4 |
 | pnio-dcp 1.2.0 (DCP tool) | device | ✅ | | | | | | | | | | | | 8 | 0 | 0 | 0 |
 | umrp v4.0 (MRP node) | MRP node | | | | | | | | | | ✅ | ✅⁵ | | 32 | 0 | 0 | 2 |
 | microchip-ung/mrp `177717e` on the Linux bridge (MRP node) | MRP node | | | | | | | | | | ✅⁶ | ✅ | | 31 | 0 | 1 | 0 |
 | Net-SNMP 5.9.3 (SNMP manager) | device | | ✅ LLDP-MIB | | | | | | | | | | ✅ | 29 | 0 | 0 | 0 |
-| tshark 4.0.17, scapy 2.8.0 (decoders) | every role | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅⁷ | ✅⁷ | ✅ | 53 | 0 | 0 | 9 |
-| **total** | | | | | | | | | | | | | | **301** | **0** | **6** | **16** |
+| tshark 4.0.17, scapy 2.8.0 (decoders) | every role | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | | | ✅ | ✅⁷ | ✅⁷ | ✅ | 55 | 0 | 0 | 9 |
+| **total** | | | | | | | | | | | | | | **319** | **0** | **6** | **16** |
 
 ✅ tested and passing · ◐ partly · empty: the peer does not have the
 feature. **n/a** and **dev.** are profinet-interop's outcomes: the peer
@@ -203,6 +205,11 @@ lacks a feature the test needs, or deviates in an attributed way:
 7. tshark decodes every MRP frame; scapy has no MRP dissector (and no DCP
    DHCP block class), and Wireshark decodes the data of DHCP options 61
    and 255 only: decoder limits, recorded as deviations.
+8. Profile records 0xB600 written at Connect and in Data in API 0x4E01
+   and read back (`TestPnetProfile`). profinet-interop built this image
+   from p-net with a local extension of its stack (profile indexes
+   0xB000–0xBFFF to the application) and records it as not independent:
+   unmodified p-net refuses profile records.
 
 No independent IO-Controller runs in CI for go-profinet's device in
 RT_CLASS_1/2 besides profinet-py; CODESYS Control for Linux SL is a manual
