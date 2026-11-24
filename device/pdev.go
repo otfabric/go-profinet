@@ -350,36 +350,84 @@ func (d *Device) expectedPDev() []byte {
 // at every Connect was its issue 2728. An IOSAR and the ARs of a system
 // redundancy set do not reset (p-net skips a backup AR; go-profinet's S2
 // is an experiment and keeps the state).
-func (d *Device) resetPDev(a *ar, locked map[key]bool) {
+//
+// The reset happens while the Connect builds the AR, before its
+// ModuleDiffBlock. A Connect refused after it calls the returned undo:
+// the AR never existed, so the ports get back what it removed; a port
+// written meanwhile keeps the write. p-net's source does not show what a
+// refused Connect leaves; giving back what it took is go-profinet's rule
+// for every resource of a refused Connect.
+func (d *Device) resetPDev(a *ar, locked map[key]bool) (undo func()) {
 	var ports []uint16
 	for k := range a.match {
 		if k.slot == 0 && !locked[k] && d.portBySubslot(k.subslot) != nil {
 			ports = append(ports, k.subslot)
 		}
 	}
-	if len(ports) == 0 {
-		return
+	type saved struct {
+		check  *pnio.PDPortDataCheck
+		adjust *pnio.PDPortDataAdjust
+		active []uint16
+		diags  []pnio.DiagnosisItem
 	}
+	prev := map[uint16]saved{}
 	d.mu.Lock()
-	changed := false
 	for _, sub := range ports {
-		if d.pd.checks[sub] != nil || d.pd.adjusts[sub] != nil || len(d.pd.active[sub]) > 0 {
-			changed = true
+		k := key{0, sub}
+		s := saved{check: d.pd.checks[sub], adjust: d.pd.adjusts[sub], active: d.pd.active[sub]}
+		for _, it := range d.diags[k] {
+			if isPDevMismatch(it) {
+				s.diags = append(s.diags, it)
+			}
+		}
+		if s.check != nil || s.adjust != nil || len(s.active) > 0 || len(s.diags) > 0 {
+			prev[sub] = s
 		}
 		delete(d.pd.checks, sub)
 		delete(d.pd.adjusts, sub)
 		delete(d.pd.active, sub)
-		k := key{0, sub}
-		d.diags[k] = slices.DeleteFunc(d.diags[k], func(it pnio.DiagnosisItem) bool {
-			return it.ChannelNumber == pdevChannel && it.ErrorType == pnio.ChannelErrRemoteMismat
-		})
+		d.diags[k] = slices.DeleteFunc(d.diags[k], isPDevMismatch)
 	}
 	d.mu.Unlock()
-	if changed {
-		d.log.Debugf("device: AR %s: port checks and adjustments of %#x reset", a.uuid, ports)
+	if len(prev) == 0 {
+		return func() {}
+	}
+	d.log.Debugf("device: AR %s: port checks and adjustments of %#x reset", a.uuid, ports)
+	d.applyAdjust()
+	d.pokePDev()
+	return func() {
+		d.mu.Lock()
+		for sub, s := range prev {
+			if d.pd.checks[sub] != nil || d.pd.adjusts[sub] != nil {
+				continue // written since the reset: the write stands
+			}
+			if s.check != nil {
+				d.pd.checks[sub] = s.check
+			}
+			if s.adjust != nil {
+				d.pd.adjusts[sub] = s.adjust
+			}
+			if len(s.active) > 0 {
+				d.pd.active[sub] = s.active
+			}
+			k := key{0, sub}
+			for _, it := range s.diags {
+				if !slices.Contains(d.diags[k], it) {
+					d.diags[k] = append(d.diags[k], it)
+				}
+			}
+		}
+		d.mu.Unlock()
+		d.log.Debugf("device: AR %s: Connect refused, port checks and adjustments of %#x restored", a.uuid, ports)
 		d.applyAdjust()
 		d.pokePDev()
 	}
+}
+
+// isPDevMismatch reports whether it is a remote mismatch diagnosis of
+// the port checks.
+func isPDevMismatch(it pnio.DiagnosisItem) bool {
+	return it.ChannelNumber == pdevChannel && it.ErrorType == pnio.ChannelErrRemoteMismat
 }
 
 // pokePDev asks the evaluator to check the ports again.

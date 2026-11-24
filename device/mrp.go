@@ -133,7 +133,11 @@ func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 		return nil
 	}
 	ports := [2]*l2.Mux{d.ports[c.RingPorts[0]-1].mux, d.ports[c.RingPorts[1]-1].mux}
-	ent, err := mrp.New(mrp.Config{Role: role, Ports: ports, Index: [2]int{c.RingPorts[0] - 1, c.RingPorts[1] - 1},
+	newEntity := mrp.New
+	if d.mrpNew != nil {
+		newEntity = d.mrpNew
+	}
+	ent, err := newEntity(mrp.Config{Role: role, Ports: ports, Index: [2]int{c.RingPorts[0] - 1, c.RingPorts[1] - 1},
 		Switch: d.cfg.Bridge, MAC: d.mux.HardwareAddr(), Domain: c.Domain, Prio: c.Prio, Profile: c.Profile, Logger: d.log})
 	if err != nil {
 		return err
@@ -270,17 +274,25 @@ func (d *Device) mrpLLDP(p *port) *lldp.MRPPortStatus {
 }
 
 // mrpDomainMismatch reports whether the MRP_DomainUUID check applies to a
-// port and the neighbor's MRP domain differs from the device's. The check
-// applies to a ring port while MRP runs; a neighbor that sends no MRP port
-// status (not an MRP ring port, or no neighbor) is not a mismatch, where
-// p-net compares with an empty domain (pf_pdport_check_mrp_domain_mismatch).
-// mu held.
+// port and the neighbor's MRP domain differs from the one the check names,
+// which is the device's: a check is written only for the device's domain
+// and dropped when an adjustment changes it. The check applies to a ring
+// port while MRP runs. A neighbor that sends no MRP port status (not an
+// MRP ring port, a device without the TLV, or no neighbor) is not a
+// mismatch: nothing says it is in another domain. p-net instead compares
+// with an empty domain (pf_pdport_check_mrp_domain_mismatch), so such a
+// neighbor is a mismatch there; the standard's text is not read.
+//
+// The check belongs to the interface, not to an AR: a Connect's PDev
+// reset (resetPDev) does not remove it, as p-net's pf_pdport_reset_ar
+// resets only the port checks; the evaluator reports the mismatch again
+// for the new AR. mu held.
 func (d *Device) mrpDomainMismatch(subslot uint16, peer lldp.Neighbor, found bool) bool {
 	st := d.mrpSt
 	if st == nil || st.check == nil || st.check.Check&pnio.MrpCheckDomainUUID == 0 || st.cfg.Role == mrp.RoleDisabled || !d.isRingPort(subslot) {
 		return false
 	}
-	return found && peer.Frame.MRPPortStatus != nil && peer.Frame.MRPPortStatus.Domain != st.cfg.Domain
+	return found && peer.Frame.MRPPortStatus != nil && peer.Frame.MRPPortStatus.Domain != st.check.Domain
 }
 
 // writeMRPCheck serves a write of PDInterfaceMrpDataCheck: version 1.0
@@ -331,8 +343,10 @@ var mrpParamProfiles = []struct {
 // ms; MRP_TOPNRmax, MRP_TSTNRmax and MRP_LNKNRmax are counts. p-net's
 // default MRP_LNKdownT, 20 (ms), is mrp.Profile200's link interval. A
 // block whose timers are all zero selects nothing and keeps cur: the
-// go-profinet controller before v0.25.0 sends MrpManagerParams with the
-// priority only. The arithmetic is on time.Duration, which holds 65535 ×
+// go-profinet controller sends MrpManagerParams with the priority only.
+// That is an OT Fabric convention, not a meaning of zero known from the
+// standard or another implementation. MRP_TSTshortT is matched, not
+// applied. The arithmetic is on time.Duration, which holds 65535 ×
 // 10 ms without overflow.
 func writtenProfile(a *pnio.PDInterfaceMrpDataAdjust, cur mrp.Profile) (mrp.Profile, bool) {
 	m, c := a.Manager, a.Client
@@ -428,8 +442,14 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 	}
 	same := st.cfg.Role == mrp.Role(a.Role) && st.cfg.Domain == a.Domain && st.cfg.DomainName == a.DomainName &&
 		st.cfg.Prio == prio && st.cfg.Profile == prof
+	prevCfg, prevAdjust, prevCheck := st.cfg, st.adjust, st.check
 	st.adjust = &a
 	st.cfg.Prio, st.cfg.Profile = prio, prof
+	if a.Domain != st.cfg.Domain {
+		// A check names the domain it checks, which must be the device's
+		// (writeMRPCheck): it does not survive a change of domain.
+		st.check = nil
+	}
 	d.mu.Unlock()
 	if same {
 		return true, nil
@@ -437,7 +457,15 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 	// The ring ports announce the new domain; the check compares with it.
 	defer d.pokePDev()
 	if err := d.setMRPRole(mrp.Role(a.Role), a.Domain, a.DomainName); err != nil {
-		d.log.Infof("device: MRP: %v", err)
+		// The write is refused, so it changes nothing: the records, the
+		// configuration and the entity that ran before.
+		d.log.Infof("device: MRP: %v; the previous configuration is restored", err)
+		d.mu.Lock()
+		st.cfg, st.adjust, st.check = prevCfg, prevAdjust, prevCheck
+		d.mu.Unlock()
+		if rerr := d.setMRPRole(prevCfg.Role, prevCfg.Domain, prevCfg.DomainName); rerr != nil {
+			d.log.Errorf("device: MRP: restoring %s: %v", prevCfg.Role, rerr)
+		}
 		return true, rwErr(pnio.RWInvalidParameter)
 	}
 	return true, nil

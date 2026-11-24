@@ -82,6 +82,12 @@ type ar struct {
 	// (testdata/captures, pnio-rs alarm frames).
 	alarmSeq [2]uint16
 	ackWait  map[ackKey]chan pnio.AlarmAck
+	// alarmSem holds one alarm of each priority (index 1 high) from its
+	// sequence number to its AlarmAck: the next waits, as p-net's alarm
+	// machine only sends from its idle state (ALPMI W_ALARM) and queues
+	// the others per priority (src/common/pf_alarm.c, rtlabs-com/p-net
+	// v2.0.0).
+	alarmSem [2]chan struct{}
 	iocs     map[key]uint8 // the controller's consumer status of our inputs
 	cmiTimer *time.Timer
 	// plugs are the submodules handed over to the AR whose Released
@@ -591,16 +597,19 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	if !iosar {
 		locked = d.claimOwnership(a)
 	}
+	undoPDev := func() {}
 	if arb.Type == pnio.ARTypeIOCARSingle {
-		d.resetPDev(a, locked)
+		undoPDev = d.resetPDev(a, locked)
 	}
 	diff, _ := d.moduleDiff(req.Expected, locked)
-	// A Connect that fails from here on gives its submodules back.
+	// A Connect that fails from here on gives its submodules back, and the
+	// port state it reset.
 	established := false
 	defer func() {
 		if !established && !iosar {
 			d.releaseOwnership(a)
 			d.srLeave(a)
+			undoPDev()
 		}
 	}()
 

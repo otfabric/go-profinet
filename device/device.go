@@ -29,6 +29,7 @@ import (
 	"github.com/otfabric/go-profinet/l2/bridge"
 	"github.com/otfabric/go-profinet/lldp"
 	"github.com/otfabric/go-profinet/model"
+	"github.com/otfabric/go-profinet/mrp"
 	"github.com/otfabric/go-profinet/pnio"
 	"github.com/otfabric/go-profinet/rpc"
 	"github.com/otfabric/go-profinet/rt"
@@ -214,11 +215,25 @@ type Device struct {
 	records   map[recKey][]byte
 	im        IMData
 	diags     map[key][]pnio.DiagnosisItem
-	closed    bool
-	pd        pdevState
+	// diagOwed are the diagnosis alarms of a submodule that were not
+	// delivered (alarms.go, owedDiag).
+	diagOwed map[key]owedDiag
+	closed   bool
+	pd       pdevState
 
 	// pdPoke wakes the PDev check evaluator.
 	pdPoke chan struct{}
+
+	// diagSem orders the diagnosis operations (AddDiagnosis,
+	// RemoveDiagnosis): each holds it from its change of the diagnoses to
+	// its last alarm, so a controller receives the reports in the order of
+	// the changes. It is not d.mu: the alarms wait for the network.
+	diagSem chan struct{}
+	// afterDiagChange, when set (tests), runs after a diagnosis operation
+	// changed the state and before it reports it.
+	afterDiagChange func()
+	// mrpNew, when set (tests), starts the MRP entity in place of mrp.New.
+	mrpNew func(mrp.Config) (*mrp.Entity, error)
 
 	// dhcp are the DHCP options DCP reports; ipDHCP marks ip as set by
 	// DHCP. Both under mu.
@@ -355,6 +370,8 @@ func New(cfg Config) (*Device, error) {
 		im:         cfg.IM,
 		storeKey:   cfg.StoreKey,
 		diags:      map[key][]pnio.DiagnosisItem{},
+		diagOwed:   map[key]owedDiag{},
+		diagSem:    make(chan struct{}, 1),
 		pd:         pdevState{checks: map[uint16]*pnio.PDPortDataCheck{}, adjusts: map[uint16]*pnio.PDPortDataAdjust{}, active: map[uint16][]uint16{}},
 		pdPoke:     make(chan struct{}, 1),
 		inputs:     map[key]*ioData{},

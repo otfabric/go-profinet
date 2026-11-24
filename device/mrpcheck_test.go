@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/lldp"
 	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/mrp"
@@ -276,4 +277,120 @@ func TestMRPAdjustTimers(t *testing.T) {
 	if ent() != running {
 		t.Fatal("identical write restarted the entity")
 	}
+}
+
+// A PDInterfaceMrpDataAdjust whose entity does not start is refused and
+// changes nothing: the stored records, the role, domain, priority and
+// timers, and a running entity of the previous configuration. Before,
+// the write was refused but left the new configuration recorded and no
+// entity running.
+func TestMRPAdjustRollback(t *testing.T) {
+	dom := [16]byte{0xD0, 7}
+	d, n := mrpRingDevice(t, &MRPConfig{Role: mrp.RoleClient, Domain: dom, DomainName: "ring-a"})
+	x := newPDevPeer(t, n, d)
+	chk := pnio.PDInterfaceMrpDataCheck{Domain: dom, Check: pnio.MrpCheckDomainUUID}
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck, chk.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	read := func(idx pnio.Index) string {
+		b, err := x.read(model.SubslotInterface, idx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	snap := func() (MRPConfig, string, string, string) {
+		d.mu.Lock()
+		c := d.mrpSt.cfg
+		d.mu.Unlock()
+		return c, read(pnio.IndexPDInterfaceMrpDataAdjust), read(pnio.IndexPDInterfaceMrpDataCheck), read(pnio.IndexPDInterfaceMrpDataReal)
+	}
+	cfg0, adj0, chk0, real0 := snap()
+	var fails atomic.Int32
+	fails.Store(1)
+	d.mrpNew = func(c mrp.Config) (*mrp.Entity, error) {
+		if fails.Add(-1) >= 0 {
+			return nil, profinet.ErrInvalidConfig
+		}
+		return mrp.New(c)
+	}
+	a := pnio.PDInterfaceMrpDataAdjust{Domain: [16]byte{0xD0, 8}, Role: pnio.MrpRoleManager, DomainName: "ring-b",
+		Manager: &pnio.MrpManagerParams{Prio: 0x9000, TopChangeT: 2, TopNRmax: 3, TestShortT: 30, TestDefaultT: 50, TestNRmax: 5}}
+	wantStatus(t, x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)), pnio.RWInvalidParameter, 0)
+	cfg1, adj1, chk1, real1 := snap()
+	if cfg1 != cfg0 || adj1 != adj0 || chk1 != chk0 || real1 != real0 {
+		t.Fatalf("the refused write changed the state:\n%+v\n%+v", cfg0, cfg1)
+	}
+	if st, ok := d.MRPStatus(); !ok || st.Role != mrp.RoleClient {
+		t.Fatalf("the previous entity does not run: %+v %v", st, ok)
+	}
+	// The same write succeeds once the entity starts.
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if c, _, _, _ := snap(); c.Role != mrp.RoleManager || c.Prio != 0x9000 || c.Profile != mrp.Profile500 || c.Domain != a.Domain {
+		t.Fatalf("%+v", c)
+	}
+}
+
+// The MRP_DomainUUID check names the device's domain: an adjustment that
+// changes the domain drops it (and its diagnosis), and a Connect's PDev
+// reset keeps it, the mismatch being reported again for the new AR.
+// Before, the check stayed after a domain change and compared the
+// neighbor with a domain it did not name.
+func TestMRPCheckLifecycle(t *testing.T) {
+	dom := [16]byte{0xD0, 1}
+	other := [16]byte{0xEE, 1}
+	d, n := mrpRingDevice(t, &MRPConfig{Role: mrp.RoleClient, Domain: dom, DomainName: "ring-x", RingPorts: [2]int{1, 2}})
+	const port = model.SubslotPort1 + 1
+	var peerDom atomic.Pointer[[16]byte]
+	peerDom.Store(&other)
+	mrpNeighbor(t, n, &peerDom)
+	eventually(t, 5*time.Second, "neighbor", func() bool { nb, ok := d.ports[1].lldpA.Latest(); return ok && nb.Frame.MRPPortStatus != nil })
+	x := newPDevPeer(t, n, d)
+	chk := pnio.PDInterfaceMrpDataCheck{Domain: dom, Check: pnio.MrpCheckDomainUUID}
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck, chk.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	wait := func(what string, want ...uint16) {
+		t.Helper()
+		eventually(t, 5*time.Second, what, func() bool { return equalTypes(portMismatch(d, port), want) })
+	}
+	wait("other domain", extPeerMRPDomainMismatch)
+
+	// An IOCAR takes the ports: the check stays, the mismatch returns.
+	p := n.peer(d, "192.168.0.3", true)
+	if _, err := p.connect(p.ioCAR()); err != nil {
+		t.Fatal(err)
+	}
+	wait("mismatch after the Connect", extPeerMRPDomainMismatch)
+	if b, _ := x.read(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck); string(b) != string(chk.Append(nil)) {
+		t.Fatalf("check after the Connect: % x", b)
+	}
+
+	// The device moves to the neighbor's domain: the check of the old
+	// domain is dropped.
+	a := pnio.PDInterfaceMrpDataAdjust{Domain: other, Role: pnio.MrpRoleClient, DomainName: "ring-y"}
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := x.read(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck); len(b) != 0 {
+		t.Fatalf("check of the old domain kept: % x", b)
+	}
+	wait("check dropped")
+	// A check of the new domain applies to it.
+	chk.Domain = other
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck, chk.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(200 * time.Millisecond)
+	wait("same domain")
+	peerDom.Store(&dom)
+	wait("old domain is now the other one", extPeerMRPDomainMismatch)
+	// MRP off: the check does not apply.
+	a.Role = pnio.MrpRoleOff
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	wait("MRP off")
 }

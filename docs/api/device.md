@@ -257,7 +257,20 @@ type Device struct {
 	// resetting is set while a DCP ResetToFactory runs: Connects are
 	// refused.
 
+	// diagOwed are the diagnosis alarms of a submodule that were not
+	// delivered (alarms.go, owedDiag).
+
 	// pdPoke wakes the PDev check evaluator.
+
+	// diagSem orders the diagnosis operations (AddDiagnosis,
+	// RemoveDiagnosis): each holds it from its change of the diagnoses to
+	// its last alarm, so a controller receives the reports in the order of
+	// the changes. It is not d.mu: the alarms wait for the network.
+
+	// afterDiagChange, when set (tests), runs after a diagnosis operation
+	// changed the state and before it reports it.
+
+	// mrpNew, when set (tests), starts the MRP entity in place of mrp.New.
 
 	// dhcp are the DHCP options DCP reports; ipDHCP marks ip as set by
 	// DHCP. Both under mu.
@@ -315,6 +328,8 @@ The diagnoses of a submodule are a set. A diagnosis is identified by its channel
   - A diagnosis that differs from an active one with its identity only in those other fields (for example its maintenance severity) replaces it: one alarm reports the new one appearing, a second the old one disappearing while others remain.
 
 The diagnosis is recorded even when no AR can receive the alarm (it is then reported as an error matching profinet.ErrInvalidState); a controller that connects later reads it in the ModuleDiffBlock and the diagnosis records.
+
+Diagnosis operations are reported in the order they change the state: AddDiagnosis and RemoveDiagnosis wait, until ctx ends, for the alarms of the previous one (an error of ctx then, nothing recorded). An alarm that is not delivered while the AR lives (no or a refused AlarmAck, ctx ending) is owed: the next diagnosis operation of the submodule, an identical AddDiagnosis included, sends it first, so repeating the call retries the report.
 
 #### func (Device) Close
 
@@ -386,7 +401,7 @@ RPCAddr returns the address of the RPC server's socket.
 func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, errorType uint16) error
 ```
 
-RemoveDiagnosis removes the diagnoses of a submodule channel with the error type (every direction and extended error type) and reports the disappearance of each with an alarm: "disappears, others remain" while another diagnosis of the submodule remains, and for the last one, when none remains, "disappears" in a DiagnosisDisappears alarm. It returns an error matching profinet.ErrNotFound when there is none, and the first alarm error otherwise (the later alarms are then not sent; the diagnoses are removed either way).
+RemoveDiagnosis removes the diagnoses of a submodule channel with the error type (every direction and extended error type) and reports the disappearance of each with an alarm: "disappears, others remain" while another diagnosis of the submodule remains, and for the last one, when none remains, "disappears" in a DiagnosisDisappears alarm. It returns an error matching profinet.ErrNotFound when there is none, and the first alarm error otherwise; the diagnoses are removed either way, and the alarms not delivered are owed as for AddDiagnosis.
 
 #### func (Device) SendAlarm
 
