@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-profinet"
+	"github.com/otfabric/go-profinet/alarm"
 	"github.com/otfabric/go-profinet/pnio"
 )
 
@@ -57,6 +58,8 @@ func (d *Device) alarmData(a *ar, b []byte) {
 		a.mu.Unlock()
 		if ch != nil {
 			ch <- ack
+		} else {
+			d.log.Debugf("device: AR %s: AlarmAck %d for no outstanding alarm", a.uuid, k.seq)
 		}
 		d.handler.AlarmAck(a.info(), ack)
 	default:
@@ -103,16 +106,28 @@ func (d *Device) sendAlarm(ctx context.Context, a *ar, al Alarm, modIdent, subId
 // sendAlarmSeq sends an alarm and waits for its acknowledgement; it
 // returns the alarm's sequence number.
 //
-// One alarm of each priority is outstanding at a time, from its
-// transmission to its AlarmAck, as p-net's alarm machine sends only from
-// ALPMI W_ALARM (pf_alarm.c). The transport acknowledgement does not end
-// an alarm; its AlarmAck does, or the end of the AR, or the device's
-// AlarmAck timer (AlarmAckTimeout at least) running out, after which the
-// device takes the alarm as lost. A caller that stops waiting earlier
-// (ctx ends) does not end it: the alarm stays outstanding until one of
-// those, and the next alarm of the priority waits for that within its
-// own ctx. What a controller does with an alarm sent after the device
-// gave up on the previous AlarmAck is not established.
+// An alarm is a transaction of its priority, which carries one at a time
+// as p-net's alarm machine does (ALPMI W_ALARM to W_ACK, pf_alarm.c):
+//
+//   - Not transmitted: waiting for the priority, or for the endpoint, or
+//     its first transmission failed. ctx bounds this. The alarm ends
+//     with nothing on the wire and its AlarmSpecifier sequence number is
+//     given back, so the next alarm takes it.
+//   - Transmitted, delivery uncertain: the endpoint owns the PDU
+//     (alarm.Transfer) and retransmits it until the transport ACK.
+//   - Transport-acknowledged, AlarmAck outstanding.
+//   - Ended: the AlarmAck accepted or refused it, the transport gave up
+//     (the AR is aborted) or the AR ended.
+//
+// Once transmitted, the alarm belongs to the AR, not to the caller: when
+// ctx ends, or the caller's wait (AlarmAckTimeout at least) runs out,
+// the caller gets an error matching errAlarmOutstanding and the alarm
+// stays the outstanding one of its priority until it ends. No timer ends
+// it: p-net keeps ALPMI in W_ACK until the AlarmAck or the end of the
+// AR, and does not resend an alarm, so an alarm of the priority never
+// goes before the AlarmAck of the one before. A late AlarmAck, positive
+// or negative, ends it (awaitAlarm). An AlarmAck for no outstanding alarm
+// is reported to the handler and ignored otherwise.
 func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, subIdent uint32) (uint16, error) {
 	prio := 0
 	if al.High {
@@ -142,6 +157,14 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	ch := make(chan pnio.AlarmAck, 1)
 	a.ackWait[k] = ch
 	a.mu.Unlock()
+	// notSent ends an alarm that never reached the wire: its number is
+	// the next alarm's (sem is held, so no other alarm took one since).
+	notSent := func() {
+		a.mu.Lock()
+		delete(a.ackWait, k)
+		a.alarmSeq[prio] = seq
+		a.mu.Unlock()
+	}
 	n := pnio.AlarmNotification{
 		High: al.High, Type: al.Type, API: d.apiOf(al.Slot, al.Subslot), Slot: al.Slot, Subslot: al.Subslot,
 		ModuleIdentNumber: modIdent, SubmoduleIdentNumber: subIdent,
@@ -151,9 +174,7 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	body, err := encodeSafely(func() ([]byte, error) { return n.Append(nil), nil })
 	d.met.OnAlarm(a.ctrlName, al.Type.String(), al.High)
 	if err != nil || len(body) > int(a.maxAlarmData) {
-		a.mu.Lock()
-		delete(a.ackWait, k)
-		a.mu.Unlock()
+		notSent()
 		if err != nil {
 			return seq, fmt.Errorf("device: alarm: %w", err)
 		}
@@ -163,76 +184,108 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	if al.High {
 		ep = a.alarmHigh
 	}
-	if err := ep.Send(ctx, body); err != nil {
-		a.mu.Lock()
-		delete(a.ackWait, k)
-		a.mu.Unlock()
-		if errors.Is(err, profinet.ErrTimeout) {
-			d.goAbort(a, pnio.AbortAlarmSend, true)
-		}
-		// The AR ended (release, abort) while the transport waited for its
-		// acknowledgement: its endpoint was closed under it. Only a closed
-		// device is "closed".
-		if errors.Is(err, profinet.ErrClosed) && d.ctx.Err() == nil {
-			return seq, fmt.Errorf("device: alarm to AR %s: %w: %w", a.uuid, profinet.ErrAborted, err)
-		}
-		return seq, fmt.Errorf("device: alarm to AR %s: %w", a.uuid, err)
+	tr, err := ep.Start(ctx, body)
+	if err != nil {
+		notSent()
+		return seq, d.transportErr(a, err)
 	}
-	// The application acknowledgement comes as a DATA PDU of the
-	// controller; it has as long as the transport would retransmit, and at
-	// least AlarmAckTimeout, to arrive.
+	if d.alarmStarted != nil {
+		d.alarmStarted(al.High, seq)
+	}
+	// The caller waits as long as the transport would retransmit, and at
+	// least AlarmAckTimeout, for the AlarmAck.
 	t := time.NewTimer(max(a.alarmAckTimeout, AlarmAckTimeout))
-	defer func() {
-		if !outstanding {
-			t.Stop()
-		}
-	}()
-	select {
-	case ack, ok := <-ch:
-		if !ok {
-			return seq, fmt.Errorf("device: alarm to AR %s: %w", a.uuid, profinet.ErrAborted)
-		}
-		if !ack.Status.OK() {
-			return seq, &pnio.StatusError{Op: "alarm ack", Status: ack.Status}
-		}
-		return seq, nil
-	case <-t.C:
-		a.mu.Lock()
-		delete(a.ackWait, k)
-		a.mu.Unlock()
-		return seq, fmt.Errorf("device: alarm to AR %s: %w: no AlarmAck", a.uuid, profinet.ErrTimeout)
-	case <-ctx.Done():
-		outstanding = true
-		go d.awaitAlarmAck(a, k, ch, sem, t)
-		return seq, fmt.Errorf("device: alarm to AR %s: %w: %w", a.uuid, errAlarmOutstanding, ctx.Err())
-	}
-}
-
-// errAlarmOutstanding marks the error of an alarm the controller's
-// transport acknowledged whose AlarmAck the caller stopped waiting for:
-// it was delivered, and stays outstanding (awaitAlarmAck).
-var errAlarmOutstanding = errors.New("delivered, its AlarmAck outstanding")
-
-// awaitAlarmAck keeps an alarm whose caller stopped waiting outstanding
-// until its AlarmAck arrives (alarmData delivers it on ch), the AR ends
-// (ch closed) or the AlarmAck timer t runs out, then frees the
-// priority's sem. Close aborts every AR before it cancels d.ctx, and
-// the abort closes ch: the device closing ends the wait through ch.
-func (d *Device) awaitAlarmAck(a *ar, k ackKey, ch <-chan pnio.AlarmAck, sem <-chan struct{}, t *time.Timer) {
 	defer t.Stop()
-	select {
-	case <-ch:
-	case <-t.C:
-		a.mu.Lock()
-		delete(a.ackWait, k)
-		a.mu.Unlock()
-		d.log.Debugf("device: AR %s: no AlarmAck for alarm %d", a.uuid, k.seq)
+	trDone := tr.Done()
+	for {
+		select {
+		case <-trDone:
+			if err := tr.Err(); err != nil {
+				a.mu.Lock()
+				delete(a.ackWait, k)
+				a.mu.Unlock()
+				return seq, d.transportErr(a, err)
+			}
+			trDone = nil
+		case ack, ok := <-ch:
+			if !ok {
+				return seq, fmt.Errorf("device: alarm to AR %s: %w", a.uuid, profinet.ErrAborted)
+			}
+			if !ack.Status.OK() {
+				return seq, &pnio.StatusError{Op: "alarm ack", Status: ack.Status}
+			}
+			return seq, nil
+		case <-t.C:
+			outstanding = true
+			go d.awaitAlarm(a, k, tr, ch, sem)
+			return seq, fmt.Errorf("device: alarm to AR %s: %w: %w: no AlarmAck yet", a.uuid, errAlarmOutstanding, profinet.ErrTimeout)
+		case <-ctx.Done():
+			outstanding = true
+			go d.awaitAlarm(a, k, tr, ch, sem)
+			return seq, fmt.Errorf("device: alarm to AR %s: %w: %w", a.uuid, errAlarmOutstanding, ctx.Err())
+		}
 	}
-	<-sem
 }
 
-// AlarmAckTimeout is the shortest time the device waits for the
-// controller's AlarmAck after the transport acknowledged the alarm.
+// transportErr is the error of an alarm whose transport failed; a
+// timeout aborts the AR (the endpoint sends nothing again).
+func (d *Device) transportErr(a *ar, err error) error {
+	if errors.Is(err, profinet.ErrTimeout) {
+		d.goAbort(a, pnio.AbortAlarmSend, true)
+	}
+	// The AR ended (release, abort) while the transport waited for its
+	// acknowledgement: its endpoint was closed under it. Only a closed
+	// device is "closed".
+	if errors.Is(err, profinet.ErrClosed) && d.ctx.Err() == nil {
+		return fmt.Errorf("device: alarm to AR %s: %w: %w", a.uuid, profinet.ErrAborted, err)
+	}
+	return fmt.Errorf("device: alarm to AR %s: %w", a.uuid, err)
+}
+
+// errAlarmOutstanding marks the error of an alarm that was transmitted
+// and is not ended when its caller stops waiting: the AR owns it until
+// its AlarmAck (awaitAlarm). It is not owed: it reached the controller,
+// or its transport fails and the AR is aborted.
+var errAlarmOutstanding = errors.New("transmitted, its AlarmAck outstanding")
+
+// awaitAlarm keeps an alarm whose caller stopped waiting the outstanding
+// one of its priority until it ends: its transport fails (a timeout
+// aborts the AR), its AlarmAck arrives (alarmData delivers it on ch) or
+// the AR ends (ch closed; Close aborts every AR first). Then it frees the
+// priority's sem. One runs per priority of an AR at most, since it holds
+// sem.
+func (d *Device) awaitAlarm(a *ar, k ackKey, tr *alarm.Transfer, ch <-chan pnio.AlarmAck, sem <-chan struct{}) {
+	defer func() { <-sem }()
+	trDone := tr.Done()
+	for {
+		select {
+		case <-trDone:
+			if err := tr.Err(); err != nil {
+				a.mu.Lock()
+				delete(a.ackWait, k)
+				a.mu.Unlock()
+				d.log.Infof("device: AR %s: alarm %d: %v", a.uuid, k.seq, d.transportErr(a, err))
+				return
+			}
+			trDone = nil
+		case ack, ok := <-ch:
+			switch {
+			case !ok:
+			case ack.Status.OK():
+				d.log.Debugf("device: AR %s: late AlarmAck for alarm %d", a.uuid, k.seq)
+			default:
+				// p-net does not resend a refused alarm either.
+				d.log.Infof("device: AR %s: alarm %d refused by a late AlarmAck: %v", a.uuid, k.seq, ack.Status)
+			}
+			return
+		}
+	}
+}
+
+// AlarmAckTimeout is the shortest time a caller of SendAlarm or of a
+// diagnosis call waits for the controller's AlarmAck. It does not end
+// the alarm: an alarm without AlarmAck stays outstanding until the AR
+// ends.
 const AlarmAckTimeout = 5 * time.Second
 
 // AddDiagnosis records a diagnosis of a submodule and reports it to the

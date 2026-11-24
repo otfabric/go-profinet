@@ -503,22 +503,31 @@ func TestAlarms(t *testing.T) {
 	if err := d.SendAlarm(ctx, Alarm{Type: pnio.AlarmProcess, Slot: 3, Subslot: 1, HasItem: true, USI: 1, Data: make([]byte, 300)}); !errors.Is(err, profinet.ErrInvalidConfig) {
 		t.Fatalf("err %v", err)
 	}
-	// No acknowledgement: the caller's context, then the device's timer.
+	// No acknowledgement: the caller's context ends, and the alarm stays
+	// outstanding; no timer ends it (as p-net keeps ALPMI in W_ACK). The
+	// next alarm of the priority waits for it and, its own context ending
+	// first, is never sent.
 	mode.Store(2)
 	cctx, cancel := context.WithTimeout(ctx, 200*time.Millisecond)
-	if err := d.SendAlarm(cctx, al); !errors.Is(err, context.DeadlineExceeded) {
+	if err := d.SendAlarm(cctx, al); !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, errAlarmOutstanding) {
 		t.Fatalf("err %v", err)
 	}
 	cancel()
 	<-got
-	if err := d.SendAlarm(ctx, al); !errors.Is(err, profinet.ErrTimeout) {
+	cctx, cancel = context.WithTimeout(ctx, 200*time.Millisecond)
+	if err := d.SendAlarm(cctx, al); !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errAlarmOutstanding) {
 		t.Fatalf("err %v", err)
 	}
-	<-got
-	// The AR is aborted while an alarm waits for its acknowledgement.
+	cancel()
+	select {
+	case an := <-got:
+		t.Fatalf("an alarm went before the AlarmAck of the one before: %+v", an)
+	case <-time.After(100 * time.Millisecond):
+	}
+	// The AR is aborted while an alarm waits for the outstanding one.
 	done := make(chan error, 1)
 	go func() { done <- d.SendAlarm(ctx, al) }()
-	<-got
+	time.Sleep(50 * time.Millisecond)
 	if err := p.release(req); err != nil {
 		t.Fatal(err)
 	}
