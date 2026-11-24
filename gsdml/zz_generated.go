@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSHA256 is the SHA-256 of the catalog the types were generated from.
-const CatalogSHA256 = "5a68f204067e91dddff48c32d4fe0fc0ba066755fdfa3fb36d705b1aa59a7f2d"
+const CatalogSHA256 = "403a5303257dcfcc3e33c0621b190c807e8dbdc40623d57671de3d9c895676ba"
 
 // Namespace is the XML namespace of GSDML documents.
 const Namespace = "http://www.profibus.com/GSDML/2003/11/DeviceProfile"
@@ -830,7 +830,9 @@ type DeviceAccessPointItem struct {
 	// WebServer is the attribute WebServer (string).
 	WebServer string `xml:"WebServer,attr,omitempty"`
 	// AutoConfigurationSupported is the attribute AutoConfigurationSupported (Boolean).
-	AutoConfigurationSupported string                      `xml:"AutoConfigurationSupported,attr,omitempty"`
+	AutoConfigurationSupported string `xml:"AutoConfigurationSupported,attr,omitempty"`
+	// PhysicalSubslots is the attribute PhysicalSubslots (ValueList).
+	PhysicalSubslots           string                      `xml:"PhysicalSubslots,attr,omitempty"`
 	ModuleInfo                 *ModuleInfo                 `xml:"ModuleInfo"`
 	CertificationInfo          *CertificationInfo          `xml:"CertificationInfo"`
 	SubslotList                *SubslotList                `xml:"SubslotList"`
@@ -852,7 +854,7 @@ type DeviceAccessPointItem struct {
 }
 
 // trackedDeviceAccessPointItem lists the attributes of DeviceAccessPointItem whose emptiness parsing records.
-var trackedDeviceAccessPointItem = []trackedAttr{{"RequiredSchemaVersion", "Version"}, {"ImplementationType", "token"}, {"MultipleWriteSupported", "Boolean"}, {"LLDP_NoD_Supported", "Boolean"}, {"ResetToFactoryModes", "ValueList"}, {"SharedDeviceSupported", "Boolean"}, {"SharedInputSupported", "Boolean"}, {"NumberOfDeviceAccessAR", "Unsigned16"}, {"PrmBeginPrmEndSequenceSupported", "Boolean"}, {"AddressAssignment", "TokenList"}, {"PowerOnToCommReady", "Unsigned32"}, {"MaxSupportedRecordSize", "Unsigned32"}, {"AutoConfigurationSupported", "Boolean"}}
+var trackedDeviceAccessPointItem = []trackedAttr{{"RequiredSchemaVersion", "Version"}, {"ImplementationType", "token"}, {"MultipleWriteSupported", "Boolean"}, {"LLDP_NoD_Supported", "Boolean"}, {"ResetToFactoryModes", "ValueList"}, {"SharedDeviceSupported", "Boolean"}, {"SharedInputSupported", "Boolean"}, {"NumberOfDeviceAccessAR", "Unsigned16"}, {"PrmBeginPrmEndSequenceSupported", "Boolean"}, {"AddressAssignment", "TokenList"}, {"PowerOnToCommReady", "Unsigned32"}, {"MaxSupportedRecordSize", "Unsigned32"}, {"AutoConfigurationSupported", "Boolean"}, {"PhysicalSubslots", "ValueList"}}
 
 // UnmarshalXML decodes a DeviceAccessPointItem and records which of its typed optional
 // attributes are present but empty.
@@ -892,6 +894,7 @@ func (x *DeviceAccessPointItem) validate(v *validator) {
 	v.attr("MaxSupportedRecordSize", x.MaxSupportedRecordSize, "Unsigned32", false)
 	v.attr("WebServer", x.WebServer, "string", false)
 	v.attr("AutoConfigurationSupported", x.AutoConfigurationSupported, "Boolean", false)
+	v.attr("PhysicalSubslots", x.PhysicalSubslots, "ValueList", false)
 	v.emptyAttrs(x.empty, trackedDeviceAccessPointItem)
 	if x.ModuleInfo == nil {
 		v.missing("ModuleInfo")
@@ -1467,10 +1470,11 @@ func (x *VirtualSubmoduleItem) validate(v *validator) {
 	v.unknown(x.Unknown)
 }
 
-// SubmoduleList is the GSDML element SubmoduleList.
+// SubmoduleList is the GSDML element SubmoduleList: the submodules the UseableSubmodules of a DAP or module refer to: SubmoduleItem and PortSubmoduleItem, in any order and at least one (Check reports an empty list).
 type SubmoduleList struct {
-	XMLName        xml.Name         `xml:"SubmoduleList"`
-	SubmoduleItems []*SubmoduleItem `xml:"SubmoduleItem"`
+	XMLName            xml.Name             `xml:"SubmoduleList"`
+	SubmoduleItems     []*SubmoduleItem     `xml:"SubmoduleItem"`
+	PortSubmoduleItems []*PortSubmoduleItem `xml:"PortSubmoduleItem"`
 	// Attrs holds the attributes the catalog does not define, preserved
 	// as they were read.
 	Attrs []xml.Attr `xml:",any,attr"`
@@ -1485,10 +1489,10 @@ func (x *SubmoduleList) validate(v *validator) {
 	}
 	v.push("SubmoduleList")
 	defer v.pop()
-	if len(x.SubmoduleItems) == 0 {
-		v.missing("SubmoduleItem")
-	}
 	for _, c := range x.SubmoduleItems {
+		c.validate(v)
+	}
+	for _, c := range x.PortSubmoduleItems {
 		c.validate(v)
 	}
 	v.unknownAttrs(x.Attrs)
@@ -2563,13 +2567,13 @@ func (x *MediaRedundancy) validate(v *validator) {
 	v.unknown(x.Unknown)
 }
 
-// PortSubmoduleItem is the GSDML element PortSubmoduleItem: a port submodule (subslot 0x8001 and up).
+// PortSubmoduleItem is the GSDML element PortSubmoduleItem: a port submodule (subslot 0x8001 and up): built in (SystemDefinedSubmoduleList, with its SubslotNumber) or configurable (SubmoduleList, without one; a SubmoduleItemRef places it). Check reports a SubslotNumber missing or present against that.
 type PortSubmoduleItem struct {
 	XMLName xml.Name `xml:"PortSubmoduleItem"`
 	// ID is the attribute ID (ID, required).
 	ID string `xml:"ID,attr"`
-	// SubslotNumber is the attribute SubslotNumber (Unsigned16, required).
-	SubslotNumber string `xml:"SubslotNumber,attr"`
+	// SubslotNumber is the attribute SubslotNumber (Unsigned16).
+	SubslotNumber string `xml:"SubslotNumber,attr,omitempty"`
 	// TextID is the attribute TextId (IDRef, required).
 	TextID string `xml:"TextId,attr"`
 	// SubmoduleIdentNumber is the attribute SubmoduleIdentNumber (Unsigned32Hex, required).
@@ -2605,7 +2609,7 @@ type PortSubmoduleItem struct {
 }
 
 // trackedPortSubmoduleItem lists the attributes of PortSubmoduleItem whose emptiness parsing records.
-var trackedPortSubmoduleItem = []trackedAttr{{"MaxPortTxDelay", "Unsigned16"}, {"MaxPortRxDelay", "Unsigned16"}, {"PortDeactivationSupported", "Boolean"}, {"LinkStateDiagnosisCapability", "TokenList"}, {"IsDefaultRingport", "Boolean"}, {"SupportsRingportConfig", "Boolean"}, {"CheckMAUTypeSupported", "Boolean"}, {"Writeable_IM_Records", "ValueList"}, {"ShortPreamble100MBitSupported", "Boolean"}}
+var trackedPortSubmoduleItem = []trackedAttr{{"SubslotNumber", "Unsigned16"}, {"MaxPortTxDelay", "Unsigned16"}, {"MaxPortRxDelay", "Unsigned16"}, {"PortDeactivationSupported", "Boolean"}, {"LinkStateDiagnosisCapability", "TokenList"}, {"IsDefaultRingport", "Boolean"}, {"SupportsRingportConfig", "Boolean"}, {"CheckMAUTypeSupported", "Boolean"}, {"Writeable_IM_Records", "ValueList"}, {"ShortPreamble100MBitSupported", "Boolean"}}
 
 // UnmarshalXML decodes a PortSubmoduleItem and records which of its typed optional
 // attributes are present but empty.
@@ -2621,7 +2625,7 @@ func (x *PortSubmoduleItem) validate(v *validator) {
 	v.push("PortSubmoduleItem")
 	defer v.pop()
 	v.attr("ID", x.ID, "ID", true)
-	v.attr("SubslotNumber", x.SubslotNumber, "Unsigned16", true)
+	v.attr("SubslotNumber", x.SubslotNumber, "Unsigned16", false)
 	v.attr("TextId", x.TextID, "IDRef", true)
 	v.attr("SubmoduleIdentNumber", x.SubmoduleIdentNumber, "Unsigned32Hex", true)
 	v.attr("MaxPortTxDelay", x.MaxPortTxDelay, "Unsigned16", false)

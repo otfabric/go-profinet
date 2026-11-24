@@ -26,6 +26,114 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.24.0
+
+**Date:** 2026-11-24
+**Previous release:** v0.23.0
+
+## Summary
+
+Configurable GSDML submodules can be configured and resolved:
+`gsdml.NewConfiguration` makes the default configuration of a device
+access point, `Plug`, `Select` and `ClearSubslot` choose modules and the
+configurable submodule of each subslot, and `Resolve` returns a validated
+`model.Device` with the right APIs, subslots, IO lengths and parameter
+defaults. `ToModel` is unchanged: it stays the configuration without
+choices and still refuses one that needs configurable submodules.
+
+## Changes
+
+### Added
+
+- **`gsdml.Configuration`** (`gsdml/config.go`):
+  - `NewConfiguration(doc, dapID) (*Configuration, error)`: the default
+    configuration, the modules `ToModel` plugs and each configurable
+    submodule in the subslots it is fixed in, else used in.
+  - Inspection: `DAP() []SubmoduleOption`, `Modules() []ModuleOption`,
+    `Module(slot) (string, bool)`, `Slots() []uint16`;
+    `SubmoduleOption.Allows(subslot) bool`.
+  - Choices: `Plug(slot, moduleID)`, `PlugIdent(slot, ident)`,
+    `Unplug(slot)`, `Select(slot, subslot, submoduleID)` (slot 0 is the
+    DAP), `ClearSubslot(slot, subslot)`.
+  - `Resolve() (*model.Device, error)`: the model, checked by
+    `model.Device.Validate`. Without configurable submodules it is
+    `ToModel`'s model.
+  - `SubmoduleOption`: a configurable submodule (`SubmoduleItem` or
+    `PortSubmoduleItem` of the `SubmoduleList`) with its converted
+    `model.Submodule`, its reference's subslot attributes, its default
+    subslots and why it cannot be placed (`Err`). `ModuleOption`: a module
+    reference with its module, slot attributes, `PhysicalSubslots`,
+    configurable submodules and `Err`.
+  - The rules: fixed submodules cannot be cleared, replaced or moved; used
+    ones are the default, replaceable within `AllowedInSubslots` (without
+    it, where fixed or used) and removable; `PhysicalSubslots` bound the
+    configurable subslots; a subslot several references use by default
+    needs a choice; a module fixed in a slot cannot be unplugged or
+    replaced; each plugged module has its own choices; a module or
+    submodule referenced more than once is placed by the reference that
+    applies to the slot or subslot (fixes, else uses, else first allows
+    it), without combining the references' attributes. The reading mirrors
+    `ToModel`'s for slots and is not checked against PI's specification or
+    an engineering tool (LIMITATIONS.md). Errors: ERRORS.md, GSDML
+    configurations.
+- **Catalog** (`gsdml/schema/catalog.json`, generated types):
+  `SubmoduleList.PortSubmoduleItems`, `DeviceAccessPointItem.PhysicalSubslots`.
+- **`gsdmlcorpus`**: per DAP a `config` object (the default
+  configuration's outcome, with `invalid_config` for a needed choice; the
+  configurable submodules and ports it plugs and has in its catalog;
+  whether it is `ToModel`'s plugged configuration; the outcome of
+  `PlanParameters` with Defaults on it), their totals in the summary's
+  fidelity and a section in the matrix.
+
+### Changed
+
+- **`gsdml.SubmoduleParameters`** describes the records of a configurable
+  submodule (a `SubmoduleItem` a reference of the DAP or module names)
+  after the virtual ones, where it returned `ErrNotFound`.
+- **`gsdml.PlanParameters`** plans the records of a resolved model's
+  configurable submodules, refusing one in a subslot its reference does not
+  allow or outside the `PhysicalSubslots` (`ErrInvalidConfig`), and skips a
+  configurable port of the DAP as it skips a built-in one.
+- **Validation of the `SubmoduleList`**: a `PortSubmoduleItem` there is
+  validated (it was kept as unknown content); `PortSubmoduleItem`
+  `SubslotNumber` is optional in the catalog, and `Check` reports, as
+  structure errors, one missing on a built-in port (as before), one given
+  on a port of the `SubmoduleList` and a `SubmoduleList` without items,
+  as the reference schemas state.
+
+### Breaking
+
+- `gsdml.CatalogSHA256` has a new value, because the catalog changed
+  (`SubmoduleList.PortSubmoduleItems`, `DeviceAccessPointItem`
+  `PhysicalSubslots`, `PortSubmoduleItem` `SubslotNumber` optional). It is
+  the only API change gorelease reports as incompatible (`-base=v0.23.0
+  -version=v0.24.0`: valid).
+- Behaviour: `SubmoduleParameters` returns the records of a configurable
+  submodule where it returned `ErrNotFound`; `Check` reports a port with
+  `SubslotNumber` in the `SubmoduleList` and an empty `SubmoduleList` as
+  structure errors.
+
+Consumer assessment: no direct consumer (profinetctl, profinet-interop's
+`own/go-profinet`) reads `CatalogSHA256`. profinetctl calls `Check` and
+`PlanParameters`; its test suite passes against this change. A document
+with the new structure errors gets them in `profinetctl gsdml check`.
+
+### Evidence
+
+On the local corpus of 249 public GSDML files (779 device access points)
+the default configuration resolves for 778: all 68 that `ToModel` refuses
+for a configurable submodule (plugging 347 configurable submodules, 45 of
+them ports), and 710 of the 711 it converts, each to `ToModel`'s plugged
+configuration; the other one's `ToModel` model fails
+`model.Device.Validate`, which `Resolve` applies. 238 of the converted DAPs
+gain the catalog modules `ToModel` left out. That result stays local, like
+the corpus. An e2e test connects a go-profinet controller and device built
+from resolved models: two slots of one module with different submodules,
+records of a configurable submodule planned, written and read back, and a
+two-port device whose second port is configurable.
+
+---
+
 ## v0.23.0
 
 **Date:** 2026-11-24

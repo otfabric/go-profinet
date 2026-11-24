@@ -122,15 +122,25 @@ const maxAllowedValues = 4096
 // submodule with ident number submoduleIdent of the device access point
 // dapID (the first one when empty), when moduleIdent is the DAP's
 // ModuleIdentNumber, or of the module with that ident number that the DAP
-// can use. These are the submodules and records ToModel converts.
+// can use. These are the submodules and records ToModel converts and,
+// after them, the configurable submodules (a SubmoduleItem of the
+// SubmoduleList the DAP's or module's UseableSubmodules name) that
+// Configuration.Resolve converts.
 //
 // It returns an error matching profinet.ErrNotFound when the DAP, the
 // module or the submodule does not exist, and profinet.ErrMalformed for a
 // record ToModel refuses as malformed. A field without a verified encoding
 // is not an error: it is not Encodable, and its record has no Default.
 func SubmoduleParameters(doc *Document, dapID string, moduleIdent, submoduleIdent uint32) ([]ParameterRecord, error) {
+	recs, _, err := submoduleParameters(doc, dapID, moduleIdent, submoduleIdent)
+	return recs, err
+}
+
+// submoduleParameters is SubmoduleParameters, with the owner's reference
+// when the submodule is a configurable one (nil for a virtual one).
+func submoduleParameters(doc *Document, dapID string, moduleIdent, submoduleIdent uint32) ([]ParameterRecord, *configurableRef, error) {
 	if doc.ProfileBody == nil || doc.ProfileBody.ApplicationProcess == nil || doc.ProfileBody.ApplicationProcess.DeviceAccessPointList == nil {
-		return nil, fmt.Errorf("gsdml: %w: no device access point", profinet.ErrMalformed)
+		return nil, nil, fmt.Errorf("gsdml: %w: no device access point", profinet.ErrMalformed)
 	}
 	ap := doc.ProfileBody.ApplicationProcess
 	var dap *DeviceAccessPointItem
@@ -141,36 +151,92 @@ func SubmoduleParameters(doc *Document, dapID string, moduleIdent, submoduleIden
 		}
 	}
 	if dap == nil {
-		return nil, fmt.Errorf("gsdml: device access point %q: %w", dapID, profinet.ErrNotFound)
+		return nil, nil, fmt.Errorf("gsdml: device access point %q: %w", dapID, profinet.ErrNotFound)
 	}
 	var subs *VirtualSubmoduleList
+	var us *UseableSubmodules
+	var physical string
 	if id, err := ParseUint32(dap.ModuleIdentNumber); err == nil && id == moduleIdent {
-		subs = dap.VirtualSubmoduleList
+		subs, us, physical = dap.VirtualSubmoduleList, dap.UseableSubmodules, dap.PhysicalSubslots
 	} else if mi := useableModule(ap, dap, moduleIdent); mi != nil {
-		subs = mi.VirtualSubmoduleList
+		subs, us, physical = mi.VirtualSubmoduleList, mi.UseableSubmodules, mi.PhysicalSubslots
 	} else {
-		return nil, fmt.Errorf("gsdml: device access point %s: module 0x%08X: %w", clip(dap.ID), moduleIdent, profinet.ErrNotFound)
+		return nil, nil, fmt.Errorf("gsdml: device access point %s: module 0x%08X: %w", clip(dap.ID), moduleIdent, profinet.ErrNotFound)
 	}
+	c := newConv(doc)
 	if subs != nil {
 		for _, vs := range subs.VirtualSubmoduleItems {
 			if id, err := ParseUint32(vs.SubmoduleIdentNumber); err != nil || id != submoduleIdent {
 				continue
 			}
-			c := newConv(doc)
-			out := []ParameterRecord{}
-			if rl := vs.RecordDataList; rl != nil {
-				for _, r := range rl.ParameterRecordDataItems {
-					pr, err := c.parameterRecord(r)
-					if err != nil {
-						return nil, fmt.Errorf("submodule %s: %w", clip(vs.ID), err)
-					}
-					out = append(out, pr)
-				}
-			}
-			return out, nil
+			recs, err := c.parameterRecords(vs.ID, vs.RecordDataList)
+			return recs, nil, err
 		}
 	}
-	return nil, fmt.Errorf("gsdml: module 0x%08X: submodule 0x%08X: %w", moduleIdent, submoduleIdent, profinet.ErrNotFound)
+	if ref, it := configurable(ap, us, submoduleIdent); it != nil {
+		recs, err := c.parameterRecords(it.ID, it.RecordDataList)
+		return recs, &configurableRef{ref: ref, physical: physical}, err
+	}
+	return nil, nil, fmt.Errorf("gsdml: module 0x%08X: submodule 0x%08X: %w", moduleIdent, submoduleIdent, profinet.ErrNotFound)
+}
+
+// configurableRef is the reference of a configurable submodule, with the
+// PhysicalSubslots of its DAP or module.
+type configurableRef struct {
+	ref      *SubmoduleItemRef
+	physical string
+}
+
+// configurable returns the first SubmoduleItem of the SubmoduleList with
+// ident number ident that a reference of us names, and the reference.
+func configurable(ap *ApplicationProcess, us *UseableSubmodules, ident uint32) (*SubmoduleItemRef, *SubmoduleItem) {
+	if us == nil || ap.SubmoduleList == nil {
+		return nil, nil
+	}
+	items := submoduleItems(ap)
+	for _, ref := range us.SubmoduleItemRefs {
+		it := items[collapseSpace(ref.SubmoduleItemTarget)]
+		if it.sub == nil {
+			continue
+		}
+		if id, err := ParseUint32(it.sub.SubmoduleIdentNumber); err == nil && id == ident {
+			return ref, it.sub
+		}
+	}
+	return nil, nil
+}
+
+// configurablePort reports whether a reference of us names a
+// PortSubmoduleItem of the SubmoduleList with ident number ident.
+func configurablePort(ap *ApplicationProcess, us *UseableSubmodules, ident uint32) bool {
+	if us == nil || ap.SubmoduleList == nil {
+		return false
+	}
+	items := submoduleItems(ap)
+	for _, ref := range us.SubmoduleItemRefs {
+		if it := items[collapseSpace(ref.SubmoduleItemTarget)]; it.port != nil {
+			if id, err := ParseUint32(it.port.SubmoduleIdentNumber); err == nil && id == ident {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parameterRecords describes the records of a RecordDataList of the
+// submodule id.
+func (c *conv) parameterRecords(id string, rl *RecordDataList) ([]ParameterRecord, error) {
+	out := []ParameterRecord{}
+	if rl != nil {
+		for _, r := range rl.ParameterRecordDataItems {
+			pr, err := c.parameterRecord(r)
+			if err != nil {
+				return nil, fmt.Errorf("submodule %s: %w", clip(id), err)
+			}
+			out = append(out, pr)
+		}
+	}
+	return out, nil
 }
 
 // useableModule returns the module with ident number ident among those the

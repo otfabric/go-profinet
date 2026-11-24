@@ -164,6 +164,7 @@ A device access point: the head module in slot 0 with the interface and its capa
 | `MaxSupportedRecordSize` | `Unsigned32` |  |
 | `WebServer` | `string` |  |
 | `AutoConfigurationSupported` | `Boolean` |  |
+| `PhysicalSubslots` | `ValueList` |  |
 
 Children: [ModuleInfo](#moduleinfo), [CertificationInfo](#certificationinfo)?, [SubslotList](#subslotlist)?, [IOConfigData](#ioconfigdata), [UseableModules](#useablemodules)?, [VirtualSubmoduleList](#virtualsubmodulelist), [SystemDefinedSubmoduleList](#systemdefinedsubmodulelist)?, [Graphics](#graphics)?, [UseableSubmodules](#useablesubmodules)?
 
@@ -277,7 +278,9 @@ Children: [IOData](#iodata), [RecordDataList](#recorddatalist)?, [ModuleInfo](#m
 
 ### SubmoduleList
 
-Children: [SubmoduleItem](#submoduleitem)+
+The submodules the UseableSubmodules of a DAP or module refer to: SubmoduleItem and PortSubmoduleItem, in any order and at least one (Check reports an empty list).
+
+Children: [SubmoduleItem](#submoduleitem)*, [PortSubmoduleItem](#portsubmoduleitem)*
 
 ### SubmoduleItem
 
@@ -495,12 +498,12 @@ Children: [TimingProperties](#timingproperties)?, [RT_Class3TimingProperties](#r
 
 ### PortSubmoduleItem
 
-A port submodule (subslot 0x8001 and up).
+A port submodule (subslot 0x8001 and up): built in (SystemDefinedSubmoduleList, with its SubslotNumber) or configurable (SubmoduleList, without one; a SubmoduleItemRef places it). Check reports a SubslotNumber missing or present against that.
 
 | Attribute | Type | |
 |-----------|------|---|
 | `ID` | `ID` | **required** |
-| `SubslotNumber` | `Unsigned16` | **required** |
+| `SubslotNumber` | `Unsigned16` |  |
 | `TextId` | `IDRef` | **required** |
 | `SubmoduleIdentNumber` | `Unsigned32Hex` | **required** |
 | `MaxPortTxDelay` | `Unsigned16` |  |

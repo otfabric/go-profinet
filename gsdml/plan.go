@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/model"
@@ -105,9 +106,12 @@ const (
 //     DAP (ModuleIdentNumber).
 //   - Every plugged module must be one the DAP can use, in a slot of the
 //     DAP's PhysicalSlots and of the module's AllowedInSlots, and every
-//     plugged submodule must be in the file. The DAP's interface and port
-//     submodules have no parameter records here: their PDev records are
-//     the controller's (PeerChecks, MRP).
+//     plugged submodule must be in the file: a virtual submodule, or a
+//     configurable one (Configuration.Resolve) in a subslot its reference
+//     allows and within the PhysicalSubslots of its DAP or module. The
+//     DAP's interface and port submodules, built in or configurable, have
+//     no parameter records here: their PDev records are the controller's
+//     (PeerChecks, MRP).
 //   - Values may set only fields that are Changeable (Table D.31), each
 //     once: an ID and a name of one field are refused, rather than one of
 //     them winning by map order.
@@ -175,19 +179,25 @@ func PlanParameters(doc *Document, m *model.Device, opts PlanOptions) (*Paramete
 				return
 			}
 		}
-		if p.Slot == 0 && systemDefined(dap, p.Submodule.IdentNumber) {
-			// An interface or a port: no ParameterRecordDataItem in the
-			// file (ToModel converts none); its PDev records are the
-			// controller's (PeerChecks, MRP).
+		if p.Slot == 0 && (systemDefined(dap, p.Submodule.IdentNumber) || configurablePort(ap, dap.UseableSubmodules, p.Submodule.IdentNumber)) {
+			// An interface or a port, built in or configurable: no
+			// ParameterRecordDataItem here (neither ToModel nor
+			// Configuration.Resolve converts one); its PDev records are
+			// the controller's (PeerChecks, MRP).
 			return
 		}
-		recs, err := SubmoduleParameters(doc, dap.ID, p.ModuleIdent, p.Submodule.IdentNumber)
+		recs, cref, err := submoduleParameters(doc, dap.ID, p.ModuleIdent, p.Submodule.IdentNumber)
 		if err != nil {
 			if errors.Is(err, profinet.ErrNotFound) {
 				err = fmt.Errorf("%w: %s: the model does not match the file: %w", profinet.ErrInvalidConfig, pos, err)
 			}
 			planErr = err
 			return
+		}
+		if cref != nil {
+			if planErr = configurableSubslot(pos, cref, p.Submodule.Subslot); planErr != nil {
+				return
+			}
 		}
 		ws, issues, err := planSubmodule(p, pos, recs, values, opts)
 		plan.Issues = append(plan.Issues, issues...)
@@ -207,6 +217,27 @@ func PlanParameters(doc *Document, m *model.Device, opts PlanOptions) (*Paramete
 	}
 	plan.Writes = append(plan.Writes, writes...)
 	return plan, nil
+}
+
+// configurableSubslot checks the subslot of a plugged configurable
+// submodule against its reference, as Configuration.Select does: its
+// AllowedInSubslots (without them, its FixedInSubslots and
+// UsedInSubslots) and the PhysicalSubslots of its DAP or module.
+func configurableSubslot(pos string, cref *configurableRef, subslot uint16) error {
+	r := cref.ref
+	allowed := r.AllowedInSubslots
+	if allowed == "" {
+		allowed = strings.TrimSpace(r.FixedInSubslots + " " + r.UsedInSubslots)
+	}
+	if l, err := parseRanges(allowed); err != nil || !inList(l, uint32(subslot)) {
+		return fmt.Errorf("gsdml: %w: %s: configurable submodule %s is not allowed in subslot %d (%q)", profinet.ErrInvalidConfig, pos, clip(r.SubmoduleItemTarget), subslot, clip(allowed))
+	}
+	if cref.physical != "" {
+		if l, err := parseRanges(cref.physical); err != nil || !inList(l, uint32(subslot)) {
+			return fmt.Errorf("gsdml: %w: %s: subslot %d is not among the PhysicalSubslots %q", profinet.ErrInvalidConfig, pos, subslot, clip(cref.physical))
+		}
+	}
+	return nil
 }
 
 // sameDevice checks that the model is of the file's device: the same

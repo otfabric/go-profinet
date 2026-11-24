@@ -167,7 +167,9 @@ Changeable or two for one field (its ID and its name), a written record with a `
 error, or TransferSequence values of a submodule that are not 1 to N
 (`ErrInvalidConfig`, with the plan's issues and no writes), a DAP the file
 does not have (`ErrNotFound`), and values for a record with a field
-without a verified encoding (`ErrUnsupported`); a
+without a verified encoding (`ErrUnsupported`); for a configurable
+submodule, a subslot its reference does not allow or outside the
+`PhysicalSubslots` of its DAP or module (`ErrInvalidConfig`); a
 PDRealData record whose MultipleBlockHeaders nest more than four deep. The same element, size and depth bounds (256 levels) apply to
 `typed.ParseNode` and everything in `gsdml/typed` that reads a document;
 there, a document that is not namespace-well-formed (an undeclared
@@ -183,7 +185,8 @@ verified DefaultValue encoding, such as `Integer16_S`, `TimeStamp` or `N2`
 configurable submodule (`UseableSubmodules`) the DAP or a module it plugs
 puts in a subslot, `FixedInSubslots` or `UsedInSubslots`
 (`gsdml.ToModel`; a module only in the catalog is left out of `Catalog`
-instead, and `gsdml.AnalyzeModels` reports both); a parameter record of no octets in a
+instead, and `gsdml.AnalyzeModels` reports both; `gsdml.Configuration`
+resolves them, below); a parameter record of no octets in a
 model generated for PNIO_Version V2.31 or later, whose schemas require a
 `Const` or a `Ref` in every `ParameterRecordDataItem` (`gsdml.FromModel`).
 
@@ -192,6 +195,43 @@ given a length that does not fit, they panic with an error matching
 `ErrInvalidConfig`, as `strings.Repeat` does on misuse. controller and
 device validate or recover at their boundary, so neither configuration nor
 a peer reaches that panic through them.
+
+## GSDML configurations
+
+`gsdml.NewConfiguration` returns what `ToModel` returns for the DAP and the
+modules it can use (`ErrNotFound` for a DAP the document does not have,
+`ErrMalformed`, `ErrResourceExhausted` beyond `MaxModelRecordOctets`),
+except that configurable submodules are not refused; a reference whose
+subslot attributes are not ValueLists of subslot numbers 1 to 65535, a
+`PhysicalSubslots` that is not a ValueList, more than 1440 references in
+one `UseableSubmodules`, and configurable submodules of the DAP whose
+default subslots collide with each other or with its built-in submodules
+or lie outside its `PhysicalSubslots` are `ErrMalformed`. A configurable
+submodule that cannot be placed is not an error there: its
+`SubmoduleOption.Err` says why (`ErrMalformed` for a reference to no item
+of the `SubmoduleList` or an item that does not convert, `ErrUnsupported`
+for a DAP submodule of an API other than 0 or a port of a module); so is a
+module whose configurable submodules collide by default
+(`ModuleOption.Err`, `ErrMalformed`; `ErrResourceExhausted` for more than
+65536 default subslots).
+
+Choices that do not fit the file are `ErrInvalidConfig` and leave the
+configuration unchanged: `Plug` and `PlugIdent` for a module the DAP cannot
+use, two modules of one ident (by ident), slot 0 or above 0x7FFF, a slot
+outside `PhysicalSlots` or the reference's `AllowedInSlots`, a slot whose
+module is fixed there, and a module with a `ModuleOption.Err` (which the
+error also matches); `Unplug` for an empty slot or a fixed module; `Select`
+and `ClearSubslot` for a slot without a module, a submodule the module's
+`UseableSubmodules` do not name, subslot 0, the subslot of a virtual or
+system-defined submodule, a subslot another submodule is fixed in, a
+subslot the submodule is not allowed in or outside the `PhysicalSubslots`;
+`Select` returns the option's `Err` for one that cannot be placed.
+`Resolve` returns `ErrInvalidConfig` for a subslot several submodules are
+used in by default that no `Select` or `ClearSubslot` decided (naming
+them), for a module or DAP with more than 1440 submodules and for a model
+`model.Device.Validate` refuses; the `Err` of a placed submodule or of a
+plugged module; and `ErrResourceExhausted` for parameter records of more
+than 16 MiB in the plugged submodules.
 
 ## Lifecycle errors
 

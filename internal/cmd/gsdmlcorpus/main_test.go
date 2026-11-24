@@ -362,3 +362,72 @@ func TestConfigurableSubmodules(t *testing.T) {
 		t.Fatal(md)
 	}
 }
+
+// The default configuration of each DAP is resolved and compared with
+// ToModel's model: a DAP ToModel refuses for a configurable submodule
+// resolves when the file has the submodule, a converted one resolves to
+// ToModel's plugged configuration and gains the catalog module ToModel
+// left out, and a reference to no submodule does not resolve.
+func TestDefaultConfiguration(t *testing.T) {
+	t.Parallel()
+	list := `</ModuleList><SubmoduleList><SubmoduleItem ID="D" SubmoduleIdentNumber="0x00000061" MayIssueProcessAlarm="false"><IOData/><ModuleInfo><Name TextId="T_AI4"/><InfoText TextId="T_AI4"/></ModuleInfo></SubmoduleItem>` +
+		`<PortSubmoduleItem ID="P" TextId="T_P2" SubmoduleIdentNumber="0x00008002"/></SubmoduleList>`
+	dio8 := "</VirtualSubmoduleList>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\""
+	cat := analyze(fixture(t, modular, "</ModuleList>", list, dio8,
+		"</VirtualSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"D\" UsedInSubslots=\"2\"/></UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\"",
+		"</SystemDefinedSubmoduleList>", "</SystemDefinedSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"P\" UsedInSubslots=\"32770\"/></UseableSubmodules>"))
+	// DAP_1P: refused for its port, resolves with it; MOD_DIO8 is in its
+	// resolved catalog with D.
+	if d := cat.DAPs[0]; d.Outcome != gsdml.OutcomeUnsupported || d.Config.Outcome != gsdml.OutcomeConverted || d.Config.Submodules != 1 || d.Config.Ports != 1 ||
+		d.Config.CatalogSubmodules != 1 || d.Config.CatalogModules != 4 || d.Config.Plan != gsdml.OutcomeConverted || d.Config.SameAsModel {
+		t.Fatalf("DAP_1P %+v", d.Config)
+	}
+	// DAP_2P: refused for MOD_DIO8 in slot 4, which resolves with D.
+	if d := cat.DAPs[1]; d.Outcome != gsdml.OutcomeUnsupported || d.Config.Outcome != gsdml.OutcomeConverted || d.Config.Submodules != 1 || d.Config.Ports != 0 {
+		t.Fatalf("DAP_2P %+v", d.Config)
+	}
+	// Only in DAP_1P's catalog: converted, and the resolved default is
+	// ToModel's but for the catalog it gains.
+	only := analyze(fixture(t, modular, "</ModuleList>", list, `<ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="1..16" UsedInSlots="4"/>`, `<ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="1..16"/>`, dio8,
+		"</VirtualSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"D\" UsedInSubslots=\"2\"/></UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\""))
+	for _, d := range only.DAPs {
+		if d.Outcome != gsdml.OutcomeConverted || !d.Config.SameAsModel || d.Config.Equal || d.Config.CatalogModules != d.Config.ModelCatalog+1 || d.Config.CatalogSubmodules != 1 {
+			t.Fatalf("%s %+v", d.DAP, d.Config)
+		}
+	}
+	plain := analyze(fixture(t, modular))
+	for _, d := range plain.DAPs {
+		if !d.Config.Equal || d.Config.Outcome != gsdml.OutcomeConverted {
+			t.Fatalf("%s %+v", d.DAP, d.Config)
+		}
+	}
+	// A reference to no submodule: the DAP that plugs it does not resolve.
+	missing := analyze(fixture(t, modular, dio8,
+		"</VirtualSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"Q\" UsedInSubslots=\"2\"/></UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\""))
+	if d := missing.DAPs[1]; d.Config.Outcome != gsdml.OutcomeMalformed || !strings.Contains(d.Config.Error, "Q") {
+		t.Fatalf("DAP_2P %+v", d.Config)
+	}
+	// Two submodules used in one subslot: a choice is needed.
+	ambiguous := analyze(fixture(t, modular, "</ModuleList>", list, dio8,
+		"</VirtualSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"D\" UsedInSubslots=\"2\"/><SubmoduleItemRef SubmoduleItemTarget=\"P\" UsedInSubslots=\"2\"/></UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\""))
+	if d := ambiguous.DAPs[1]; d.Config.Outcome != OutcomeInvalidConfig {
+		t.Fatalf("DAP_2P %+v", d.Config)
+	}
+	// A model Validate refuses: ToModel's is refused too.
+	long := analyze(fixture(t, modular, `<OrderNumber Value="OTF-MOD-1P"/>`, `<OrderNumber Value="OTF-MOD-1P-WITH-A-LONG-ORDER-NUMBER"/>`))
+	if d := long.DAPs[0]; d.Config.Outcome != OutcomeInvalidConfig || !d.Config.ModelInvalid {
+		t.Fatalf("DAP_1P %+v", d.Config)
+	}
+	s := Summarize([]FileResult{cat, only, plain, missing, ambiguous, long})
+	f := s.Fidelity
+	if f.ConfigRefusedResolved != 2 || f.ConfigRequiredResolved != 2 || f.ConfigSame != 7 || f.ConfigDiffer != 0 || f.ConfigModelInvalid != 1 ||
+		f.ConfigGainedCatalog != 2 || f.GainedModules != 2 || f.ConfigGainedSubmodules != 2 || f.ConfigPorts != 1 || f.Configuration["converted"] != 9 {
+		t.Fatalf("%+v", f)
+	}
+	md := Markdown(s, "")
+	for _, want := range []string{"### Default configurations", "Of the DAPs ToModel refuses, 2 resolve their default configuration; 2 of them", "| converted | 9 |", "1 do not resolve because their ToModel model fails"} {
+		if !strings.Contains(md, want) {
+			t.Fatalf("no %q in\n%s", want, md)
+		}
+	}
+}
