@@ -190,7 +190,11 @@ replaceable by a submodule allowed there and removable; without
 the `PhysicalSubslots` of a DAP or module bound the subslots of its
 configurable submodules but not those of its virtual ones (most corpus
 files do not list those there); a subslot several references use by
-default needs a choice. The same reading for modules is `ToModel`'s
+default needs a choice. A module or submodule referenced more than once
+is placed by the one reference that applies to the slot or subslot (one
+that fixes, else uses, it there, else the first that allows it); the
+references' attributes are never combined, and a position none allows is
+refused. The same reading for modules is `ToModel`'s
 (`FixedInSlots`, else `UsedInSlots`, the first reference taking a slot);
 `Configuration` adds that a module fixed in a slot cannot be unplugged or
 replaced. A configurable `PortSubmoduleItem` is a port of the DAP only

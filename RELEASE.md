@@ -69,7 +69,10 @@ choices and still refuses one that needs configurable submodules.
     it, where fixed or used) and removable; `PhysicalSubslots` bound the
     configurable subslots; a subslot several references use by default
     needs a choice; a module fixed in a slot cannot be unplugged or
-    replaced; each plugged module has its own choices. The reading mirrors
+    replaced; each plugged module has its own choices; a module or
+    submodule referenced more than once is placed by the reference that
+    applies to the slot or subslot (fixes, else uses, else first allows
+    it), without combining the references' attributes. The reading mirrors
     `ToModel`'s for slots and is not checked against PI's specification or
     an engineering tool (LIMITATIONS.md). Errors: ERRORS.md, GSDML
     configurations.

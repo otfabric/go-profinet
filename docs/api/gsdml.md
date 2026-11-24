@@ -318,6 +318,8 @@ func (c *Configuration) Plug(slot uint16, moduleID string) error
 
 Plug plugs the module the DAP can use with ID moduleID into a slot, with its default submodules; a module the slot held is replaced, with the choices made for it. The slot must be 1 to 0x7FFF, in the DAP's PhysicalSlots and in the reference's AllowedInSlots (when it gives them), and must not hold a module fixed there (FixedInSlots) unless it is the same module. A module the DAP cannot use, a slot outside those, and a module that cannot be plugged (ModuleOption.Err) are errors matching profinet.ErrInvalidConfig; the configuration is then unchanged.
 
+A module the DAP references more than once is plugged by the reference that applies to the slot: one that fixes or uses it there, else the first that allows it.
+
 #### func (Configuration) PlugIdent
 
 ```go
@@ -345,6 +347,8 @@ func (c *Configuration) Select(slot, subslot uint16, submoduleID string) error
 Select puts the configurable submodule submoduleID of the module in a slot (of the DAP for slot 0) in a subslot, in place of the submodule the subslot holds by default (UsedInSubslots). It returns an error matching profinet.ErrInvalidConfig, and leaves the configuration unchanged, for a slot without a module, a submodule the module's UseableSubmodules do not name, subslot 0, the subslot of a virtual or system-defined submodule, a subslot another submodule is fixed in, a subslot the submodule is not allowed in (SubmoduleOption.Allows) or outside the PhysicalSubslots; and the option's Err for a submodule that cannot be placed.
 
 The choices belong to the module plugged in the slot: plugging another module, or the same one again, starts from its defaults.
+
+A submodule the UseableSubmodules reference more than once is chosen by the reference that applies to the subslot: one that fixes it there, else one that uses it there, else the first that allows it (those without an Err first). The references' attributes are not combined.
 
 #### func (Configuration) Slots
 

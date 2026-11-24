@@ -625,3 +625,85 @@ func TestCheckSubmoduleList(t *testing.T) {
 		t.Fatalf("built-in port without a subslot: %v", e)
 	}
 }
+
+// A module the DAP references twice is plugged by the reference that
+// allows the slot, even when it is the second; the references are not
+// merged, and a slot neither allows is refused without a change.
+func TestConfigurationRepeatedModuleRef(t *testing.T) {
+	t.Parallel()
+	_, c := configOf(t, "DAP_1P", `<ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="1..8"/>`,
+		`<ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="5"/><ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="6"/>`)
+	before := resolve(t, c)
+	beforeSlots := c.Slots()
+	for _, err := range []error{c.Plug(7, "MOD_DIO8"), c.PlugIdent(7, 0x30)} {
+		isErr(t, err, profinet.ErrInvalidConfig, "MOD_DIO8", "slot 7", "2 references", `"5", "6"`)
+	}
+	if _, ok := c.Module(7); ok || !slices.Equal(c.Slots(), beforeSlots) {
+		t.Fatalf("a refused plug changed the slots: %v", c.Slots())
+	}
+	if after := resolve(t, c); !reflect.DeepEqual(after, before) {
+		t.Fatal("a refused plug changed the configuration")
+	}
+	if err := c.Plug(6, "MOD_DIO8"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.PlugIdent(5, 0x30); err != nil {
+		t.Fatal(err)
+	}
+	m := resolve(t, c)
+	for _, slot := range []uint16{5, 6} {
+		if id, _ := c.Module(slot); id != "MOD_DIO8" {
+			t.Fatalf("slot %d holds %q", slot, id)
+		}
+		if s, ok := m.Module(slot); !ok || s.IdentNumber != 0x30 {
+			t.Fatalf("slot %d of the model: %+v", slot, s)
+		}
+	}
+}
+
+// A submodule a module references twice is chosen by the reference that
+// allows the subslot, even when it is the second; a subslot neither
+// allows is refused without a change.
+func TestConfigurationRepeatedSubmoduleRef(t *testing.T) {
+	t.Parallel()
+	_, c := configOf(t, "DAP_1P", onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CHO" AllowedInSubslots="3"/>`+
+		`<SubmoduleItemRef SubmoduleItemTarget="SM_CHO" AllowedInSubslots="4"/>`)...)
+	before := resolve(t, c)
+	isErr(t, c.Select(1, 5, "SM_CHO"), profinet.ErrInvalidConfig, "SM_CHO", "subslot 5", "2 references", `"3", "4"`)
+	if after := resolve(t, c); !reflect.DeepEqual(after, before) {
+		t.Fatal("a refused choice changed the configuration")
+	}
+	if err := c.Select(1, 4, "SM_CHO"); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := resolve(t, c).Module(1); subslots(*s) != "1:0x11 4:0x52" {
+		t.Fatalf("slot 1 %s", subslots(*s))
+	}
+	// The first reference still applies to its own subslot.
+	if err := c.Select(1, 3, "SM_CHO"); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := resolve(t, c).Module(1); subslots(*s) != "1:0x11 3:0x52 4:0x52" {
+		t.Fatalf("slot 1 %s", subslots(*s))
+	}
+	// Without AllowedInSubslots a reference allows only where it fixes or
+	// uses the submodule, and the error says so.
+	_, c = configOf(t, "DAP_1P", onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CHO" UsedInSubslots="3"/>`+
+		`<SubmoduleItemRef SubmoduleItemTarget="SM_CHO" AllowedInSubslots="4"/>`+
+		`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" UsedInSubslots="5"/>`)...)
+	isErr(t, c.Select(1, 6, "SM_CHO"), profinet.ErrInvalidConfig, "2 references", `"3", "4"`)
+	isErr(t, c.Select(1, 6, "SM_NOIO"), profinet.ErrInvalidConfig, "not allowed in subslot 6", `"5"`)
+	// A reference that uses the submodule in a subslot is preferred to an
+	// earlier one that only allows it there.
+	_, c = configOf(t, "DAP_1P", onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CHO" AllowedInSubslots="3..4"/>`+
+		`<SubmoduleItemRef SubmoduleItemTarget="SM_CHO" AllowedInSubslots="4" UsedInSubslots="4"/>`)...)
+	if err := c.ClearSubslot(1, 4); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Select(1, 4, "SM_CHO"); err != nil {
+		t.Fatal(err)
+	}
+	if s, _ := resolve(t, c).Module(1); subslots(*s) != "1:0x11 4:0x52" {
+		t.Fatalf("slot 1 %s", subslots(*s))
+	}
+}

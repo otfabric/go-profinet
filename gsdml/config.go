@@ -126,7 +126,9 @@ type owner struct {
 	physical    []listRange
 	hasPhysical bool
 	opts        []*SubmoduleOption
-	byID        map[string]*SubmoduleOption
+	// byID are the references to each submodule ID, in file order: a
+	// submodule may be referenced more than once, with other subslots.
+	byID map[string][]*SubmoduleOption
 	// fixed is the submodule fixed in each subslot; used the submodules
 	// used in each subslot that is not fixed, in file order.
 	fixed map[uint16]*SubmoduleOption
@@ -325,7 +327,7 @@ func (c *conv) convertItem(target string, subs map[string]submoduleItem, cache m
 // err.
 func (c *conv) newOwner(name string, dap bool, us *UseableSubmodules, physical string, physicalEmpty bool, builtin []model.Submodule,
 	subs map[string]submoduleItem, cache map[string]*SubmoduleOption) (*owner, error) {
-	ow := &owner{name: name, dap: dap, builtin: map[uint16]string{}, byID: map[string]*SubmoduleOption{},
+	ow := &owner{name: name, dap: dap, builtin: map[uint16]string{}, byID: map[string][]*SubmoduleOption{},
 		fixed: map[uint16]*SubmoduleOption{}, used: map[uint16][]*SubmoduleOption{}}
 	for _, s := range builtin {
 		ow.builtin[s.Subslot] = s.Name
@@ -379,9 +381,7 @@ func (c *conv) newOwner(name string, dap bool, us *UseableSubmodules, physical s
 			o.Defaults = usedIn
 		}
 		k := collapseSpace(ref.SubmoduleItemTarget)
-		if _, dup := ow.byID[k]; !dup {
-			ow.byID[k] = &o
-		}
+		ow.byID[k] = append(ow.byID[k], &o)
 		ow.opts = append(ow.opts, &o)
 	}
 	n := 0
@@ -522,15 +522,56 @@ func invalid(format string, a ...any) error {
 	return fmt.Errorf("gsdml: %w: "+format, append([]any{profinet.ErrInvalidConfig}, a...)...)
 }
 
-// moduleByID returns the first reference to the module id.
-func (c *Configuration) moduleByID(id string) *moduleOpt {
+// moduleRefs returns the references to the module id, in file order.
+func (c *Configuration) moduleRefs(id string) []*moduleOpt {
 	k := collapseSpace(id)
+	var out []*moduleOpt
 	for _, mo := range c.modules {
 		if collapseSpace(mo.opt.ID) == k {
-			return mo
+			out = append(out, mo)
 		}
 	}
-	return nil
+	return out
+}
+
+// allowsSlot reports whether a module reference allows a slot: its
+// AllowedInSlots has it, or it gives none (or none that parses).
+func (mo *moduleOpt) allowsSlot(slot uint16) bool {
+	var set slotSet
+	return mo.opt.AllowedInSlots == "" || !set.parse(mo.opt.AllowedInSlots) || set.has(slot)
+}
+
+// placesSlot reports whether a module reference fixes or uses the module
+// in a slot.
+func (mo *moduleOpt) placesSlot(slot uint16) bool {
+	var set slotSet
+	return set.parse(mo.opt.FixedInSlots) && set.has(slot) || set.parse(mo.opt.UsedInSlots) && set.has(slot)
+}
+
+// pickModule returns the reference of refs (one module, several
+// references) that applies to a slot: the first that fixes or uses the
+// module there, else the first that allows it. The references' attributes
+// are not combined. None allows the slot: an error matching
+// profinet.ErrInvalidConfig naming every reference's AllowedInSlots.
+func pickModule(refs []*moduleOpt, slot uint16) (*moduleOpt, error) {
+	for _, mo := range refs {
+		if mo.allowsSlot(slot) && mo.placesSlot(slot) {
+			return mo, nil
+		}
+	}
+	for _, mo := range refs {
+		if mo.allowsSlot(slot) {
+			return mo, nil
+		}
+	}
+	if len(refs) == 1 {
+		return refs[0], nil // plug reports its AllowedInSlots
+	}
+	lists := make([]string, len(refs))
+	for i, mo := range refs {
+		lists[i] = strconv.Quote(clip(mo.opt.AllowedInSlots))
+	}
+	return nil, invalid("module %s is not allowed in slot %d by any of its %d references (AllowedInSlots %s)", clip(refs[0].opt.ID), slot, len(refs), strings.Join(lists, ", "))
 }
 
 // Plug plugs the module the DAP can use with ID moduleID into a slot, with
@@ -541,10 +582,18 @@ func (c *Configuration) moduleByID(id string) *moduleOpt {
 // same module. A module the DAP cannot use, a slot outside those, and a
 // module that cannot be plugged (ModuleOption.Err) are errors matching
 // profinet.ErrInvalidConfig; the configuration is then unchanged.
+//
+// A module the DAP references more than once is plugged by the reference
+// that applies to the slot: one that fixes or uses it there, else the
+// first that allows it.
 func (c *Configuration) Plug(slot uint16, moduleID string) error {
-	mo := c.moduleByID(moduleID)
-	if mo == nil {
+	refs := c.moduleRefs(moduleID)
+	if len(refs) == 0 {
 		return invalid("device access point %s cannot use module %q (UseableModules)", clip(c.dap.ID), clip(moduleID))
+	}
+	mo, err := pickModule(refs, slot)
+	if err != nil {
+		return err
 	}
 	return c.plug(slot, mo)
 }
@@ -553,22 +602,24 @@ func (c *Configuration) Plug(slot uint16, moduleID string) error {
 // modules of the ident are an error matching profinet.ErrInvalidConfig
 // that names them: plug one by ID.
 func (c *Configuration) PlugIdent(slot uint16, ident uint32) error {
-	var found *moduleOpt
+	var refs []*moduleOpt
 	for _, mo := range c.modules {
 		if mo.opt.Module.IdentNumber != ident {
 			continue
 		}
-		if found != nil && collapseSpace(found.opt.ID) != collapseSpace(mo.opt.ID) {
-			return invalid("modules %s and %s have ModuleIdentNumber 0x%08X: plug one by ID", clip(found.opt.ID), clip(mo.opt.ID), ident)
+		if len(refs) > 0 && collapseSpace(refs[0].opt.ID) != collapseSpace(mo.opt.ID) {
+			return invalid("modules %s and %s have ModuleIdentNumber 0x%08X: plug one by ID", clip(refs[0].opt.ID), clip(mo.opt.ID), ident)
 		}
-		if found == nil {
-			found = mo
-		}
+		refs = append(refs, mo)
 	}
-	if found == nil {
+	if len(refs) == 0 {
 		return invalid("device access point %s can use no module 0x%08X (UseableModules)", clip(c.dap.ID), ident)
 	}
-	return c.plug(slot, found)
+	mo, err := pickModule(refs, slot)
+	if err != nil {
+		return err
+	}
+	return c.plug(slot, mo)
 }
 
 func (c *Configuration) plug(slot uint16, mo *moduleOpt) error {
@@ -643,14 +694,23 @@ func (c *Configuration) target(slot uint16) (*owner, *map[uint16]*SubmoduleOptio
 //
 // The choices belong to the module plugged in the slot: plugging another
 // module, or the same one again, starts from its defaults.
+//
+// A submodule the UseableSubmodules reference more than once is chosen by
+// the reference that applies to the subslot: one that fixes it there,
+// else one that uses it there, else the first that allows it (those
+// without an Err first). The references' attributes are not combined.
 func (c *Configuration) Select(slot, subslot uint16, submoduleID string) error {
 	ow, sel, err := c.target(slot)
 	if err != nil {
 		return err
 	}
-	o := ow.byID[collapseSpace(submoduleID)]
-	if o == nil {
+	refs := ow.byID[collapseSpace(submoduleID)]
+	if len(refs) == 0 {
 		return invalid("slot %d: %s has no configurable submodule %q (UseableSubmodules)", slot, ow.name, clip(submoduleID))
+	}
+	o, err := ow.pickSubmodule(refs, slot, subslot)
+	if err != nil {
+		return err
 	}
 	if o.Err != nil {
 		return fmt.Errorf("gsdml: slot %d subslot %d: %s submodule %s: %w", slot, subslot, ow.name, clip(o.ID), o.Err)
@@ -676,6 +736,41 @@ func (c *Configuration) Select(slot, subslot uint16, submoduleID string) error {
 	}
 	(*sel)[subslot] = o
 	return nil
+}
+
+// pickSubmodule returns the reference of refs (one submodule, several
+// references) that applies to a subslot, as Select describes. None allows
+// it: refs[0] when there is one reference (Select reports it), else an
+// error matching profinet.ErrInvalidConfig naming every reference.
+func (ow *owner) pickSubmodule(refs []*SubmoduleOption, slot, subslot uint16) (*SubmoduleOption, error) {
+	for _, o := range refs {
+		if ow.fixed[subslot] == o {
+			return o, nil
+		}
+	}
+	for _, pass := range []func(*SubmoduleOption) bool{
+		func(o *SubmoduleOption) bool { return o.Err == nil && slices.Contains(o.Defaults, subslot) },
+		func(o *SubmoduleOption) bool { return o.Err == nil && o.Allows(subslot) },
+		func(o *SubmoduleOption) bool { return o.Allows(subslot) },
+	} {
+		for _, o := range refs {
+			if pass(o) {
+				return o, nil
+			}
+		}
+	}
+	if len(refs) == 1 {
+		return refs[0], nil
+	}
+	lists := make([]string, len(refs))
+	for i, o := range refs {
+		a := o.AllowedInSubslots
+		if a == "" {
+			a = strings.TrimSpace(o.FixedInSubslots + " " + o.UsedInSubslots)
+		}
+		lists[i] = strconv.Quote(clip(a))
+	}
+	return nil, invalid("slot %d: %s submodule %s is not allowed in subslot %d by any of its %d references (allowed: %s)", slot, ow.name, clip(refs[0].ID), subslot, len(refs), strings.Join(lists, ", "))
 }
 
 // free checks that a subslot can take a chosen submodule o (nil to empty
