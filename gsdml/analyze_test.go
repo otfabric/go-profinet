@@ -283,7 +283,7 @@ func TestAnalyzeModelsOptionalSubmodules(t *testing.T) {
 	t.Parallel()
 	plainDoc, plain := analyzeVariant(t)
 	for _, r := range plain {
-		if r.OmitsSubmodules() || r.ConfigurableSubmodules != nil {
+		if r.OmitsSubmodules() || r.OmitsModules() || r.ConfigurableSubmodules != nil {
 			t.Fatalf("%s: %+v", r.DAP, r.ConfigurableSubmodules)
 		}
 	}
@@ -296,8 +296,9 @@ func TestAnalyzeModelsOptionalSubmodules(t *testing.T) {
 		t.Fatalf("DAP refs %+v %+v", dap1.ConfigurableSubmodules, dap2.ConfigurableSubmodules)
 	}
 	for i, r := range reps {
-		if r.Outcome != OutcomeConverted || r.Blocked || !r.OmitsSubmodules() {
-			t.Fatalf("%s: %s blocked %v omits %v", r.DAP, r.Outcome, r.Blocked, r.OmitsSubmodules())
+		// Optional submodules leave every module in the catalog.
+		if r.Outcome != OutcomeConverted || r.Blocked || !r.OmitsSubmodules() || r.OmitsModules() {
+			t.Fatalf("%s: %s blocked %v omits %v, %v", r.DAP, r.Outcome, r.Blocked, r.OmitsSubmodules(), r.OmitsModules())
 		}
 		di := moduleOf(t, r, "MOD_DI16")
 		if len(di.ConfigurableSubmodules) != 2 || di.ConfigurableSubmodules[1].Target != "SM_CH2" || di.ConfigurableSubmodules[1].Required ||
