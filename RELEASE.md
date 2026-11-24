@@ -28,7 +28,7 @@ section ending with a `---` line and no `---` line inside a section.
 
 ## v0.25.0
 
-**Date:** unreleased
+**Date:** 2026-11-24
 **Previous release:** v0.24.0
 
 ## Summary
