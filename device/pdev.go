@@ -4,6 +4,7 @@ package device
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/otfabric/go-profinet/ethernet"
@@ -331,6 +332,49 @@ func (d *Device) expectedPDev() []byte {
 		b = []byte{}
 	}
 	return b
+}
+
+// resetPDev forgets the port checks and adjustments of the ports a
+// connecting IOCAR takes (a matching port submodule of the DAP that no
+// other controller's AR holds), and the remote mismatch diagnoses they
+// caused, without alarms: the AR owns the ports now and is not in Data,
+// and its controller writes its own checks during parameterization. A
+// port another AR holds keeps its state. This is p-net's
+// pf_pdport_reset_ar (src/device/pf_pdport.c, rtlabs-com/p-net v2.0.0),
+// which resets only the ports of the connecting AR; resetting every port
+// at every Connect was its issue 2728. An IOSAR and the ARs of a system
+// redundancy set do not reset (p-net skips a backup AR; go-profinet's S2
+// is an experiment and keeps the state).
+func (d *Device) resetPDev(a *ar, locked map[key]bool) {
+	var ports []uint16
+	for k := range a.match {
+		if k.slot == 0 && !locked[k] && d.portBySubslot(k.subslot) != nil {
+			ports = append(ports, k.subslot)
+		}
+	}
+	if len(ports) == 0 {
+		return
+	}
+	d.mu.Lock()
+	changed := false
+	for _, sub := range ports {
+		if d.pd.checks[sub] != nil || d.pd.adjusts[sub] != nil || len(d.pd.active[sub]) > 0 {
+			changed = true
+		}
+		delete(d.pd.checks, sub)
+		delete(d.pd.adjusts, sub)
+		delete(d.pd.active, sub)
+		k := key{0, sub}
+		d.diags[k] = slices.DeleteFunc(d.diags[k], func(it pnio.DiagnosisItem) bool {
+			return it.ChannelNumber == pdevChannel && it.ErrorType == pnio.ChannelErrRemoteMismat
+		})
+	}
+	d.mu.Unlock()
+	if changed {
+		d.log.Debugf("device: AR %s: port checks and adjustments of %#x reset", a.uuid, ports)
+		d.applyAdjust()
+		d.pokePDev()
+	}
 }
 
 // pokePDev asks the evaluator to check the ports again.

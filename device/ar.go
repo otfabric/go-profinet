@@ -591,6 +591,9 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	if !iosar {
 		locked = d.claimOwnership(a)
 	}
+	if arb.Type == pnio.ARTypeIOCARSingle {
+		d.resetPDev(a, locked)
+	}
 	diff, _ := d.moduleDiff(req.Expected, locked)
 	// A Connect that fails from here on gives its submodules back.
 	established := false
