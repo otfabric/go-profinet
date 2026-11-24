@@ -505,9 +505,12 @@ func TestNewConfigurationErrors(t *testing.T) {
 		{"empty attribute", onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" AllowedInSubslots=""/>`), profinet.ErrMalformed},
 		{"subslot 0", onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" UsedInSubslots="0"/>`), profinet.ErrMalformed},
 		{"subslot above 65535", onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" FixedInSubslots="65536"/>`), profinet.ErrMalformed},
+		{"UsedInSubslots beside FixedInSubslots", onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" FixedInSubslots="2" UsedInSubslots="x"/>`), profinet.ErrMalformed},
 		{"too many subslots", onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" UsedInSubslots="1..5000"/>`), profinet.ErrResourceExhausted},
 		{"too many references", onDIO8(many), profinet.ErrMalformed},
 		{"PhysicalSubslots", []string{`ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030"`, `ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030" PhysicalSubslots="y"`}, profinet.ErrMalformed},
+		{"PhysicalSubslots range", []string{`ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030"`, `ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030" PhysicalSubslots="5..3"`}, profinet.ErrMalformed},
+		{"PhysicalSubslots upper bound", []string{`ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030"`, `ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030" PhysicalSubslots="1..v"`}, profinet.ErrMalformed},
 		{"empty PhysicalSubslots", []string{`ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030"`, `ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030" PhysicalSubslots=""`}, profinet.ErrMalformed},
 		{"no such module", []string{`ModuleItemTarget="MOD_DIO8" AllowedInSlots="1..8"`, `ModuleItemTarget="MOD_NONE" AllowedInSlots="1..8"`}, profinet.ErrMalformed},
 		{"module does not convert", []string{`ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030"`, `ModuleItem ID="MOD_DIO8" ModuleIdentNumber="z"`}, profinet.ErrMalformed},
@@ -705,5 +708,54 @@ func TestConfigurationRepeatedSubmoduleRef(t *testing.T) {
 	}
 	if s, _ := resolve(t, c).Module(1); subslots(*s) != "1:0x11 4:0x52" {
 		t.Fatalf("slot 1 %s", subslots(*s))
+	}
+}
+
+// Two references using a module in one slot: the first takes it, as
+// ToModel plugs it; the second still applies to its other slots.
+func TestConfigurationRepeatedModuleUsedSlot(t *testing.T) {
+	t.Parallel()
+	_, c := configOf(t, "DAP_1P", `<ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="1..8"/>`,
+		`<ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="5" UsedInSlots="5"/><ModuleItemRef ModuleItemTarget="MOD_DIO8" AllowedInSlots="5..6" UsedInSlots="5"/>`)
+	if id, _ := c.Module(5); id != "MOD_DIO8" || !slices.Equal(c.Slots(), []uint16{1, 2, 3, 5}) {
+		t.Fatalf("slots %v, slot 5 %q", c.Slots(), id)
+	}
+	if err := c.Plug(6, "MOD_DIO8"); err != nil {
+		t.Fatal(err)
+	}
+	if s, ok := resolve(t, c).Module(6); !ok || s.IdentNumber != 0x30 {
+		t.Fatalf("slot 6 %+v", s)
+	}
+}
+
+// SubmoduleParameters finds a configurable submodule past references to
+// a port and to another submodule.
+func TestSubmoduleParametersPastOtherRefs(t *testing.T) {
+	t.Parallel()
+	doc, _ := analyzeVariant(t, withList(onDI16(`<SubmoduleItemRef SubmoduleItemTarget="PORT_2" AllowedInSubslots="7"/>`+
+		`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" AllowedInSubslots="3"/>`+
+		`<SubmoduleItemRef SubmoduleItemTarget="SM_CH" AllowedInSubslots="2" UsedInSubslots="2"/>`)...)...)
+	recs, err := SubmoduleParameters(doc, "DAP_1P", 0x10, 0x51)
+	if err != nil || len(recs) != 1 || recs[0].Index != 200 {
+		t.Fatalf("records %+v %v", recs, err)
+	}
+}
+
+// Select refuses a subslot the reference allows outside the module's
+// PhysicalSubslots.
+func TestConfigurationSelectPhysicalSubslots(t *testing.T) {
+	t.Parallel()
+	_, c := configOf(t, "DAP_1P", append(onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_NOIO" AllowedInSubslots="3..6"/>`),
+		`ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030"`, `ModuleItem ID="MOD_DIO8" ModuleIdentNumber="0x00000030" PhysicalSubslots="1..4"`)...)
+	if err := c.Plug(4, "MOD_DIO8"); err != nil {
+		t.Fatal(err)
+	}
+	before := resolve(t, c)
+	isErr(t, c.Select(4, 5, "SM_NOIO"), profinet.ErrInvalidConfig, "subslot 5", "PhysicalSubslots")
+	if after := resolve(t, c); !reflect.DeepEqual(after, before) {
+		t.Fatal("a refused choice changed the configuration")
+	}
+	if err := c.Select(4, 4, "SM_NOIO"); err != nil {
+		t.Fatal(err)
 	}
 }
