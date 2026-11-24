@@ -92,13 +92,11 @@ Restrictions:
 - `controller.Parameter` has no API: a parameter is written at the API of
   the model's submodule in its slot and subslot (API 0 where the model has
   none). `RecordClient.ReadDiagnosis` reads a subslot at API 0;
-  `ReadSubmoduleDiagnosis` takes the API. profinetctl v0.19.0 already
-  discovers APIs in `device info` via APIData (0xF821), followed by
-  RealIdentificationData (0xF000) per API (since v0.18.0), and reports
-  incomplete discovery on failure; record read/write
-  also take `--api`. `im read` and per-submodule `diagnostics` still target
-  API 0 in v0.19.0; [profinetctl#49](https://github.com/otfabric/profinetctl/pull/49)
-  adds `--api` to those commands but is not yet released.
+  `ReadSubmoduleDiagnosis` takes the API. profinetctl discovers APIs in
+  `device info` via APIData (0xF821), followed by RealIdentificationData
+  (0xF000) per API (since v0.18.0), and reports incomplete discovery on
+  failure; `record read`/`write` take `--api`, and since v0.20.0 so do
+  `im read` and per-submodule `diagnostics`.
 
 ## Without PI membership
 
