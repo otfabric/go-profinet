@@ -122,6 +122,8 @@ func TestMRPCheckRefused(t *testing.T) {
 		{"other domain", (&pnio.PDInterfaceMrpDataCheck{Domain: [16]byte{1}, Check: pnio.MrpCheckDomainUUID}).Append(nil), pnio.RWInvalidParameter},
 		{"version 1.1", v11, pnio.RWFeatureNotSupport},
 		{"short", []byte{0x02, 0x13, 0x00, 0x02, 1, 0}, pnio.RWInvalidParameter},
+		{"no block", []byte{0x02}, pnio.RWWriteLength},
+		{"trailing bytes", append(ok.Append(nil), 1), pnio.RWWriteLength},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			wantStatus(t, x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck, c.data), c.code, 0)

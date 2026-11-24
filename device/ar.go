@@ -597,7 +597,7 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	if !iosar {
 		locked = d.claimOwnership(a)
 	}
-	undoPDev := func() {}
+	var undoPDev func() // set for an IOCAR, which resets its ports
 	if arb.Type == pnio.ARTypeIOCARSingle {
 		undoPDev = d.resetPDev(a, locked)
 	}
@@ -609,7 +609,9 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 		if !established && !iosar {
 			d.releaseOwnership(a)
 			d.srLeave(a)
-			undoPDev()
+			if undoPDev != nil {
+				undoPDev()
+			}
 		}
 	}()
 

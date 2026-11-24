@@ -211,7 +211,8 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 // awaitAlarmAck keeps an alarm whose caller stopped waiting outstanding
 // until its AlarmAck arrives (alarmData delivers it on ch), the AR ends
 // (ch closed) or the AlarmAck timer t runs out, then frees the
-// priority's sem.
+// priority's sem. Close aborts every AR before it cancels d.ctx, and
+// the abort closes ch: the device closing ends the wait through ch.
 func (d *Device) awaitAlarmAck(a *ar, k ackKey, ch <-chan pnio.AlarmAck, sem <-chan struct{}, t *time.Timer) {
 	defer t.Stop()
 	select {
@@ -221,7 +222,6 @@ func (d *Device) awaitAlarmAck(a *ar, k ackKey, ch <-chan pnio.AlarmAck, sem <-c
 		delete(a.ackWait, k)
 		a.mu.Unlock()
 		d.log.Debugf("device: AR %s: no AlarmAck for alarm %d", a.uuid, k.seq)
-	case <-d.ctx.Done():
 	}
 	<-sem
 }
