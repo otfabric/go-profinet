@@ -71,6 +71,13 @@ func (d *Device) alarmData(a *ar, b []byte) {
 // profinet.ErrTimeout when an acknowledgement did not arrive and a
 // *pnio.StatusError when the controller acknowledged with an error.
 func (d *Device) SendAlarm(ctx context.Context, al Alarm) error {
+	// The alarm goes to the AR that owns the submodule (several IO
+	// controllers may share the device), the primary of an AR set.
+	return d.alarmTo(ctx, d.alarmOwner(key{al.Slot, al.Subslot}), al)
+}
+
+// alarmTo sends an alarm to the AR a, when it is in the Data state.
+func (d *Device) alarmTo(ctx context.Context, a *ar, al Alarm) error {
 	m, ok := d.model.Module(al.Slot)
 	if !ok {
 		return fmt.Errorf("device: alarm: slot %d: %w", al.Slot, profinet.ErrNotFound)
@@ -79,32 +86,13 @@ func (d *Device) SendAlarm(ctx context.Context, al Alarm) error {
 	if !ok {
 		return fmt.Errorf("device: alarm: subslot %d/%d: %w", al.Slot, al.Subslot, profinet.ErrNotFound)
 	}
-	// The alarm goes to the AR that owns the submodule (several IO
-	// controllers may share the device).
 	// An AR owns its submodules from its Connect on, but its alarm
 	// endpoints are only set up later: the state, read under the AR's lock,
 	// orders the read of the endpoint after its write.
-	var targets []*ar
-	a := d.ownerOf(al.Slot, al.Subslot)
-	if a != nil && a.sr != nil {
-		// Of an AR set, the primary takes the alarms.
-		a = d.srPrimaryOf(a)
-	}
-	if a != nil && a.currentState() == ARStateData && a.alarmLow != nil {
-		targets = append(targets, a)
-	}
-	var sent int
-	var errs []error
-	for _, a := range targets {
-		sent++
-		if err := d.sendAlarm(ctx, a, al, m.IdentNumber, sm.IdentNumber); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if sent == 0 {
+	if a == nil || a.currentState() != ARStateData || a.alarmLow == nil {
 		return fmt.Errorf("device: alarm: %w: no AR in the Data state", profinet.ErrInvalidState)
 	}
-	return errors.Join(errs...)
+	return d.sendAlarm(ctx, a, al, m.IdentNumber, sm.IdentNumber)
 }
 
 func (d *Device) sendAlarm(ctx context.Context, a *ar, al Alarm, modIdent, subIdent uint32) error {
@@ -114,6 +102,17 @@ func (d *Device) sendAlarm(ctx context.Context, a *ar, al Alarm, modIdent, subId
 
 // sendAlarmSeq sends an alarm and waits for its acknowledgement; it
 // returns the alarm's sequence number.
+//
+// One alarm of each priority is outstanding at a time, from its
+// transmission to its AlarmAck, as p-net's alarm machine sends only from
+// ALPMI W_ALARM (pf_alarm.c). The transport acknowledgement does not end
+// an alarm; its AlarmAck does, or the end of the AR, or the device's
+// AlarmAck timer (AlarmAckTimeout at least) running out, after which the
+// device takes the alarm as lost. A caller that stops waiting earlier
+// (ctx ends) does not end it: the alarm stays outstanding until one of
+// those, and the next alarm of the priority waits for that within its
+// own ctx. What a controller does with an alarm sent after the device
+// gave up on the previous AlarmAck is not established.
 func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, subIdent uint32) (uint16, error) {
 	prio := 0
 	if al.High {
@@ -130,7 +129,12 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	case <-ctx.Done():
 		return 0, ctx.Err()
 	}
-	defer func() { <-sem }()
+	outstanding := false
+	defer func() {
+		if !outstanding {
+			<-sem
+		}
+	}()
 	a.mu.Lock()
 	seq := a.alarmSeq[prio]
 	a.alarmSeq[prio] = (seq + 1) & pnio.AlarmSpecSeqMask
@@ -178,7 +182,11 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	// controller; it has as long as the transport would retransmit, and at
 	// least AlarmAckTimeout, to arrive.
 	t := time.NewTimer(max(a.alarmAckTimeout, AlarmAckTimeout))
-	defer t.Stop()
+	defer func() {
+		if !outstanding {
+			t.Stop()
+		}
+	}()
 	select {
 	case ack, ok := <-ch:
 		if !ok {
@@ -194,11 +202,28 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 		a.mu.Unlock()
 		return seq, fmt.Errorf("device: alarm to AR %s: %w: no AlarmAck", a.uuid, profinet.ErrTimeout)
 	case <-ctx.Done():
+		outstanding = true
+		go d.awaitAlarmAck(a, k, ch, sem, t)
+		return seq, ctx.Err()
+	}
+}
+
+// awaitAlarmAck keeps an alarm whose caller stopped waiting outstanding
+// until its AlarmAck arrives (alarmData delivers it on ch), the AR ends
+// (ch closed) or the AlarmAck timer t runs out, then frees the
+// priority's sem.
+func (d *Device) awaitAlarmAck(a *ar, k ackKey, ch <-chan pnio.AlarmAck, sem <-chan struct{}, t *time.Timer) {
+	defer t.Stop()
+	select {
+	case <-ch:
+	case <-t.C:
 		a.mu.Lock()
 		delete(a.ackWait, k)
 		a.mu.Unlock()
-		return seq, ctx.Err()
+		d.log.Debugf("device: AR %s: no AlarmAck for alarm %d", a.uuid, k.seq)
+	case <-d.ctx.Done():
 	}
+	<-sem
 }
 
 // AlarmAckTimeout is the shortest time the device waits for the
@@ -256,7 +281,7 @@ func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pn
 	}
 	notes = d.takeOwed(k, owner, notes)
 	d.mu.Unlock()
-	return d.reportDiag(ctx, k, notes)
+	return d.reportDiag(ctx, k, owner, notes)
 }
 
 // diagNote is a diagnosis alarm to send.
@@ -317,30 +342,36 @@ func (d *Device) takeOwed(k key, owner *ar, notes []diagNote) []diagNote {
 	return append(o.notes, notes...)
 }
 
-// reportDiag sends the diagnosis alarms in order, while holding diagSem,
-// and calls afterDiagChange first. On the first failure the alarms not
-// delivered, that one included, are owed to the submodule's AR: the next
-// diagnosis operation of the submodule, an identical AddDiagnosis
-// included, sends them first. Nothing is owed when no AR can receive the
-// alarm (ErrInvalidState) or it cannot be encoded (ErrInvalidConfig).
-func (d *Device) reportDiag(ctx context.Context, k key, notes []diagNote) error {
+// reportDiag sends the diagnosis alarms in order to owner, the AR the
+// operation took as the submodule's alarm owner before it changed the
+// state, while holding diagSem, and calls afterDiagChange first. Every
+// alarm of the operation goes to that AR, also when the ownership moves
+// meanwhile: the new owner reads the state in its own ModuleDiffBlock
+// and records. On the first failure the alarms not delivered, that one
+// included, are owed to owner: the next diagnosis operation of the
+// submodule sends them first if owner still owns it, and drops them
+// otherwise. Nothing is owed when owner cannot receive alarms
+// (ErrInvalidState) or an alarm cannot be encoded (ErrInvalidConfig).
+func (d *Device) reportDiag(ctx context.Context, k key, owner *ar, notes []diagNote) error {
 	if d.afterDiagChange != nil {
 		d.afterDiagChange()
 	}
 	for i, n := range notes {
-		err := d.diagAlarm(ctx, n.t, k.slot, k.subslot, n.item, n.spec)
+		err := d.diagAlarm(ctx, owner, n.t, k.slot, k.subslot, n.item, n.spec)
 		if err == nil {
 			continue
 		}
 		if errors.Is(err, profinet.ErrInvalidState) || errors.Is(err, profinet.ErrInvalidConfig) {
 			return err
 		}
+		if d.diagFailed != nil {
+			d.diagFailed()
+		}
 		rest := append([]diagNote(nil), notes[i:]...)
 		if len(rest) > maxOwedDiag {
 			d.log.Infof("device: diagnosis %d/%d: %d undelivered alarms dropped", k.slot, k.subslot, len(rest)-maxOwedDiag)
 			rest = rest[len(rest)-maxOwedDiag:]
 		}
-		owner := d.alarmOwner(k)
 		d.mu.Lock()
 		d.diagOwed[k] = owedDiag{ar: owner, notes: rest}
 		d.mu.Unlock()
@@ -396,6 +427,13 @@ func sameDiagnosis(a, b pnio.DiagnosisItem) bool {
 // error matching profinet.ErrNotFound when there is none, and the first
 // alarm error otherwise; the diagnoses are removed either way, and the
 // alarms not delivered are owed as for AddDiagnosis.
+//
+// Repeating a RemoveDiagnosis whose alarms were not delivered retries
+// them: when no diagnosis matches but alarms of the submodule are owed
+// to its alarm owner, they are sent and RemoveDiagnosis returns their
+// result (nil once delivered) instead of ErrNotFound. So a caller retries
+// a failed removal until it returns nil or an error matching
+// profinet.ErrNotFound, which then means nothing was left to report.
 func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, errorType uint16) error {
 	if err := d.lockDiag(ctx); err != nil {
 		return err
@@ -413,7 +451,11 @@ func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, er
 		kept = append(kept, it)
 	}
 	if len(removed) == 0 {
+		owed := d.takeOwed(k, owner, nil)
 		d.mu.Unlock()
+		if len(owed) > 0 {
+			return d.reportDiag(ctx, k, owner, owed)
+		}
 		return fmt.Errorf("device: diagnosis %d/%d channel %d type %d: %w", slot, subslot, channel, errorType, profinet.ErrNotFound)
 	}
 	d.diags[k] = kept
@@ -429,7 +471,7 @@ func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, er
 	}
 	notes = d.takeOwed(k, owner, notes)
 	d.mu.Unlock()
-	return d.reportDiag(ctx, k, notes)
+	return d.reportDiag(ctx, k, owner, notes)
 }
 
 // Diagnoses returns the recorded diagnoses of a submodule.
@@ -501,9 +543,9 @@ func diagUSI(items ...pnio.DiagnosisItem) uint16 {
 	return usi
 }
 
-func (d *Device) diagAlarm(ctx context.Context, t pnio.AlarmType, slot, subslot uint16, item pnio.DiagnosisItem, spec uint16) error {
+func (d *Device) diagAlarm(ctx context.Context, a *ar, t pnio.AlarmType, slot, subslot uint16, item pnio.DiagnosisItem, spec uint16) error {
 	usi := diagUSI(item)
-	return d.SendAlarm(ctx, Alarm{
+	return d.alarmTo(ctx, a, Alarm{
 		Type: t, Slot: slot, Subslot: subslot,
 		HasItem: true, USI: usi, Data: pnio.AppendDiagnosisItems(nil, usi, []pnio.DiagnosisItem{item}),
 		Specifier: spec,

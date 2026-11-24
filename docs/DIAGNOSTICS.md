@@ -36,15 +36,26 @@ the order they change the state: each waits, at most until its context
 ends, for the previous operation's alarms to be acknowledged (before
 v0.25.0 a removal's alarm could overtake the addition it undid). Alarms of
 one priority go out one at a time, each after the controller's AlarmAck
-of the previous, as p-net's alarm machine sends them.
+of the previous, as p-net's alarm machine sends them. An alarm stays
+outstanding until its AlarmAck, the end of the AR or the device's
+AlarmAck timer (`AlarmAckTimeout` at least), also when its caller stops
+waiting earlier: the next alarm of the priority waits, within its own
+context, for one of those. The transport acknowledgement does not end
+an alarm. After the timer the device takes the alarm as lost and the
+next one may go; what a controller does with it then is not
+established.
 
 An alarm that is not delivered without the AR ending (no AlarmAck, a
 refused AlarmAck, the context ending) is owed: the next diagnosis
 operation of the submodule, an identical `AddDiagnosis` included, sends
-the owed alarms first, so repeating the call retries the report. A
-transport timeout aborts the AR; the alarms owed to an AR that no longer
-owns the submodule are dropped, as its successor reads the diagnoses in
-its ModuleDiffBlock and records. At most 64 alarms are owed per
+the owed alarms first, so repeating the call retries the report; a
+repeated `RemoveDiagnosis` whose diagnoses are already removed sends
+what is owed and returns its result instead of `ErrNotFound`. The
+alarms of an operation go to the AR that owned the submodule when the
+operation changed the state, and are owed to that AR: when the
+submodule moves to another AR (or another primary of an AR set), they
+are dropped, as the new owner reads the diagnoses in its ModuleDiffBlock
+and records. A transport timeout aborts the AR. At most 64 alarms are owed per
 submodule; older ones are dropped and logged.
 
 The AlarmSpecifier of a diagnosis alarm summarises the submodule's active

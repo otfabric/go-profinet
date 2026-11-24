@@ -231,6 +231,9 @@ type Device struct {
 	// afterDiagChange, when set (tests), runs after a diagnosis operation
 	// changed the state and before it reports it.
 	afterDiagChange func()
+	// diagFailed, when set (tests), runs when a diagnosis alarm was not
+	// delivered, before the rest is owed.
+	diagFailed func()
 
 	// dhcp are the DHCP options DCP reports; ipDHCP marks ip as set by
 	// DHCP. Both under mu.
