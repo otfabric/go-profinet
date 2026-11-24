@@ -169,7 +169,17 @@ only differences (docs/research/GSDML-SCHEMA-PROPOSAL.md). `ToModel`
 converts 129 of the 130 files. `ToModel` is all or nothing per device
 access point: one module it cannot convert fails the DAP. `AnalyzeModels`
 reports, per DAP and module, why; it is a diagnostic and returns no model
-for a DAP `ToModel` refuses. `gsdml.Validate` is not PI's GSDML
+for a DAP `ToModel` refuses. **Configurable submodules are not
+converted.** `ToModel` and `AnalyzeModels` build a module's submodules
+from its `VirtualSubmoduleList` only. A DAP's or module's
+`UseableSubmodules` (`SubmoduleItemRef` to the `SubmoduleList`, a
+submodule an engineering tool chooses for an allowed subslot) is parsed
+and schema-validated, but `model.Device` has no catalog of them and
+nothing selects one: `ToModel` neither refuses such a file nor reports the
+omission, and a module whose submodules are all configurable converts with
+none. `profinetctl connect --plug` chooses modules, not submodules. The
+corpus run's conversion and address checks share the limitation, so they
+are no evidence for these devices. `gsdml.Validate` is not PI's GSDML
 checker, and a file it accepts may still fail PI's. Elements and attributes
 outside the catalog are kept verbatim and reported as unvalidated by
 `gsdml.Check`; its semantic rules are a small set, each with its basis
