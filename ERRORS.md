@@ -33,7 +33,7 @@ What the library retries by itself, and what it leaves to the application:
 |-------|-------|---------------|
 | DCP Get and Set | retransmitted with the same transaction ID (default 3 times) | `dcp.ClientOptions.Retries` |
 | DCE/RPC calls | retransmitted every second until the call's deadline (a fragment that is missing is asked for again); a device executes a call at most once and answers a retransmission from its response cache | `rpc.ClientOptions.Retransmit`, `controller.DeviceConfig.RPCTimeout`, the context |
-| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted. A DATA PDU that never reached the wire gives its sequence number back; one whose `Send` was cancelled after it was sent stays pending and is retransmitted before the next one (since v0.25.0) | `RTATimeoutFactor`, `RTARetries` |
+| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted. A DATA PDU that never reached the wire gives its sequence number back; one whose `Send` was cancelled after it was sent stays pending and is retransmitted before the next one (since v0.25.0). After one is not acknowledged, `Send` returns `ErrInvalidState`: the AR is to be aborted | `RTATimeoutFactor`, `RTARetries` |
 | Controller lifecycle | a failed AR or connection attempt is retried for ever with an exponential backoff and optional jitter; a DCP Hello of the device skips the wait | `ReconnectMin`, `ReconnectMax`, `ReconnectJitter`; `Metrics.OnRetry` |
 | Record calls (`ReadRecord`, …) | not retried: a write must not be repeated behind the application's back | the application |
 
@@ -245,8 +245,10 @@ first and report it second; an error describes the report, not the state:
 | `AddDiagnosis`, unknown slot or subslot | `ErrNotFound`; nothing recorded |
 | `AddDiagnosis`, new or changed diagnosis, no AR in Data owns the submodule | `ErrInvalidState`; the diagnosis is recorded |
 | `AddDiagnosis`, diagnosis identical to an active one | nil, with or without an AR; nothing sent (since v0.25.0) |
-| `AddDiagnosis`, changed diagnosis whose first alarm (the new one appears) fails | that error; the second alarm (the old one disappears) is not sent, the new value is recorded |
+| `AddDiagnosis`, changed diagnosis whose first or second alarm fails | that error; the new value is recorded, and the alarms not delivered are owed: the next diagnosis call of the submodule (an identical `AddDiagnosis` included) sends them first |
+| either, ctx ends while another diagnosis call reports | `ctx.Err()`; nothing recorded |
 | `RemoveDiagnosis`, no diagnosis of that channel and error type | `ErrNotFound` |
+| `RemoveDiagnosis`, an alarm fails | that error; the diagnoses are removed, the alarms not delivered are owed as above |
 | either, alarm not acknowledged | `ErrTimeout`, `ErrAborted` or a `*pnio.StatusError` as for `SendAlarm` |
 
 ## Lifecycle errors

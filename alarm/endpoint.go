@@ -3,6 +3,7 @@
 package alarm
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -77,6 +78,10 @@ type Endpoint struct {
 	// peer, which may have accepted it, and this side agree on the
 	// sequence numbers.
 	pending *PDU
+	// failed is the error of a DATA PDU that was never acknowledged: the
+	// peer may or may not have accepted it, so the sequence numbers of the
+	// two sides are not known to agree and no DATA PDU is sent again.
+	failed error
 
 	deliver chan []byte
 	done    chan struct{}
@@ -161,6 +166,12 @@ func (e *Endpoint) transmit(ctx context.Context, p *PDU) error {
 // pending and the next Send retransmits it, with its own Retries, before
 // its own PDU: the peer may have accepted it, and skipping its number
 // would make the peer refuse every later PDU as out of sequence.
+//
+// After a timeout the endpoint sends no DATA PDU again: whether the peer
+// accepted the unacknowledged one is unknown, so the sequence numbers may
+// disagree. Every later Send fails at once with an error matching
+// profinet.ErrInvalidState; the owner aborts the AR (SendErr still works)
+// and a new AR gets new endpoints. Receiving is not affected.
 func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	if len(varPart) > math.MaxUint16 {
 		return varPartTooLong(len(varPart))
@@ -173,8 +184,11 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	default:
 	}
 	e.mu.Lock()
-	pending := e.pending
+	pending, failed := e.pending, e.failed
 	e.mu.Unlock()
+	if failed != nil {
+		return fmt.Errorf("alarm: %w: an earlier DATA PDU was never acknowledged (%v); abort the AR", profinet.ErrInvalidState, failed)
+	}
 	if pending != nil {
 		if _, err := e.await(ctx, pending, true); err != nil {
 			return err
@@ -186,7 +200,9 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	e.sendSeq = seq
 	ack := e.lastRecv
 	e.mu.Unlock()
-	p := &PDU{Type: PDUData, AddFlags: WindowSize | FlagTACK, SendSeq: seq, AckSeq: ack, VarPart: varPart}
+	// The PDU owns a copy: it may stay pending after Send returns, and the
+	// caller may reuse varPart.
+	p := &PDU{Type: PDUData, AddFlags: WindowSize | FlagTACK, SendSeq: seq, AckSeq: ack, VarPart: bytes.Clone(varPart)}
 	sent, err := e.await(ctx, p, false)
 	if !sent {
 		// Nothing reached the wire: the number was not used.
@@ -215,6 +231,9 @@ func (e *Endpoint) await(ctx context.Context, p *PDU, retransmitted bool) (sent 
 		e.pending = nil
 		if sent && err != nil && ctx.Err() != nil && !errors.Is(err, profinet.ErrClosed) {
 			e.pending = p
+		}
+		if errors.Is(err, profinet.ErrTimeout) {
+			e.failed = err
 		}
 		e.mu.Unlock()
 	}()

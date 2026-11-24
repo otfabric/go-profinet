@@ -77,3 +77,55 @@ func TestSendPendingTimeout(t *testing.T) {
 		t.Fatal("PDU still pending after the timeout")
 	}
 }
+
+// A pending PDU owns its payload: the caller may reuse its buffer once
+// Send returned, and the retransmission still carries what was sent.
+// Before, the pending PDU aliased the caller's buffer.
+func TestSendPendingOwnsPayload(t *testing.T) {
+	_, b, ea, _ := pair(t, 20*time.Millisecond, 2)
+	b.ep.SetLinkUp(false)
+	buf := []byte("abc")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+	if err := ea.Send(ctx, buf); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("cancelled send: %v", err)
+	}
+	copy(buf, "ZZZ")
+	b.ep.SetLinkUp(true)
+	if err := ea.Send(context.Background(), []byte("y")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "both", func() bool { return len(b.received()) == 2 })
+	if got := b.received(); string(got[0]) != "abc" || string(got[1]) != "y" {
+		t.Fatalf("received %q", got)
+	}
+}
+
+// After a DATA PDU was never acknowledged, whether as a new PDU or as a
+// pending one retransmitted, the endpoint sends no DATA PDU again: every
+// later Send fails at once with ErrInvalidState, without a frame. Before,
+// it sent with sequence numbers the peer might not share.
+func TestSendAfterTimeoutIsTerminal(t *testing.T) {
+	for _, pendingFirst := range []bool{false, true} {
+		_, b, ea, _ := pair(t, 10*time.Millisecond, 1)
+		b.ep.SetLinkUp(false)
+		if pendingFirst {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Millisecond)
+			_ = ea.Send(ctx, []byte("x"))
+			cancel()
+		}
+		if err := ea.Send(context.Background(), []byte("y")); !errors.Is(err, profinet.ErrTimeout) {
+			t.Fatalf("pending %v: %v", pendingFirst, err)
+		}
+		b.ep.SetLinkUp(true)
+		sent := ea.Stats().Sent
+		for range 2 {
+			if err := ea.Send(context.Background(), []byte("z")); !errors.Is(err, profinet.ErrInvalidState) {
+				t.Fatalf("pending %v: send after the timeout: %v", pendingFirst, err)
+			}
+		}
+		if ea.Stats().Sent != sent || len(b.received()) != 0 {
+			t.Fatalf("pending %v: sent %d → %d, received %q", pendingFirst, sent, ea.Stats().Sent, b.received())
+		}
+	}
+}
