@@ -127,17 +127,16 @@ either cannot decode, or that tshark warns about, fails the test unless it
 is an attributed deviation of the peer.
 
 The Interop workflow builds the images of the profinet-interop release
-`INTEROP_REF` names (v0.13.0). The counts below are the matrix published in
-profinet-interop v0.13.0: the Interop and Kernel MRP jobs of go-profinet's
-pull request workflow, run 45285158695 (2026-11-24), on PR #116 at a1d1b9b,
-whose tree is that of its merge commit 6cde841, with the images of
-profinet-interop v0.13.0.
+`INTEROP_REF` names (v0.14.0). The counts below are the matrix published in
+profinet-interop v0.14.0: the Interop and Kernel MRP jobs of go-profinet's
+pull request workflow, run 45295645172 (2026-11-24), on PR #118 at 18d3fdb,
+with the images of profinet-interop v0.13.0 (v0.14.0 changes no image).
 
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
 |------|---------|----------------|-----:|-----:|----:|---------------:|
-| rt-labs p-net | `ea5e554` | IO-Controller, DCP requester, LLDP agent | 71 | 0 | 1 | 1 |
+| rt-labs p-net | `ea5e554` | IO-Controller, DCP requester, LLDP agent | 76 | 0 | 1 | 1 |
 | pnio-rs | v0.1.0 | IO-Controller, DCP requester | 13 | 0 | 3 | 0 |
-| profinet-py | 0.6.6 | IO-Device, DCP responder | 45 | 0 | 1 | 4 |
+| profinet-py | 0.6.6 | IO-Device, DCP responder | 59 | 0 | 1 | 4 |
 | pnio-dcp | 1.2.0 | DCP responder | 8 | 0 | 0 | 0 |
 | umrp | v4.0 | MRP manager, client and MRA | 32 | 0 | 0 | 2 |
 | microchip-ung/mrp | `177717e` (since profinet-interop v0.9.1 with the fix `ee224a1`, microchip-ung/mrp#4) | MRP manager, client and MRA (kernel, micro-VM) | 31 | 0 | 1 | 0 |
@@ -147,11 +146,11 @@ profinet-interop v0.13.0.
 | tshark and scapy | | (decoders of our Hello, SNMP, UDP-RT, DHCP, APIData and profile-record frames) | 10 | 0 | 0 | 2 |
 
 The full matrix, feature by feature, with the evidence of each check, is
-[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.13.0/docs/MATRIX.md)
-(41 test runs, 304 checks: 282 pass, 0 fail, 6 n/a, 16 deviations; the Interop workflow on amd64,
+[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.14.0/docs/MATRIX.md)
+(41 test runs, 323 checks: 301 pass, 0 fail, 6 n/a, 16 deviations; the Interop workflow on amd64,
 the mrp rows from the Kernel MRP workflow's micro-VMs); the notes on each
 peer are in its
-[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.13.0/docs/INTEROPERABILITY.md).
+[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.14.0/docs/INTEROPERABILITY.md).
 The "n/a" are peer limits: pnio-rs has no diagnosis records and no DCP Set,
 p-net and pnio-rs refuse PrmBegin in Data, profinet-py ignores the GSDML's
 UsedInSlots, and the kernel flushes its FDB where the mrp adapter cannot
