@@ -100,7 +100,7 @@ is from PI's public pages.
 |---|:---:|:---:|:---:|:---:|:---:|
 | Language | Go | C | Rust | Python | C |
 | Licence | MIT | GPL-3.0-only or commercial | MIT OR Apache-2.0 | GPL-3.0-only or commercial | PNO Community Source Code License (members only; no combination with copyleft) |
-| Status | pre-1.0 (v0.22.1, 2026) | maintained privately; public tree is an evaluation snapshot without ports (v1.0.2, 2025) | young, single author (v0.1.0, 2026) | active, one maintainer (0.6.6, 2026) | maintained by PI |
+| Status | pre-1.0 (v0.24.0, 2026) | maintained privately; public tree is an evaluation snapshot without ports (v1.0.2, 2025) | young, single author (v0.1.0, 2026) | active, one maintainer (0.6.6, 2026) | maintained by PI |
 | IO-Controller | ✅ | — | — | ✅ minimal (cyclic marked experimental) | not documented publicly |
 | IO-Device | ✅ | ✅ | ✅ | — | ✅ |
 | DCP requester | ✅ Identify (all filters), Get, Set, Signal, Reset | — | — | ✅ | — |
@@ -121,7 +121,7 @@ is from PI's public pages.
 | Re-parameterization in Data (PrmBegin) | ✅ device and controller | — (refuses PrmBegin) | — (refuses PrmBegin) | ✅ controller | ✅ |
 | Media redundancy (MRP) | ✅ client, manager, automatic manager (multiport device) | — | — | n/a | not documented |
 | SNMP agent | ✅ v1/v2c, MIB-II, LLDP-MIB | ◐ optional, through Net-SNMP | — | n/a | not documented |
-| GSDML | ✅ parse, validate (catalog, and each file's own schema version), generate, model conversion, typed model of V1.0–V2.46 | — (static file) | ◐ generate | ◐ parse for cyclic | — |
+| GSDML | ✅ parse, validate (catalog, and each file's own schema version), generate, model conversion, configurable submodule selection, typed model of V1.0–V2.46 | — static sample GSDML (V2.4); no parser or generator | ◐ generates V2.4 GSDML from its typed device configuration | ◐ parses DAPs, modules and submodules for cyclic IO | — |
 | Platforms | Linux, macOS/BSD, Windows (Npcap) | Linux, RTOS ports (not in the public tree) | Linux | Linux | Linux (Raspberry Pi demo) |
 | Runs without privileges in tests | ✅ virtual Ethernet in process | — | — | — | — |
 | Tested against other stacks in CI | ✅ p-net, pnio-rs, profinet-py, pnio-dcp; umrp and microchip-ung/mrp (MRP); Net-SNMP; scapy and Wireshark decode every capture | not documented | golden frames from p-net and an S7-1500 | p-net (integration tests) | not documented |

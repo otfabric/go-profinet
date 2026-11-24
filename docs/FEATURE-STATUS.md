@@ -1,8 +1,8 @@
 # Support, feature and interop matrix
 
 What go-profinet supports, on what, how each feature is tested, and against
-what. Status: go-profinet v0.22.1 (2026-11-23); profinetctl v0.20.0 pins
-go-profinet v0.22.0. Main pins
+what. Status: go-profinet v0.24.0 (2026-11-24); profinetctl v0.21.0 pins
+go-profinet v0.23.0. Main pins
 profinet-interop v0.15.0 (contract 1.5, tshark's `fields`, the
 profinet-py controller's records of any API and p-net's profile-records
 variant; its mrp image
@@ -55,7 +55,8 @@ certified, and no measured time is a real-time guarantee
 
 | go-profinet | Go | profinet-interop (contract) | profinetctl | Supported |
 |---|---|---|---|---|
-| **v0.23.0** | 1.26 or later (CI: 1.26–1.27) | v0.15.0 (1.5) | v0.21.0 | **yes** |
+| **v0.24.0** | 1.26 or later (CI: 1.26–1.27) | v0.15.0 (1.5) | none | **yes** |
+| v0.23.0 | 1.26 or later (CI: 1.26–1.27) | v0.15.0 (1.5) | v0.21.0 | no: v0.24.0 resolves configurations with configurable submodules (`gsdml.Configuration`) |
 | v0.22.1 | 1.26 or later (CI: 1.26–1.27) | v0.11.1 (1.4) | none | no: v0.23.0 refuses configurations that need configurable submodules |
 | v0.22.0 | 1.26 or later (CI: 1.26–1.27) | v0.11.0 (1.4) | v0.19.0–v0.20.1 | no: v0.22.1 checks the addresses of converted models in the corpus run (no library change) |
 | v0.21.0 | 1.26 or later (CI: 1.26–1.27) | v0.10.0 (1.4) | v0.18.0 | no: v0.22.0 accepts parameter records in the profile range 0xB000–0xBFFF |
