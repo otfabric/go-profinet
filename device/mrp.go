@@ -3,10 +3,14 @@
 package device
 
 import (
+	"errors"
 	"fmt"
+	"slices"
+	"time"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/l2"
+	"github.com/otfabric/go-profinet/lldp"
 	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/mrp"
 	"github.com/otfabric/go-profinet/pnio"
@@ -16,11 +20,20 @@ import (
 // (package mrp) on two of its ports, configured by Config.MRP and by the
 // PROFINET MRP records a controller writes (PDInterfaceMrpDataAdjust
 // 0x8052, PDPortMrpDataAdjust 0x8053), and reported in
-// PDInterfaceMrpDataReal (0x8050) and PDPortMrpDataReal (0x8054). The
-// timers of MrpManagerParams and MrpClientParams are accepted but not
-// applied (their unit is not public): the entity runs Config.MRP.Profile.
-// PDInterfaceMrpDataCheck (0x8051) is refused: the device does not
-// evaluate it.
+// PDInterfaceMrpDataReal (0x8050) and PDPortMrpDataReal (0x8054).
+//
+// The timers of a written MrpManagerParams and MrpClientParams select the
+// timer profile: they must be those of mrp.Profile200 or mrp.Profile500
+// (writtenProfile); others are refused, as faster profiles need timers a
+// general-purpose OS does not keep.
+//
+// PDInterfaceMrpDataCheck (0x8051) is served for its MRP_DomainUUID check
+// only: the ring ports compare the MRP domain their LLDP neighbor
+// announces (the MRP port status TLV, which the device sends on its ring
+// ports) with the device's, and report a difference as a remote mismatch
+// diagnosis (extended error type 0x8004). The MediaRedundancyManager
+// check is refused: its diagnoses are not established from public
+// sources.
 
 // MRPConfig configures media redundancy.
 type MRPConfig struct {
@@ -47,6 +60,8 @@ type mrpState struct {
 	ent     *mrp.Entity
 	adjust  *pnio.PDInterfaceMrpDataAdjust
 	portAdj map[uint16]*pnio.PDPortMrpData
+	// check is the written PDInterfaceMrpDataCheck, nil before a write.
+	check *pnio.PDInterfaceMrpDataCheck
 	// closed is set by stopMRP: no entity starts after it.
 	closed bool
 }
@@ -65,6 +80,11 @@ func (d *Device) startMRP() error {
 	if c.RingPorts == [2]int{} {
 		c.RingPorts = [2]int{1, 2}
 	}
+	// The default of mrp.New, made explicit so that a written timer
+	// profile compares with what the entity runs.
+	if c.Profile.TestInterval == 0 {
+		c.Profile = mrp.Profile200
+	}
 	for _, p := range c.RingPorts {
 		if p < 1 || p > len(d.ports) {
 			return fmt.Errorf("device: MRP ring port %d of %d ports: %w", p, len(d.ports), profinet.ErrInvalidConfig)
@@ -79,7 +99,10 @@ func (d *Device) startMRP() error {
 	if c.DomainName == "" {
 		c.DomainName = "mrpdomain-1"
 	}
+	// The LLDP agents, already sending, read it (mrpLLDP).
+	d.mu.Lock()
 	d.mrpSt = &mrpState{cfg: c, portAdj: map[uint16]*pnio.PDPortMrpData{}}
+	d.mu.Unlock()
 	d.mrpMu.Lock()
 	defer d.mrpMu.Unlock()
 	return d.setMRPRole(c.Role, c.Domain, c.DomainName)
@@ -224,9 +247,117 @@ func (d *Device) readMRP(q pnio.ReadReq) (b []byte, handled bool, err error) {
 			return r.Append(nil), true, nil
 		}
 	default:
-		// The check: nothing written is ever stored (writeMRP).
+		if st.check != nil {
+			return st.check.Append(nil), true, nil
+		}
 	}
 	return []byte{}, true, nil
+}
+
+// mrpLLDP returns the MRP port status a port sends in its LLDP frames:
+// its MRP domain on a ring port while MRP runs, nil otherwise. MRRT is
+// not implemented, so its state is off. mu held.
+//
+// rt-labs p-net sends the TLV on the ring ports of a client, and once
+// after a role change (pf_lldp_get_mrp_port_status); go-profinet sends it
+// while the role is client or manager.
+func (d *Device) mrpLLDP(p *port) *lldp.MRPPortStatus {
+	st := d.mrpSt
+	if st == nil || st.cfg.Role == mrp.RoleDisabled || !slices.Contains(st.cfg.RingPorts[:], p.n) {
+		return nil
+	}
+	return &lldp.MRPPortStatus{Domain: st.cfg.Domain, MRRT: lldp.MRRTOff}
+}
+
+// mrpDomainMismatch reports whether the MRP_DomainUUID check applies to a
+// port and the neighbor's MRP domain differs from the device's. The check
+// applies to a ring port while MRP runs; a neighbor that sends no MRP port
+// status (not an MRP ring port, or no neighbor) is not a mismatch, where
+// p-net compares with an empty domain (pf_pdport_check_mrp_domain_mismatch).
+// mu held.
+func (d *Device) mrpDomainMismatch(subslot uint16, peer lldp.Neighbor, found bool) bool {
+	st := d.mrpSt
+	if st == nil || st.check == nil || st.check.Check&pnio.MrpCheckDomainUUID == 0 || st.cfg.Role == mrp.RoleDisabled || !d.isRingPort(subslot) {
+		return false
+	}
+	return found && peer.Frame.MRPPortStatus != nil && peer.Frame.MRPPortStatus.Domain != st.cfg.Domain
+}
+
+// writeMRPCheck serves a write of PDInterfaceMrpDataCheck: version 1.0
+// (one MRP instance), the device's own domain, and no check but the
+// MRP_DomainUUID one.
+func (d *Device) writeMRPCheck(st *mrpState, data []byte) error {
+	blk, err := oneBlock(data)
+	if err != nil {
+		return err
+	}
+	c, err := pnio.DecodePDInterfaceMrpDataCheck(blk)
+	switch {
+	case errors.Is(err, profinet.ErrUnsupported):
+		// Version 1.1, several MRP instances: one is implemented.
+		return errUnsupportedPDev
+	case err != nil:
+		return rwErr(pnio.RWInvalidParameter)
+	case c.Check&pnio.MrpCheckManager != 0:
+		return errUnsupportedPDev
+	case c.Check&^pnio.MrpCheckDomainUUID != 0:
+		// Reserved bits: nothing is known that they would check.
+		return rwErr(pnio.RWInvalidParameter)
+	}
+	d.mu.Lock()
+	if c.Domain != st.cfg.Domain {
+		d.mu.Unlock()
+		return rwErr(pnio.RWInvalidParameter)
+	}
+	st.check = &c
+	d.mu.Unlock()
+	d.pokePDev()
+	return nil
+}
+
+// mrpParamProfiles are the timer profiles a controller can select, with
+// their MRP_TSTshortT, which mrp.Profile has no field for (the entity does
+// not shorten its test interval after a topology change): 10 ms and
+// 30 ms, as microchip-ung/mrp's state_machine.c.
+var mrpParamProfiles = []struct {
+	p     mrp.Profile
+	short time.Duration
+}{{mrp.Profile200, 10 * time.Millisecond}, {mrp.Profile500, 30 * time.Millisecond}}
+
+// writtenProfile returns the timer profile a PDInterfaceMrpDataAdjust
+// selects; ok is false when its timers are not those of a profile in
+// mrpParamProfiles. The units are Wireshark's (packet-dcerpc-pn-io.c): MRP_TOPchgT in
+// 10 ms, MRP_TSTshortT, MRP_TSTdefaultT, MRP_LNKdownT and MRP_LNKupT in
+// ms; MRP_TOPNRmax, MRP_TSTNRmax and MRP_LNKNRmax are counts. p-net's
+// default MRP_LNKdownT, 20 (ms), is mrp.Profile200's link interval. A
+// block whose timers are all zero selects nothing and keeps cur: the
+// go-profinet controller before v0.25.0 sends MrpManagerParams with the
+// priority only. The arithmetic is on time.Duration, which holds 65535 ×
+// 10 ms without overflow.
+func writtenProfile(a *pnio.PDInterfaceMrpDataAdjust, cur mrp.Profile) (mrp.Profile, bool) {
+	m, c := a.Manager, a.Client
+	if m != nil && m.TopChangeT == 0 && m.TopNRmax == 0 && m.TestShortT == 0 && m.TestDefaultT == 0 && m.TestNRmax == 0 {
+		m = nil
+	}
+	if c != nil && *c == (pnio.MrpClientParams{}) {
+		c = nil
+	}
+	if m == nil && c == nil {
+		return cur, true
+	}
+	ms := time.Millisecond
+	for _, w := range mrpParamProfiles {
+		p := w.p
+		if m != nil && (time.Duration(m.TopChangeT)*10*ms != p.TopChangeInterval || int(m.TopNRmax) != p.TopChangeRepeat ||
+			time.Duration(m.TestShortT)*ms != w.short || time.Duration(m.TestDefaultT)*ms != p.TestInterval || int(m.TestNRmax) != p.TestMax) {
+			continue
+		}
+		if c != nil && (time.Duration(c.LinkDownT)*ms != p.LinkInterval || time.Duration(c.LinkUpT)*ms != p.LinkInterval || int(c.LinkNRmax) != p.LinkRepeat) {
+			continue
+		}
+		return p, true
+	}
+	return mrp.Profile{}, false
 }
 
 // writeMRP serves a write of an MRP record; handled is false for other
@@ -248,7 +379,7 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 		if !isInterface(q.Slot, q.Subslot) {
 			return true, errInvalidIndex
 		}
-		return true, errUnsupportedPDev
+		return true, d.writeMRPCheck(st, data)
 	default:
 	}
 	blk, err := oneBlock(data)
@@ -284,15 +415,27 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 	d.mrpMu.Lock()
 	defer d.mrpMu.Unlock()
 	d.mu.Lock()
-	same := st.cfg.Role == mrp.Role(a.Role) && st.cfg.Domain == a.Domain && st.cfg.DomainName == a.DomainName
-	st.adjust = &a
-	if a.Manager != nil && a.Manager.Prio != 0 {
-		st.cfg.Prio = a.Manager.Prio
+	// Everything is checked before anything changes: a refused write
+	// leaves the role, the priority and the timers as they were.
+	prof, ok := writtenProfile(&a, st.cfg.Profile)
+	if !ok {
+		d.mu.Unlock()
+		return true, errUnsupportedPDev
 	}
+	prio := st.cfg.Prio
+	if a.Manager != nil && a.Manager.Prio != 0 {
+		prio = a.Manager.Prio
+	}
+	same := st.cfg.Role == mrp.Role(a.Role) && st.cfg.Domain == a.Domain && st.cfg.DomainName == a.DomainName &&
+		st.cfg.Prio == prio && st.cfg.Profile == prof
+	st.adjust = &a
+	st.cfg.Prio, st.cfg.Profile = prio, prof
 	d.mu.Unlock()
 	if same {
 		return true, nil
 	}
+	// The ring ports announce the new domain; the check compares with it.
+	defer d.pokePDev()
 	if err := d.setMRPRole(mrp.Role(a.Role), a.Domain, a.DomainName); err != nil {
 		d.log.Infof("device: MRP: %v", err)
 		return true, rwErr(pnio.RWInvalidParameter)

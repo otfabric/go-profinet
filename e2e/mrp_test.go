@@ -113,8 +113,9 @@ func TestMRPRing(t *testing.T) {
 	}
 }
 
-// TestMRPRecords: the MRP records of a device without MRP are refused; a
-// check is refused; a port adjust of another domain is refused.
+// TestMRPRecords: the MRP records of a device without MRP are refused; the
+// manager check is refused and the domain check accepted; a port adjust of
+// another domain is refused; timers of no supported profile are refused.
 func TestMRPRecords(t *testing.T) {
 	e := newEnv(t, 311)
 	segs := e.segments(3)
@@ -129,7 +130,19 @@ func TestMRPRecords(t *testing.T) {
 	ctx := context.Background()
 	chk := pnio.PDInterfaceMrpDataCheck{Domain: mrp.DefaultDomain, Check: pnio.MrpCheckManager}
 	if err := cd.WriteRecord(ctx, controller.Record{Subslot: model.SubslotInterface, Index: pnio.IndexPDInterfaceMrpDataCheck}, chk.Append(nil)); err == nil {
-		t.Fatal("check accepted")
+		t.Fatal("manager check accepted")
+	}
+	chk.Check = pnio.MrpCheckDomainUUID
+	if err := cd.WriteRecord(ctx, controller.Record{Subslot: model.SubslotInterface, Index: pnio.IndexPDInterfaceMrpDataCheck}, chk.Append(nil)); err != nil {
+		t.Fatalf("domain check: %v", err)
+	}
+	if b, err := cd.ReadRecord(ctx, controller.Record{Subslot: model.SubslotInterface, Index: pnio.IndexPDInterfaceMrpDataCheck}, 0); err != nil || string(b) != string(chk.Append(nil)) {
+		t.Fatalf("domain check read back % x %v", b, err)
+	}
+	fast := pnio.PDInterfaceMrpDataAdjust{Domain: mrp.DefaultDomain, Role: pnio.MrpRoleClient, DomainName: "mrpdomain-1",
+		Client: &pnio.MrpClientParams{LinkDownT: 1, LinkUpT: 1, LinkNRmax: 4}}
+	if err := cd.WriteRecord(ctx, controller.Record{Subslot: model.SubslotInterface, Index: pnio.IndexPDInterfaceMrpDataAdjust}, fast.Append(nil)); err == nil {
+		t.Fatal("timers of no supported profile accepted")
 	}
 	pa := pnio.PDPortMrpData{Domain: [16]byte{1}}
 	if err := cd.WriteRecord(ctx, controller.Record{Subslot: model.SubslotPort1, Index: pnio.IndexPDPortMrpDataAdjust}, pa.Append(nil)); err == nil {

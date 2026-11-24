@@ -36,7 +36,11 @@ section ending with a `---` line and no `---` line inside a section.
 Device fixes found by comparing go-profinet with rt-labs p-net v2.0.0: the
 IO-Device's LLDP TTL is 21 s, an unchanged diagnosis no longer adds an
 entry and an alarm, and a diagnosis alarm's AlarmSpecifier advertises a
-fault only when a fault diagnosis is active.
+fault only when a fault diagnosis is active. The audit of p-net's fixed
+issues found three defects (alarm sequence numbers after a failed send,
+port checks kept across ARs, RPC fragments in mixed byte order). The
+device now honours the MRP domain check and the MRP timers a controller
+writes, within the 200 ms and 500 ms profiles.
 
 ## Changes
 
@@ -45,8 +49,29 @@ fault only when a fault diagnosis is active.
 - **`lldp.AgentOptions.TTL`**: the TTL announced, in place of
   `TTLFactor` × `Interval`, in whole seconds within 1..65535. Without it
   the default stays 20 s (4 × 5 s).
+- **`lldp.MRPPortStatus`**, `Frame.MRPPortStatus`, `LocalInfo.MRP` and
+  `MRRTOff`/`MRRTConfigured`/`MRRTUp`: the PROFINET MRP port status TLV
+  (subtype 4: MRP domain UUID and MRRT state, Wireshark's layout), decoded
+  and sent. Before it was kept as a raw TLV in `Frame.Other`.
+- **Device: PDInterfaceMrpDataCheck (0x8051), MRP_DomainUUID check**: the
+  ring ports announce the device's MRP domain in LLDP, and a ring port
+  whose neighbor announces another domain reports a remote mismatch
+  diagnosis with extended error type 0x8004 ("Peer MRP domain mismatch",
+  Wireshark; p-net's check). The record is stored and read back. The
+  MediaRedundancyManager check, reserved bits, another domain and block
+  version 1.1 are refused.
 
 ### Changed
+
+- **Device: written MRP timers are applied**: the timers of a written
+  MrpManagerParams/MrpClientParams select `mrp.Profile200` or
+  `mrp.Profile500` (units from Wireshark: MRP_TOPchgT in 10 ms, the
+  others in ms; MRP_TSTshortT 10/30 ms from microchip-ung/mrp), and the
+  entity restarts with it; any other set of timers is refused with
+  "feature not supported" and changes nothing. All-zero timers keep the
+  profile (the go-profinet controller writes MrpManagerParams with the
+  priority alone). A changed manager priority alone now restarts the
+  entity; before, it was stored but not applied.
 
 - **Device LLDP TTL**: the device's agents announce 21 s with the default
   5 s interval (was 20 s); another `LLDPInterval` keeps four intervals. 21 s is p-net v2.0.0's `PF_LLDP_TTL`, whose release notes cite
@@ -107,7 +132,11 @@ fault only when a fault diagnosis is active.
   neighbor table keeps the device one second longer; a controller that
   reconnects with a new IOCAR writes its port checks again (they are no
   longer kept from the previous AR); fragmented RPC calls in mixed byte
-  order are refused.
+  order are refused; a PDInterfaceMrpDataCheck with the domain bit is
+  accepted (it was refused), and a PDInterfaceMrpDataAdjust whose timers
+  are not those of the 200 or 500 ms profile is refused (they were
+  ignored); a decoded MRP port status TLV is in `Frame.MRPPortStatus`, no
+  longer in `Frame.Other`.
 
 ### Evidence
 
@@ -122,7 +151,12 @@ removed diagnosis. `TestSendAfterTransmitFailure` and
 `TestPDevResetOnConnect` (a stale mismatch after the Connect) and
 `TestReassemblyMixedDRep` (mixed byte order reassembled) fail before
 their fixes; `TestSendPendingTimeout` checks the pending PDU is dropped
-after its retries. The behaviour follows p-net v2.0.0's source; it is not
+after its retries. `TestMRPDomainCheck` and `TestMRPCheckRefused` (the
+check refused with 0xA9) and `TestMRPAdjustTimers` (no profile applied)
+fail before the MRP change; `TestWrittenProfile` covers each field and
+the extreme values, `TestMRPPortStatusTLV` the TLV against its layout,
+and e2e `TestMRPRecords` the records through the controller. The
+behaviour follows p-net v2.0.0's source; it is not
 tested against p-net v2.0.0, PI's test bundle or a PLC.
 
 ---

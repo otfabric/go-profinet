@@ -254,7 +254,7 @@ text is not available to the project.
 | Shared device | Wireshark; p-net | shared input not implemented (not public) |
 | Port checks, boundaries | Wireshark; p-net (also the reset at an IOCAR's Connect, `pf_pdport_reset_ar`) | MAU, link state and line delay checks refused |
 | Multiport device | IEEE 802.1D behaviour (learning bridge) | software forwarding, not deterministic |
-| MRP client and manager | microchip-ung/mrp, umrp and the Linux bridge (IEC 62439-2 not read) | 200/500 ms profiles only; no interconnection, MRPD, diagnoses |
+| MRP client and manager | microchip-ung/mrp, umrp and the Linux bridge (IEC 62439-2 not read); written timers in Wireshark's units; the MRP_DomainUUID check from Wireshark (bit, error code, LLDP TLV) and p-net (behaviour) | 200/500 ms profiles only; no interconnection, MRPD, manager diagnoses; the domain check is not tested against another stack |
 | MRA | microchip-ung/mrp and umrp (NAck/Propagate, priorities); Wireshark (option layout) | a role of the device configuration only (PROFINET's MRP_Role has no value for it); sends the OUI 08-00-06 Wireshark decodes, where the open implementations send 00-00-00 (both parse either) |
 | SNMP agent | RFC 1157/3416/3418/1213, IEEE 802.1AB LLDP-MIB, RFC 2021 TimeFilter | no v3, no traps, no PNO LLDP extension MIB |
 | Persistence | temporary vs permanent as p-net reads the CMINA state table | port, interface and MRP adjustments not stored |

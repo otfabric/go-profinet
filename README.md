@@ -119,7 +119,7 @@ is from PI's public pages.
 | PDPortDataReal / PDRealData (topology) | ✅ serve and decode | ✅ | — | ✅ read | ✅ |
 | PDPortDataCheck (CheckPeers) / PDPortDataAdjust (boundaries) | ✅ device and controller | ◐ CheckPeers, PeerToPeerBoundary bit 0 | — | — | ✅ |
 | Re-parameterization in Data (PrmBegin) | ✅ device and controller | ✅ PrmBegin/PrmEnd parameter sequences (v2.0.0) | — (refuses PrmBegin) | ✅ controller | ✅ |
-| Media redundancy (MRP) | ✅ client, manager, automatic manager (multiport device); 200/500 ms profiles; MrpManagerParams/MrpClientParams timers not applied, PDInterfaceMrpDataCheck refused | ◐ client (v2.0.0, build option) | — | n/a | not documented |
+| Media redundancy (MRP) | ✅ client, manager, automatic manager (multiport device); 200/500 ms profiles; written timers select the 200/500 ms profile; PDInterfaceMrpDataCheck: the domain check only | ◐ client (v2.0.0, build option) | — | n/a | not documented |
 | System redundancy (S2, AR sets) | ◐ experiment, off by default; not tested against a PLC | ✅ AR sets (v2.0.0, build option) | — | — | not documented |
 | Dynamic reconfiguration, plug and pull in Data | — | ✅ (v2.0.0) | — | — | not documented |
 | Combined Object Container | — | ✅ (v2.0.0) | — | — | not documented |

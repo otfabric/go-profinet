@@ -776,5 +776,6 @@ func (d *Device) lldpInfo(p *port) lldp.LocalInfo {
 		// PDInterfaceAdjust: without NameOfDevice the port ID is the
 		// port's name alone.
 		Legacy: d.pd.interfaceMode()&pnio.InterfaceModeNameOfDevice == 0,
+		MRP:    d.mrpLLDP(p),
 	}
 }

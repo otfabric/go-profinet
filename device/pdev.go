@@ -26,6 +26,11 @@ const (
 	extPeerStationMismatch uint16 = 0x8000
 	extPeerPortMismatch    uint16 = 0x8001
 	extNoPeer              uint16 = 0x8005
+	// extPeerMRPDomainMismatch is "Peer MRP domain mismatch" (Wireshark
+	// packet-dcerpc-pn-io.c, pn_io_ext_channel_error_type0x8001; p-net
+	// PF_WRT_ERROR_PEER_MRP_DOMAIN_MISMATCH), from the MRP_DomainUUID
+	// check of PDInterfaceMrpDataCheck.
+	extPeerMRPDomainMismatch uint16 = 0x8004
 )
 
 // pdevChannel is the channel of the port diagnoses: the whole submodule.
@@ -440,6 +445,11 @@ func (d *Device) evalPort(subslot uint16) {
 		peer, found = p.lldpA.Latest()
 	}
 	want := peerMismatch(c, peer, found)
+	d.mu.Lock()
+	if d.mrpDomainMismatch(subslot, peer, found) {
+		want = append(want, extPeerMRPDomainMismatch)
+	}
+	d.mu.Unlock()
 	if equalTypes(want, active) {
 		return
 	}
@@ -460,7 +470,7 @@ func (d *Device) evalPort(subslot uint16) {
 	d.pd.active[subslot] = want
 	d.mu.Unlock()
 	if len(want) > 0 {
-		d.log.Infof("device: port %#x: remote mismatch %#x (expected %+v)", subslot, want, c.Peers)
+		d.log.Infof("device: port %#x: remote mismatch %#x", subslot, want)
 	}
 }
 
