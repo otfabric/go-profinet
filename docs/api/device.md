@@ -16,7 +16,7 @@ The application describes the device with a [model.Device](https://pkg.go.dev/gi
 const AlarmAckTimeout = 5 * time.Second
 ```
 
-AlarmAckTimeout is the shortest time the device waits for the controller's AlarmAck after the transport acknowledged the alarm.
+AlarmAckTimeout is the shortest time a caller of SendAlarm or of a diagnosis call waits for the controller's AlarmAck. It does not end the alarm: an alarm without AlarmAck stays outstanding until the AR ends.
 
 ```go
 const DefaultStoreKey = "device"
@@ -272,6 +272,17 @@ type Device struct {
 
 	// diagFailed, when set (tests), runs when a diagnosis alarm was not
 	// delivered, before the rest is owed.
+
+	// alarmStarted, when set (tests), is called once an alarm was
+	// transmitted, before its caller waits for it.
+
+	// evalPaused, when set (tests), is called by the port evaluation
+	// after it read the port's state and before it records its result.
+
+	// mrpRetry, when set (tests), is the first delay of an MRP recovery
+	// in place of mrpRetryMin.
+
+	// mrpWG counts the MRP recoveries; d.ctx ends them.
 
 	// mrpNew, when set (tests), starts the MRP entity in place of mrp.New.
 

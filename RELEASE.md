@@ -46,6 +46,13 @@ writes, within the 200 ms and 500 ms profiles.
 
 ### Added
 
+- **`alarm.Endpoint.Start` and `alarm.Transfer`**: a DATA PDU the
+  endpoint owns from its first transmission to its ACK, its timeout or
+  `Close`; the context of `Start` bounds only what comes before the PDU
+  is on the wire. `Send` is unchanged, except that waiting for an
+  earlier PDU now also ends with its context.
+- **`mrp.Config.Validate`**: the checks of `mrp.New`, without starting
+  an entity.
 - **`mrp.Profile.TestShortInterval`**: MRP_TSTshortT, the interval of the
   manager's additional test after a client's LinkChange (see Changed).
 - **`lldp.AgentOptions.TTL`**: the TTL announced, in place of
@@ -147,6 +154,36 @@ writes, within the 200 ms and 500 ms profiles.
 
 ### Fixed
 
+- **A transmitted alarm belongs to its AR** (device): an alarm whose
+  caller's context ended after its transmission and before the
+  transport ACK was owed as well as pending in the endpoint, so the
+  controller could receive it twice and the AlarmSpecifier sequence
+  numbers showed a gap. The device now sends with `alarm.Endpoint.Start`:
+  an alarm that never left gives its sequence number back and is owed;
+  one that left stays the outstanding alarm of its priority, not owed,
+  until its AlarmAck, a transport timeout (the AR is aborted) or the end
+  of the AR.
+- **No alarm before the AlarmAck of the one before** (device): the
+  AlarmAck timer (`AlarmAckTimeout`, 5 s at least) freed the priority, so
+  the next alarm could go before a late AlarmAck, and a diagnosis alarm
+  whose AlarmAck was late was owed and sent again. The timer now only
+  bounds the caller's wait (`ErrTimeout`); the alarm stays outstanding,
+  as p-net keeps ALPMI in W_ACK. A late AlarmAck, positive or negative,
+  ends it; a refused one is logged and not resent.
+- **Port evaluations record only what is current** (device): a port
+  check evaluation that ran across a Connect reset, a check rewrite or
+  an MRP domain change could add the old result's mismatch diagnosis,
+  with its alarms, after the change. It now records its result in one
+  step, and only if nothing it read changed; the Connect does not wait
+  for it.
+- **The MRP entity recovers by itself** (device): after a write whose
+  entity did not start and whose restore failed too, no entity ran
+  until a controller wrote the configuration again. A start failure of
+  the moment is now retried with a backoff (200 ms to 30 s) until the
+  entity runs, a newer configuration is written, the configuration is
+  found unable to run (`ErrInvalidConfig`) or the device closes. A
+  configuration `mrp.New` refuses is refused before the running entity
+  stops. The ring ports keep their state until an entity runs.
 - **Alarm sequence numbers after a failed or cancelled send**
   (`alarm.Endpoint.Send`): a DATA PDU whose first transmission failed
   (link down) or whose `Send` was cancelled while it awaited its ACK used
@@ -219,7 +256,11 @@ writes, within the 200 ms and 500 ms profiles.
   accepted (it was refused), and a PDInterfaceMrpDataAdjust whose timers
   are not those of the 200 or 500 ms profile is refused (they were
   ignored); a decoded MRP port status TLV is in `Frame.MRPPortStatus`, no
-  longer in `Frame.Other`.
+  longer in `Frame.Other`. An alarm without AlarmAck keeps its priority
+  until its AR ends: a `SendAlarm` after it waits, within its context,
+  instead of going out after the AlarmAck timer; an alarm whose caller
+  gave up after `AlarmAckTimeout` returns an error matching
+  `ErrTimeout` and is no longer re-sent as owed.
 
 ### Evidence
 
@@ -264,7 +305,24 @@ controller outside the ring; `TestOwedWhileNotInData`,
 `TestMRPPortAdjustDuringAdjustRollback` fail before their fixes;
 `TestWrittenProfile` covers each field and the extreme values,
 `TestMRPPortStatusTLV` the TLV against its layout, and e2e
-`TestMRPRecords` the records through the controller. The
+`TestMRPRecords` the records through the controller.
+After the follow-up review: `TestAlarmCancelledBeforeTransportAck` (the
+transmitted alarm owed), `TestAlarmNotTransmittedGivesBackSequence` (a
+gap in the sequence numbers), `TestAlarmAckLaterThanTimer` (the late
+alarm owed and the next one sent first) and
+`TestAlarmOutstandingTransportTimeout` fail before the change, checked
+against v0.25.0 #134; `TestAlarmLateNegativeAck` pins the late refusal.
+`TestPDevStaleEvalAfterConnectReset` (the old mismatch owed to the new
+AR) and `TestPDevStaleEvalAfterCheckRewrite` (a stale mismatch added and
+removed) fail without the generation check;
+`TestMRPRecoversAfterDoubleFailure`, `TestMRPRecoveryYieldsToNewerConfig`
+and `TestMRPRecoveryStopsOnPermanentFailure` fail without the recovery,
+`TestMRPRecoveryStopsAtClose` and `TestMRPRoleValidatedBeforeStop` cover
+Close and the prevalidation, and the `alarm` `TestStart*` tests the
+Transfer. `TestAlarms` now expects the next alarm to wait for an
+outstanding one. The CHK_RC LinkChange rows of IEC 62439-2 are in no
+public preview; docs/research/PNET-V2-MRP.md records the evidence per
+transition, and nothing changed there. The
 behaviour follows p-net v2.0.0's source; it is not
 tested against p-net v2.0.0, PI's test bundle or a PLC.
 

@@ -33,7 +33,7 @@ What the library retries by itself, and what it leaves to the application:
 |-------|-------|---------------|
 | DCP Get and Set | retransmitted with the same transaction ID (default 3 times) | `dcp.ClientOptions.Retries` |
 | DCE/RPC calls | retransmitted every second until the call's deadline (a fragment that is missing is asked for again); a device executes a call at most once and answers a retransmission from its response cache | `rpc.ClientOptions.Retransmit`, `controller.DeviceConfig.RPCTimeout`, the context |
-| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted. A DATA PDU that never reached the wire gives its sequence number back; one whose `Send` was cancelled after it was sent stays pending and is retransmitted before the next one (since v0.25.0). After one is not acknowledged, `Send` returns `ErrInvalidState`: the AR is to be aborted | `RTATimeoutFactor`, `RTARetries` |
+| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted. A DATA PDU that never reached the wire gives its sequence number back; one whose `Send` was cancelled after it was sent stays pending and is retransmitted before the next one (since v0.25.0). `Start` returns once the PDU is on the wire and its `Transfer` carries it to its ACK, its timeout or `Close`, whatever the caller's context does; a `Start` that fails sent nothing. After one is not acknowledged, `Send` returns `ErrInvalidState`: the AR is to be aborted | `RTATimeoutFactor`, `RTARetries` |
 | Controller lifecycle | a failed AR or connection attempt is retried for ever with an exponential backoff and optional jitter; a DCP Hello of the device skips the wait | `ReconnectMin`, `ReconnectMax`, `ReconnectJitter`; `Metrics.OnRetry` |
 | Record calls (`ReadRecord`, …) | not retried: a write must not be repeated behind the application's back | the application |
 
@@ -250,8 +250,9 @@ first and report it second; an error describes the report, not the state:
 | `RemoveDiagnosis`, no diagnosis of that channel and error type | `ErrNotFound`; when alarms of the submodule are owed to its owner (a removal repeated after its alarm failed), they are sent and their result is returned instead |
 | `RemoveDiagnosis`, an alarm fails | that error; the diagnoses are removed, the alarms not delivered are owed as above |
 | either, alarm not acknowledged | `ErrTimeout`, `ErrAborted` or a `*pnio.StatusError` as for `SendAlarm` |
-| `SendAlarm` or a diagnosis call, ctx ends after the alarm was delivered | an error matching `ctx.Err()`; the alarm stays outstanding: the next alarm of its priority waits for its AlarmAck, the end of the AR or the AlarmAck timer. A diagnosis alarm in this case is not owed |
-| `SendAlarm` or a diagnosis call, no AlarmAck within the AlarmAck timer | `ErrTimeout`; the alarm is taken as lost and the priority is free |
+| `SendAlarm` or a diagnosis call, ctx ends before the alarm was transmitted (waiting for the priority, or the first transmission failed) | the error of ctx or of the transmission; nothing was sent and the AlarmSpecifier sequence number is given back. A diagnosis alarm in this case is owed |
+| `SendAlarm` or a diagnosis call, ctx ends after the alarm was transmitted | an error matching `ctx.Err()`; the alarm stays outstanding until its AlarmAck, a transport timeout (the AR is aborted) or the end of the AR, and the next alarm of its priority waits for that. A diagnosis alarm in this case is not owed |
+| `SendAlarm` or a diagnosis call, no AlarmAck within `AlarmAckTimeout` (5 s at least) | `ErrTimeout`; the alarm stays outstanding as above (before v0.25.0 the priority was freed and the next alarm could go before a late AlarmAck). A diagnosis alarm in this case is not owed |
 
 ## Lifecycle errors
 

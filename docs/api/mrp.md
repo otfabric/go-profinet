@@ -148,6 +148,14 @@ type Config struct {
 
 Config configures an entity.
 
+#### func (Config) Validate
+
+```go
+func (cfg Config) Validate() error
+```
+
+Validate reports whether New accepts cfg, with the error New would return (matching profinet.ErrInvalidConfig), without starting anything. A configuration it accepts may still fail to start for a reason of the moment, such as a port that cannot take another subscription.
+
 ### type Entity
 
 ```go
