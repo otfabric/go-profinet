@@ -93,8 +93,9 @@ Restrictions:
   the model's submodule in its slot and subslot (API 0 where the model has
   none). `RecordClient.ReadDiagnosis` reads a subslot at API 0;
   `ReadSubmoduleDiagnosis` takes the API. profinetctl v0.19.0 already
-  enumerates all APIs in `device info`: APIData (0xF821), followed by
-  RealIdentificationData (0xF000) per API (since v0.18.0); record read/write
+  discovers APIs in `device info` via APIData (0xF821), followed by
+  RealIdentificationData (0xF000) per API (since v0.18.0), and reports
+  incomplete discovery on failure; record read/write
   also take `--api`. `im read` and per-submodule `diagnostics` still target
   API 0 in v0.19.0; [profinetctl#49](https://github.com/otfabric/profinetctl/pull/49)
   adds `--api` to those commands but is not yet released.
