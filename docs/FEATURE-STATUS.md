@@ -14,8 +14,8 @@ and `TestProfinetPyAPI` (the library is unchanged):
 - The interop matrix below, published in profinet-interop v0.14.0, comes
   from the Interop and Kernel MRP jobs of go-profinet's pull request
   workflow, run 45295645172 (2026-11-24). That run tested PR #118 at
-  18d3fdb (its tests and the device model as merged; the pin pointed at
-  profinet-interop#39, whose images are v0.13.0's). The matrix has 323
+  18d3fdb, whose tree is that of its merge commit 909ec56 (the pin
+  pointed at profinet-interop#39, whose images are v0.13.0's). The matrix has 323
   checks: 301 pass, 0 fail, 6 n/a and 16 peer deviations.
 - The Interop and Kernel MRP workflows run on pull requests that change
   code, weekly and by hand, not on pushes to `main`; a release is

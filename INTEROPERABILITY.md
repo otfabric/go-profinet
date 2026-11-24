@@ -129,7 +129,8 @@ is an attributed deviation of the peer.
 The Interop workflow builds the images of the profinet-interop release
 `INTEROP_REF` names (v0.14.0). The counts below are the matrix published in
 profinet-interop v0.14.0: the Interop and Kernel MRP jobs of go-profinet's
-pull request workflow, run 45295645172 (2026-11-24), on PR #118 at 18d3fdb,
+pull request workflow, run 45295645172 (2026-11-24), on PR #118 at 18d3fdb
+(the tree of its merge commit 909ec56),
 with the images of profinet-interop v0.13.0 (v0.14.0 changes no image).
 
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
