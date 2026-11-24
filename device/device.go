@@ -29,6 +29,7 @@ import (
 	"github.com/otfabric/go-profinet/l2/bridge"
 	"github.com/otfabric/go-profinet/lldp"
 	"github.com/otfabric/go-profinet/model"
+	"github.com/otfabric/go-profinet/mrp"
 	"github.com/otfabric/go-profinet/pnio"
 	"github.com/otfabric/go-profinet/rpc"
 	"github.com/otfabric/go-profinet/rt"
@@ -231,6 +232,8 @@ type Device struct {
 	// afterDiagChange, when set (tests), runs after a diagnosis operation
 	// changed the state and before it reports it.
 	afterDiagChange func()
+	// mrpNew, when set (tests), starts the MRP entity in place of mrp.New.
+	mrpNew func(mrp.Config) (*mrp.Entity, error)
 
 	// dhcp are the DHCP options DCP reports; ipDHCP marks ip as set by
 	// DHCP. Both under mu.

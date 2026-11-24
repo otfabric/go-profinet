@@ -270,6 +270,8 @@ type Device struct {
 	// afterDiagChange, when set (tests), runs after a diagnosis operation
 	// changed the state and before it reports it.
 
+	// mrpNew, when set (tests), starts the MRP entity in place of mrp.New.
+
 	// dhcp are the DHCP options DCP reports; ipDHCP marks ip as set by
 	// DHCP. Both under mu.
 

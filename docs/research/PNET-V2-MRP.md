@@ -44,14 +44,27 @@ Now:
 - **Block version 1.1** (several MRP instances): refused (0xA9); the
   device runs one instance.
 - The written check is stored and read back. It is not reset by a new AR
-  (p-net's `pf_pdport_reset_ar` resets the port checks only).
+  (p-net's `pf_pdport_reset_ar` resets the port checks only): the PDev
+  reset of an IOCAR's Connect removes the mismatch diagnosis with the
+  port checks' ones, and the evaluator reports it again for the new AR
+  (`TestMRPCheckLifecycle`).
+- The check names the domain it checks, which must be the device's when
+  it is written. A PDInterfaceMrpDataAdjust that changes the domain
+  drops it (go-profinet's rule: a check of a domain the device is not in
+  could not be written); the neighbor is compared with the check's
+  domain. A refused adjustment keeps the check.
+- MRP off (role disabled): the check does not apply, no diagnosis.
 
 Differences from p-net:
 
 - A neighbor that sends no MRP port status is not a mismatch. p-net
   compares with the stored peer domain, which is empty then, so it
   reports a mismatch against a non-MRP neighbor; go-profinet reports
-  nothing, as no domain is known to differ.
+  nothing, as no domain is known to differ. This covers a neighbor that
+  is an MRP ring port of a device that does not send the TLV: it is not
+  reported, so a domain difference with such a device goes unnoticed.
+  `TestMRPDomainCheck` pins it; whether the standard wants a mismatch
+  here is not read, and no change is made without that.
 - p-net sends the MRP port status TLV on the ports of an MRP client, and
   once after a role change; go-profinet sends it on the ring ports while
   the role is client or manager.
@@ -76,17 +89,31 @@ profile.
   OS does not keep their timers, and no recovery time is claimed for any
   profile.
 - A block whose timers are all zero selects nothing and keeps the
-  profile: go-profinet's controller before v0.25.0 writes MrpManagerParams
-  with the priority alone. This is go-profinet's rule for its own older
-  controllers, not a meaning of zero in the standard.
+  profile: go-profinet's controller writes MrpManagerParams with the
+  priority alone (`controller/mrp.go`). This is an OT Fabric convention,
+  not a meaning of zero in the standard or in another implementation
+  known here. Having the controller write the complete timers of a
+  profile was considered and not done in v0.25.0: it changes what the
+  controller sends to every device, which needs interop evidence against
+  a device that reads them (none in the matrix runs MRP records).
+- MRP_TSTshortT is matched as part of the profile and not applied: the
+  entity has no short test phase after a topology change, so implementing
+  it is a change to the MRP state machine, not to the record. A write
+  whose TSTshortT is not the profile's is refused, so no value is
+  accepted that differs from what the profile table says.
 - Ranges: no range check beyond the exact match; the comparison is done
   on `time.Duration`, which holds 65535 × 10 ms without overflow.
 - Atomicity: the whole record is checked before anything changes. A
-  refused write leaves the role, domain, priority, timers and the stored
-  record as they were. An accepted write stores the record and the
-  configuration, then restarts the entity when the role, domain, name,
-  priority or profile changed; the restart is not atomic with the write
-  (the ring is briefly without an entity, as for a role change before).
+  refused write leaves the role, domain, priority, timers, the stored
+  adjustment and check as they were. An accepted write stores the record
+  and the configuration, then restarts the entity when the role, domain,
+  name, priority or profile changed. When the new entity does not start,
+  the write is refused and the previous records, configuration and
+  entity are restored (`TestMRPAdjustRollback`, with an injected start
+  failure); if the previous entity does not start either, the error is
+  logged and the device runs no entity. The restart is not atomic with
+  the write: the ring is briefly without an entity, as for a role change
+  before; no recovery time is claimed.
 - The manager priority (`MRP_Prio`) of a write now restarts the entity
   when it alone changed.
 
@@ -94,7 +121,8 @@ profile.
 
 - The MediaRedundancyManager check and the manager diagnoses.
 - The short test interval after a topology change (MRP_TSTshortT): the
-  entity has no such phase; the value is only matched.
+  entity has no such phase; the value is only matched (see above).
+- The controller writing the complete timers of a profile (see above).
 - MRRT, MRP interconnection (LLDP subtype 8), several MRP instances.
 - Interop: none of this is tested against p-net or a PLC. profinet-interop
   v0.15.0 builds p-net `ea5e554`, without `PNET_OPTION_MRP`.

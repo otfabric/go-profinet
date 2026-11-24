@@ -145,6 +145,15 @@ writes, within the 200 ms and 500 ms profiles.
   check was reported in the next controller's ModuleDiffBlock and a stale
   NoLLDP boundary kept LLDP off. Found auditing p-net issue 2728 (the
   inverse defect: p-net reset every port at every Connect).
+- **A refused PDInterfaceMrpDataAdjust changes nothing**: when the MRP
+  entity of the new configuration does not start, the previous records,
+  configuration and entity are restored. Before, the write was refused
+  but its role, domain, priority and timers stayed recorded with no
+  entity running.
+- **The MRP domain check follows the domain**: a PDInterfaceMrpDataAdjust
+  that changes the MRP domain drops the PDInterfaceMrpDataCheck of the
+  old one, and the check compares the neighbor with the domain it names.
+  Before, the check stayed and compared with a domain it did not name.
 - **Fragments in mixed byte order are refused** (`rpc`): a fragment whose
   DRep byte order differs from the first is `ErrMalformed` (the server
   answers a REJECT); before, the body was read in the last fragment's
@@ -189,7 +198,10 @@ checks erased by a refused Connect) and `TestResponderSetIPLength` (a
 13-octet IP parameter applied); `TestSendPendingTimeout` checks the
 pending PDU is dropped after its retries. `TestMRPDomainCheck` and
 `TestMRPCheckRefused` (the check refused with 0xA9) and
-`TestMRPAdjustTimers` (no profile applied) fail before the MRP change;
+`TestMRPAdjustTimers` (no profile applied) fail before the MRP change,
+`TestMRPAdjustRollback` (a refused write left its configuration and no
+entity) and `TestMRPCheckLifecycle` (the old domain's check kept) before
+their fixes;
 `TestWrittenProfile` covers each field and the extreme values,
 `TestMRPPortStatusTLV` the TLV against its layout, and e2e
 `TestMRPRecords` the records through the controller. The
