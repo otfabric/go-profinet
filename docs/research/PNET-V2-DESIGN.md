@@ -7,13 +7,17 @@ notes and source (`public/v2.0.0`, `67301c5`; GPL-3.0, read for behaviour
 only). None of these was tested against p-net v2.0.0: the interop harness
 builds p-net `ea5e554`.
 
-| Rank | Feature | Value | Evidence available | Size |
+The rank orders what to do next. It weighs value and readiness
+together: a feature of high strategic value that cannot be built on
+evidence ranks low.
+
+| Rank | Feature | Strategic value | Readiness (evidence available) | Size |
 |---|---|---|---|---|
-| 1 | Application-owned I&M providers | high: every product needs its own I&M0 and persistent I&M1–4 | complete (records already implemented and verified) | small |
+| 1 | Application-owned I&M providers | high: every product needs its own I&M0 and persistent I&M1–4 | ready: records already implemented and verified | small |
 | 2 | Runtime plug and pull | high for modular and remote-IO devices | partial: alarm types and ModuleDiff from Wireshark and p-net; the sequence after a plug from p-net only | large |
 | 3 | Combined Object Container | medium: controllers that use it for parameter sets | partial: the block layout from p-net and Wireshark; error semantics from p-net only | medium |
 | 4 | Multicast pruning (filterable Identify) | low to medium: large networks, Identify by name | partial: address formula from p-net (citing the standard's table and formula), the rest not public | small |
-| 5 | Production S2 (system redundancy) | high for process plants, but not reachable | insufficient: no open implementation to test against, the switchover sequence is not public | large, blocked |
+| 5 | Production S2 (system redundancy) | high: process plants require it | not ready: no open implementation in the harness to test against, the switchover sequence is not public | large, blocked |
 
 ## 1. Application-owned I&M providers
 
@@ -38,13 +42,18 @@ builds p-net `ea5e554`.
 - **Go API (proposal)**:
 
   ```text
+  // IMAddr is the address of a submodule as a record request carries it.
+  type IMAddr struct {
+      API           uint32
+      Slot, Subslot uint16
+  }
   // IMProvider serves the I&M records of the submodules that carry them.
   type IMProvider interface {
       // ReadIM returns I&M n (0..4) of the submodule; ErrNotFound when it
       // carries none.
-      ReadIM(ctx context.Context, slot, subslot uint16, n int) (pnio.IMData, error)
+      ReadIM(ctx context.Context, at IMAddr, n int) (pnio.IMData, error)
       // WriteIM stores I&M n (1..4); a *pnio.StatusError refuses it.
-      WriteIM(ctx context.Context, slot, subslot uint16, n int, d pnio.IMData) error
+      WriteIM(ctx context.Context, at IMAddr, n int, d pnio.IMData) error
   }
   // Config.IMProvider: nil keeps today's built-in provider (model + Config.IM
   // + Config.Store), which becomes the default implementation.
@@ -52,7 +61,12 @@ builds p-net `ea5e554`.
   ```
 
   Calls run outside the device's locks with the record's deadline, like
-  `Handler.WriteRecord`.
+  `Handler.WriteRecord`. The address carries the API: today a slot
+  belongs to one API of the model, so (slot, subslot) is unique, but the
+  request names the API, and a request whose API is not the
+  submodule's is refused before the provider is called. Carrying it
+  keeps the interface unchanged if a model ever places the same slot in
+  several APIs, and lets a provider serve I&M of profile APIs.
 - **Standards evidence needed**: none beyond what the I&M records already
   have (Wireshark and the reference stacks); I&M0FilterData's carrier
   semantics are in Wireshark's dissector.
@@ -82,14 +96,19 @@ builds p-net `ea5e554`.
 - **Go API (proposal)**:
 
   ```text
-  // Plug makes a submodule real; an AR that expects it gets a Plug alarm
-  // (PlugWrongSubmodule for another ident) and parameterizes it.
-  func (d *Device) Plug(ctx context.Context, slot, subslot uint16, sm model.Submodule) error
+  // Plug makes a submodule real at (api, slot, subslot); an AR that
+  // expects it gets a Plug alarm (PlugWrongSubmodule for another ident)
+  // and parameterizes it.
+  func (d *Device) Plug(ctx context.Context, api uint32, slot, subslot uint16, sm model.Submodule) error
   // Pull removes it: its AR gets a Pull alarm, its inputs IOPS bad, its
   // outputs are no longer applied.
-  func (d *Device) Pull(ctx context.Context, slot, subslot uint16) error
-  // Handler gains an optional SubmoduleActivated(info ARInfo, slot, subslot).
+  func (d *Device) Pull(ctx context.Context, api uint32, slot, subslot uint16) error
+  // Handler gains an optional SubmoduleActivated(info ARInfo, api uint32, slot, subslot uint16).
   ```
+
+  The API is part of the address because the alarm (its API field), the
+  ModuleDiffBlock and the expected configuration all name it; a Plug
+  into a slot of another API than the model's is refused.
 
   The model stays immutable; the device keeps a "real" overlay under its
   lock, read by ModuleDiff, identification and the IO layout.
@@ -182,5 +201,8 @@ builds p-net `ea5e554`.
   its own (not in scope here: the harness's p-net pin stays).
 - **Compatibility**: none until the behaviour changes; a change of the
   switchover would be a behaviour break of an experimental feature.
+- **Value and readiness**: the strategic value is high (redundant
+  controllers in process plants are a buying criterion); the readiness
+  is the lowest of the five. The rank reflects readiness, not value.
 - **Recommendation**: keep it experimental. Revisit when an S2 oracle
   can be built; until then, adding behaviour would be invention.

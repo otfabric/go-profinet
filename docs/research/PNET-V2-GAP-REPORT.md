@@ -17,9 +17,9 @@ Pull requests (stacked in this order: #131 on #130, #132 on #131, this one on #1
 
 | Wave | Pull request | Content |
 |---|---|---|
-| 1 (P0) | otfabric/go-profinet#130 | LLDP TTL, diagnoses as a set, AlarmSpecifier, README |
-| 2 (P1) | otfabric/go-profinet#131 | RTA sequence numbers, PDev reset at Connect, RPC fragment byte order |
-| 3 (MRP) | otfabric/go-profinet#132 | PDInterfaceMrpDataCheck domain check, written MRP timers, LLDP MRP port status ([PNET-V2-MRP.md](PNET-V2-MRP.md)) |
+| 1 (P0) | otfabric/go-profinet#130 | LLDP TTL, diagnoses as a set, AlarmSpecifier, README; after review: diagnosis reports in order, undelivered ones owed and retried, alarms of one priority serialized to the AlarmAck |
+| 2 (P1) | otfabric/go-profinet#131 | RTA sequence numbers, PDev reset at Connect, RPC fragment byte order; after review: a pending alarm PDU owns its payload, no DATA PDU after a timeout, a refused Connect undoes its PDev reset, DCP Set IP/Parameter of exactly 12 octets |
+| 3 (MRP) | otfabric/go-profinet#132 | PDInterfaceMrpDataCheck domain check, written MRP timers, LLDP MRP port status ([PNET-V2-MRP.md](PNET-V2-MRP.md)); after review: a refused MRP adjustment changes nothing, the domain check follows the domain |
 | docs | this pull request | this report and [PNET-V2-DESIGN.md](PNET-V2-DESIGN.md) |
 
 Classes: **defect** (confirmed in go-profinet, with a test that fails
@@ -37,7 +37,7 @@ is not established from public evidence).
 | Diagnosis AlarmSpecifier (p-net 2727) | defect | `device/alarms.go` `diagAlarm` | ChannelDiagnosis, SubmoduleDiagnosisState, ARDiagnosisState only while a fault is active (p-net `pf_alarm_add_diag_item_to_summary`) | ChannelDiagnosis on every diagnosis alarm, all three on every appearing one: 0xA800 for a maintenance-required diagnosis | Wave 1: `diagSpecifier` over the active set. `TestDiagnosisAlarmSpecifier`, `TestDiagSpecifier` |
 | Qualified diagnosis format | defect (found on the way) | `device/alarms.go` `diagAlarm`, `device/records.go` `diagnosis` | a `Qualifier` reaches the controller (USI 0x8003) | USI 0x8000/0x8002 only: the qualifier was dropped | Wave 1: `diagUSI`. `TestDiagnosisRecordQualified` |
 | `RemoveDiagnosis` of several items | defect (found by the audit) | `device/alarms.go` `RemoveDiagnosis` | each removed diagnosis reported | all removed, one reported | Wave 1: one alarm per item. `TestDiagnosisIdempotent` |
-| ARDiagnosisState scope | needs specification | `device/alarms.go` `diagSpecifier` | the standard may mean every submodule of the AR | the alarm's submodule only, as p-net | documented (docs/DIAGNOSTICS.md, LIMITATIONS.md) |
+| ARDiagnosisState scope | needs specification | `device/alarms.go` `diagSpecifier` | the standard may mean every submodule of the AR | the alarm's submodule only, as p-net (its comment cites the standard's summarized specifier, which is not read here; Wireshark names the bit only) | documented (docs/DIAGNOSTICS.md, LIMITATIONS.md); pinned by `TestARDiagnosisStateScope` |
 | MaintenanceItem in a diagnosis alarm | difference | `device/alarms.go` `diagAlarm` | p-net puts a MaintenanceItem (USI 0x8100) before the item when its maintenance status is non-zero | the diagnosis item alone | documented; not changed (needs USI 0x8001 framing that is not verified) |
 | Remote mismatch alarm type | difference | `device/pdev.go` `evalPort` | p-net sends PortDataChangeNotification for error type 0x8001 | Diagnosis alarm | documented; not changed |
 | README comparison | stale | `README.md` | p-net v2.0.0 features | p-net column of v1.0.2 / `ea5e554` | Wave 1: column describes v2.0.0; the interop evidence is named as `ea5e554` |
@@ -49,20 +49,19 @@ is not established from public evidence).
 | 2732 | non-zero padding after DeviceRole in the Identify response | `dcp/identity.go` `Identity.Blocks` (`{Role, 0}`); `dcp/hello.go` `HelloFrame` | no | — | — | Hello golden `TestHelloFrameGolden` pins it; Identify/Get have no golden |
 | 2730 | a refused IODWrite answered with ErrorCode PNIO, not IODWriteRes | `device/serve.go` `serveWrite`, `asStatus`; `device/records.go` `writeRecordData`; `device/pdev.go`, `device/mrp.go` | no: every refusal after a decodable header is an IODWriteRes with ErrorCode 0xDF | residual: a handler's `StatusError` with another ErrorCode passes through; writes are not refused between PrmEnd and ApplicationReady (p-net: StateConflict) | not changed (low; the second needs the state rule established) | — |
 | 2729, 2727 | see Wave 0 | | yes | maintenance shown as fault; duplicate alarms | Wave 1 | Wave 1 tests |
-| 2728 | port diagnoses of every port reset at every Connect | `device/pdev.go` `pdevState`; `device/ar.go` `connect` | the inverse: never reset. A check, adjustment and remote mismatch diagnosis written by one AR outlived it, were reported in the next AR's ModuleDiffBlock, and a stale NoLLDP boundary kept LLDP off | wrong diagnosis and LLDP state for the next controller | Wave 2: `resetPDev` on the Connect of an IOCAR for the ports it takes (p-net `pf_pdport_reset_ar`) | `TestPDevResetOnConnect` |
-| 2701 | AlarmAck lost when the transport ACK cannot be sent; later alarms blocked | `alarm/endpoint.go` `handle` (receive), `Send` | not as stated: `handle` ignores the ACK send error and delivers. A related defect does: `Send` used its sequence number before transmitting, and a failed first transmission or a cancelled Send of a lost PDU skipped it; the peer then NACKed every later DATA | **the AR is lost**: the next alarm times out and the device aborts the AR (AbortAlarmSend), the controller fails it on the next AlarmAck | Wave 2: the number is given back when nothing reached the wire; a sent, cancelled PDU stays pending and is retransmitted first | `TestSendAfterTransmitFailure`, `TestSendAfterCancelledSend`, `TestSendPendingTimeout` |
+| 2728 | port diagnoses of every port reset at every Connect | `device/pdev.go` `pdevState`; `device/ar.go` `connect` | the inverse: never reset. A check, adjustment and remote mismatch diagnosis written by one AR outlived it, were reported in the next AR's ModuleDiffBlock, and a stale NoLLDP boundary kept LLDP off | wrong diagnosis and LLDP state for the next controller | Wave 2: `resetPDev` on the Connect of an IOCAR for the ports it takes (p-net `pf_pdport_reset_ar`); a Connect refused after it undoes it | `TestPDevResetOnConnect`, `TestPDevResetUndoneOnRefusedConnect` |
+| 2701 | AlarmAck lost when the transport ACK cannot be sent; later alarms blocked | `alarm/endpoint.go` `handle` (receive), `Send` | not as stated: `handle` ignores the ACK send error and delivers. A related defect does: `Send` used its sequence number before transmitting, and a failed first transmission or a cancelled Send of a lost PDU skipped it; the peer then NACKed every later DATA | **the AR is lost**: the next alarm times out and the device aborts the AR (AbortAlarmSend), the controller fails it on the next AlarmAck | Wave 2: the number is given back when nothing reached the wire; a sent, cancelled PDU stays pending (with its own copy of the payload) and is retransmitted first; after a timeout the endpoint sends no DATA PDU | `TestSendAfterTransmitFailure`, `TestSendAfterCancelledSend`, `TestSendPendingTimeout`, `TestSendPendingOwnsPayload`, `TestSendAfterTimeoutIsTerminal` |
 | 2537 | C build fails with `LOG_LEVEL_DEBUG` | `logger.go` | n/a: no conditional compilation; debug paths are compiled and tested | — | — | `logger_test.go` |
 | 2503 | IODWriteMultipleReq mishandled | `device/serve.go` `serveWrite` (WriteMultiple) | no crash, no skipped item. Differences: the NDR status is the first failing item's (p-net keeps OK and reports per item); each item's ARUUID is replaced by the outer one (p-net answers ARUUIDUnknown) | a third-party controller might discard the per-item results on a non-OK NDR status | needs specification: no capture of a reference device's answer | existing `records_test.go`, `hostile_test.go` pin today's behaviour |
 | 2501 | wrong block in a DCP Hello | `dcp/hello.go` `HelloFrame` | no: the same five blocks in p-net's order | difference: go-profinet sends the IP BlockInfo, p-net 0 (needs specification) | — | `TestHelloFrameGolden` |
-| 2499 | wrong size checked for a Set with FullIPSuiteBlock | `dcp/responder.go` `apply` | n/a: Set FullIPSuite is refused (suboption unsupported). Related: Set IP/Parameter accepts more than 12 octets and uses the first 12 (p-net requires exactly 12) | low | not changed in this round | — |
+| 2499 | wrong size checked for a Set with FullIPSuiteBlock | `dcp/responder.go` `apply` | n/a: Set FullIPSuite is refused (suboption unsupported). Related: Set IP/Parameter accepted more than 12 octets and used the first 12 (p-net requires exactly 12) | low: a Full IP Suite sent with the wrong suboption lost its DNS servers silently | after review: refused unless exactly 12 octets, the three addresses of Wireshark's dissector | `TestResponderSetIPLength` |
 | 2275 | byte order confused in fragmented RPC responses | `rpc/frag.go` `packets` (send), `reassembly.add` (receive) | sending: no (one header, one byte order). Receiving: fragments in different byte orders were reassembled and the body read in the last one's order | garbled NDR data instead of an error against a peer with the upstream bug | Wave 2: `reassembly.add` refuses a fragment in another byte order (`ErrMalformed`; the server answers a REJECT) | `TestReassemblyMixedDRep` |
 
-Other observations from the audit, not changed:
-
-- Application alarms of one priority are not serialised up to the
-  AlarmAck: two concurrent `SendAlarm` calls may both be on the wire
-  before the first AlarmAck. p-net queues them per priority. Whether a
-  controller refuses the second is not established.
+Another observation of the audit, changed after review: alarms of one
+priority were not serialised up to the AlarmAck, so two concurrent
+`SendAlarm` calls could both be on the wire before the first AlarmAck.
+p-net queues them per priority (`pf_alarm.c`, ALPMI W_ALARM); go-profinet
+now does the same (`TestAlarmsSerializedToAck`).
 
 ## Wave 3: MRP
 
@@ -74,6 +73,49 @@ Other observations from the audit, not changed:
 | LLDP MRP port status kept raw | gap | decoded and sent on the ring ports |
 
 Details, sources and differences from p-net: [PNET-V2-MRP.md](PNET-V2-MRP.md).
+
+## Review of the pull requests
+
+The review of #130 to #133 before v0.25.0 raised the findings below.
+Each was investigated against the code; each confirmed defect has a
+regression test that fails on the previous implementation (shown by
+running it against the files of the previous commit) and passes after
+the fix.
+
+| Finding | Class | Resolution | Test |
+|---|---|---|---|
+| 130-01 diagnosis notification order | defect | a ctx-aware sequencer holds each diagnosis change until its last alarm | `TestDiagnosisOrder`, `TestDiagnosisWaitCancelled` |
+| 130-02 ARDiagnosisState aggregation | needs specification | per submodule, as p-net; not changed | `TestARDiagnosisStateScope` |
+| 130-03 partial delivery of a replacement | defect | undelivered alarms are owed to the submodule's AR (at most 64) and sent first by its next diagnosis call; dropped when another AR owns it | `TestDiagnosisOwed` |
+| alarm serialization (audit) | defect | one alarm per priority in flight up to its AlarmAck | `TestAlarmsSerializedToAck` |
+| shared device, S2, API addresses | handled | the alarm owner is computed as for `SendAlarm`; diagnoses are keyed by slot and subslot, unique per device, and the API comes from the model | existing shared-device and S2 tests |
+| 131-01 pending PDU aliases the caller's VarPart | defect | the endpoint keeps a copy | `TestSendPendingOwnsPayload` |
+| 131-02 endpoint after retry exhaustion | defect | `Send` returns `ErrInvalidState`; the AR is aborted as before | `TestSendAfterTimeoutIsTerminal` |
+| 131-03 PDev reset before the Connect completes | defect | a refused Connect undoes the reset | `TestPDevResetUndoneOnRefusedConnect` |
+| DCP Set IP/Parameter length (audit) | defect (low) | exactly 12 octets | `TestResponderSetIPLength` |
+| 132-01 TSTshortT accepted, not applied | narrowed | matched as part of a profile, documented as not applied; a non-matching value is refused | `TestWrittenProfile` |
+| 132-02 MRP adjustment not transactional | defect | a write whose entity does not start restores the previous state | `TestMRPAdjustRollback` |
+| 132-03 MRP check lifecycle | defect | a domain change drops the check; the check survives a Connect | `TestMRPCheckLifecycle` |
+| 132-04 neighbor without the TLV | difference | documented, no change | `TestMRPDomainCheck` |
+| 132-05 all-zero timers | difference | documented as an OT Fabric convention; the controller is unchanged | `TestWrittenProfile`, `TestMRPAdjustTimers` |
+
+## Residual observations and their disposition
+
+| Observation | Disposition |
+|---|---|
+| 2730: a handler's `StatusError` with an ErrorCode other than IODWriteRes passes through | accepted: the handler chose the status; documented here |
+| 2730: writes are not refused between PrmEnd and ApplicationReady (p-net answers StateConflict) | needs specification: the state rule is not established from public sources |
+| 2503: the NDR status of a WriteMultiple is the first failing item's; each item's ARUUID is replaced by the outer one | needs specification: no capture of a reference device's answer |
+| 2501: the Hello carries the IP BlockInfo where p-net sends 0 | needs specification |
+| 2732: no golden vector for the Identify and Get responses | follow-up (tests only); the Hello golden pins the DeviceRole padding |
+| MaintenanceItem (USI 0x8100) in diagnosis alarms | difference; not changed (the USI 0x8001 framing is not verified) |
+| PortDataChangeNotification for remote mismatches | difference; documented in LIMITATIONS.md |
+| ARDiagnosisState over the AR | needs specification (see above) |
+| a neighbor without the MRP port status is no mismatch | difference; documented in PNET-V2-MRP.md |
+| MRP_TSTshortT not applied | limitation; documented, the MRP state machine has no short test phase |
+| the controller writes the manager priority alone | follow-up: writing complete profile timers changes the controller's output and needs interop evidence |
+| owed diagnosis alarms are capped at 64 per submodule | limitation; the oldest are dropped and logged, the records stay authoritative |
+| nothing here is tested against p-net v2.0.0 | the interop pin stays at profinet-interop v0.15.0 (p-net `ea5e554`) |
 
 ## Wave 4: design
 
