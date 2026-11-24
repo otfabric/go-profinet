@@ -67,7 +67,7 @@ against (see [the matrix](#interop-matrix)).
 |--------|:---:|:---:|---------|
 | User records of the model (0x0000–0x7FFF), application records (Handler) | ✅ | ✅ | p-net, pnio-rs, profinet-py |
 | User records of a submodule in an API other than 0 (0x4E01) | ✅ | ✅ | p-net, built for two APIs, with its sample application patched to pass each slot's API to its I/O calls: written before PrmEnd and in Data, read back, and tshark decodes API 0x4E01, slot 1, subslot 1 in every request and response (`TestPnetAPI`, profinet-interop v0.12.0). p-net's sample application keeps its records by slot and subslot, so this shows the API on the wire and p-net accepting it, not that p-net scopes records by API. p-net answers a Read in an API it does not have without a PNIOStatus (waiver `pnet-read-unknown-api-no-status`). go-profinet's device: profinet-py, unmodified, reads a record of slot 3 in API 0x4E01, writes it and reads it back; its reads of that slot and subslot in API 0 and in API 0x4E02 are refused with `DE 80 B4` (invalid area/API), and tshark decodes the API of each request (`TestProfinetPyAPI`, profinet-interop v0.13.0) |
-| Profile records of the model (0xB000–0xBFFF), application records (Handler) | ✅ | ✅ | device: profinet-py reads 0xB600 of a submodule in API 0x4E01, writes it and reads it back; the device refuses reads of it in API 0 and 0x4E02 (`B4`), a write of the read-only 0xB900 (`B6`) and a write of the wrong length (`B1`), and both records are unchanged afterwards; tshark decodes the Write's API, slot, subslot, index, length and data (`TestProfinetPyAPI`, profinet-interop v0.14.0). The records' transport and access rules, not a profile's meaning. Controller: decoders only: tshark decodes a Write of 0xB600 in API 0x4E01 with its values (`TestCodecDecoders`, profinet-interop v0.11.0 `fields`); p-net hands the application indexes up to 0x7FFF only, by its source (`pf_fspm_cm_read_ind`, `pf_cmwrr_write`: `PF_IDX_USER_MAX`), so it answers a read of 0xB600 with invalid index (not run) |
+| Profile records of the model (0xB000–0xBFFF), application records (Handler) | ✅ | ✅ | device: profinet-py reads 0xB600 of a submodule in API 0x4E01, writes it and reads it back; the device refuses reads of it in API 0 and 0x4E02 (`B4`), a write of the read-only 0xB900 (`B6`) and a write of the wrong length (`B1`), and both records are unchanged afterwards; tshark decodes the Write's API, slot, subslot, index and length, names its data profile user data, and the 16 octets written are matched at the frame's end (tshark decodes no profile payload) (`TestProfinetPyAPI`, profinet-interop v0.14.0). The records' transport and access rules, not a profile's meaning. Controller: decoders only, as no independent IO-Device in profinet-interop accepts a profile record: tshark decodes a Write of 0xB600 in API 0x4E01 with its values (`TestCodecDecoders`, profinet-interop v0.11.0 `fields`); p-net hands the application indexes up to 0x7FFF only, by its source (`pf_fspm_cm_read_ind`, `pf_cmwrr_write`: `PF_IDX_USER_MAX`), so it answers a read of 0xB600 with invalid index (not run) |
 | ReadImplicit (no AR) | ✅ | n/a | profinet-py, p-net |
 | WriteMultiple (0xE040) | ✅ | ✅ | p-net |
 | I&M0 (0xAFF0), I&M1–4 (0xAFF1–0xAFF4), I&M0FilterData (0xF840) | ✅ | ✅ (I&M1–4) | p-net, pnio-rs, profinet-py |
@@ -127,17 +127,17 @@ either cannot decode, or that tshark warns about, fails the test unless it
 is an attributed deviation of the peer.
 
 The Interop workflow builds the images of the profinet-interop release
-`INTEROP_REF` names (v0.13.0). The counts below are the matrix published in
-profinet-interop v0.13.0: the Interop and Kernel MRP jobs of go-profinet's
-pull request workflow, run 45285158695 (2026-11-24), on PR #116 at a1d1b9b,
-whose tree is that of its merge commit 6cde841, with the images of
-profinet-interop v0.13.0.
+`INTEROP_REF` names (v0.14.0). The counts below are the matrix published in
+profinet-interop v0.14.0: the Interop and Kernel MRP jobs of go-profinet's
+pull request workflow, run 45295645172 (2026-11-24), on PR #118 at 18d3fdb
+(the tree of its merge commit 909ec56),
+with the images of profinet-interop v0.13.0 (v0.14.0 changes no image).
 
 | Peer | Version | go-profinet as | pass | fail | n/a | peer deviation |
 |------|---------|----------------|-----:|-----:|----:|---------------:|
-| rt-labs p-net | `ea5e554` | IO-Controller, DCP requester, LLDP agent | 71 | 0 | 1 | 1 |
+| rt-labs p-net | `ea5e554` | IO-Controller, DCP requester, LLDP agent | 76 | 0 | 1 | 1 |
 | pnio-rs | v0.1.0 | IO-Controller, DCP requester | 13 | 0 | 3 | 0 |
-| profinet-py | 0.6.6 | IO-Device, DCP responder | 45 | 0 | 1 | 4 |
+| profinet-py | 0.6.6 | IO-Device, DCP responder | 59 | 0 | 1 | 4 |
 | pnio-dcp | 1.2.0 | DCP responder | 8 | 0 | 0 | 0 |
 | umrp | v4.0 | MRP manager, client and MRA | 32 | 0 | 0 | 2 |
 | microchip-ung/mrp | `177717e` (since profinet-interop v0.9.1 with the fix `ee224a1`, microchip-ung/mrp#4) | MRP manager, client and MRA (kernel, micro-VM) | 31 | 0 | 1 | 0 |
@@ -147,11 +147,11 @@ profinet-interop v0.13.0.
 | tshark and scapy | | (decoders of our Hello, SNMP, UDP-RT, DHCP, APIData and profile-record frames) | 10 | 0 | 0 | 2 |
 
 The full matrix, feature by feature, with the evidence of each check, is
-[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.13.0/docs/MATRIX.md)
-(41 test runs, 304 checks: 282 pass, 0 fail, 6 n/a, 16 deviations; the Interop workflow on amd64,
+[profinet-interop's MATRIX.md](https://github.com/otfabric/profinet-interop/blob/v0.14.0/docs/MATRIX.md)
+(41 test runs, 323 checks: 301 pass, 0 fail, 6 n/a, 16 deviations; the Interop workflow on amd64,
 the mrp rows from the Kernel MRP workflow's micro-VMs); the notes on each
 peer are in its
-[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.13.0/docs/INTEROPERABILITY.md).
+[INTEROPERABILITY.md](https://github.com/otfabric/profinet-interop/blob/v0.14.0/docs/INTEROPERABILITY.md).
 The "n/a" are peer limits: pnio-rs has no diagnosis records and no DCP Set,
 p-net and pnio-rs refuse PrmBegin in Data, profinet-py ignores the GSDML's
 UsedInSlots, and the kernel flushes its FDB where the mrp adapter cannot
