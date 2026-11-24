@@ -179,7 +179,11 @@ version does not have, or a value that does not parse as its type. As
 internal subset (`gsdml.Parse`, `typed.ParseNode`; docs/GSDML.md); a Ref whose DataType has no
 verified DefaultValue encoding, such as `Integer16_S`, `TimeStamp` or `N2`
 (`gsdml.ToModel`; docs/GSDML.md); a DAP submodule of an API other than 0
-(`gsdml.ToModel`; `model.Validate` refuses one as `ErrInvalidConfig`); a parameter record of no octets in a
+(`gsdml.ToModel`; `model.Validate` refuses one as `ErrInvalidConfig`); a
+configurable submodule (`UseableSubmodules`) the DAP or a module it plugs
+puts in a subslot, `FixedInSubslots` or `UsedInSubslots`
+(`gsdml.ToModel`; a module only in the catalog is left out of `Catalog`
+instead, and `gsdml.AnalyzeModels` reports both); a parameter record of no octets in a
 model generated for PNIO_Version V2.31 or later, whose schemas require a
 `Const` or a `Ref` in every `ParameterRecordDataItem` (`gsdml.FromModel`).
 

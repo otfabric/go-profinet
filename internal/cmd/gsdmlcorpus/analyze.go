@@ -114,8 +114,18 @@ type DAPRow struct {
 	// with its model's; nil for a DAP ToModel does not convert.
 	Addresses *AddressCheck `json:"addresses,omitempty"`
 	// Failures are the references whose reference or module does not
-	// convert.
+	// convert, less the omitted modules (OmittedModules), which do not
+	// refuse the DAP.
 	Failures []RefFailure `json:"failures,omitempty"`
+	// ConfigurableSubmodules counts the configurable submodule references
+	// (UseableSubmodules) of the DAP and of the modules it references,
+	// once per module; RequiredSubmodules those of them a configuration
+	// needs, for which ToModel refuses the DAP. ToModel converts none.
+	ConfigurableSubmodules int `json:"configurable_submodules,omitempty"`
+	RequiredSubmodules     int `json:"required_submodules,omitempty"`
+	// OmittedModules counts the references whose module ToModel leaves
+	// out of the catalog (gsdml.ModuleReport.Omitted).
+	OmittedModules int `json:"omitted_modules,omitempty"`
 }
 
 // RefFailure is a reference that does not convert.
@@ -228,8 +238,27 @@ func analyze(data []byte) FileResult {
 			if m.ReferenceErr != nil {
 				row.Failures = append(row.Failures, RefFailure{Target: m.Target, Path: m.Path, Kind: "reference", Class: m.ReferenceOutcome, Error: m.ReferenceError})
 			}
-			if m.ModuleErr != nil {
+			if m.ModuleErr != nil && !m.Omitted {
 				row.Failures = append(row.Failures, RefFailure{Target: m.Target, Path: m.ModulePath, Kind: "module", Class: m.ModuleOutcome, Error: m.ModuleError})
+			}
+		}
+		counted := map[string]bool{}
+		count := func(refs []gsdml.SubmoduleRef) {
+			for _, sr := range refs {
+				row.ConfigurableSubmodules++
+				if sr.Required {
+					row.RequiredSubmodules++
+				}
+			}
+		}
+		count(rep.ConfigurableSubmodules)
+		for _, m := range rep.Modules {
+			if m.Omitted {
+				row.OmittedModules++
+			}
+			if m.ModulePath != "" && !counted[m.ModulePath] {
+				counted[m.ModulePath] = true
+				count(m.ConfigurableSubmodules)
 			}
 		}
 		row.Addresses = checkAddresses(ix, rep)
@@ -531,6 +560,20 @@ type Fidelity struct {
 	AddressUnread       int `json:"address_unread"`
 	DAPsAddressCollide  int `json:"daps_address_collisions"`
 	AddressCollisions   int `json:"address_collisions"`
+	// FilesConfigurable and DAPsConfigurable count the files and DAPs
+	// with a configurable submodule (UseableSubmodules) in the DAP or a
+	// module it references; DAPsRequiredSubmodules the DAPs among them
+	// ToModel refuses for one a configuration needs, and
+	// ConvertedConfigurable those it converts without their optional ones.
+	FilesConfigurable      int `json:"files_configurable"`
+	DAPsConfigurable       int `json:"daps_configurable"`
+	DAPsRequiredSubmodules int `json:"daps_required_submodules"`
+	ConvertedConfigurable  int `json:"converted_configurable"`
+	// DAPsOmittedModules counts the converted DAPs whose catalog lacks a
+	// module the file lets them use (it needs a configurable submodule),
+	// OmittedModules those references.
+	DAPsOmittedModules int `json:"daps_omitted_modules"`
+	OmittedModules     int `json:"omitted_modules"`
 }
 
 // SignatureCount is one kind of failure.
@@ -615,6 +658,26 @@ func Summarize(results []FileResult) Summary {
 			for rule := range r.Check.ErrorRules {
 				s.ErrorRules[rule]++
 			}
+		}
+		configurable := false
+		for _, d := range r.DAPs {
+			if d.ConfigurableSubmodules > 0 {
+				configurable = true
+				s.Fidelity.DAPsConfigurable++
+				if d.RequiredSubmodules > 0 {
+					s.Fidelity.DAPsRequiredSubmodules++
+				}
+				if d.Outcome == gsdml.OutcomeConverted {
+					s.Fidelity.ConvertedConfigurable++
+				}
+			}
+			if d.OmittedModules > 0 && d.Outcome == gsdml.OutcomeConverted {
+				s.Fidelity.DAPsOmittedModules++
+				s.Fidelity.OmittedModules += d.OmittedModules
+			}
+		}
+		if configurable {
+			s.Fidelity.FilesConfigurable++
 		}
 		for _, d := range r.DAPs {
 			s.DAPs++
@@ -726,7 +789,9 @@ func Markdown(s Summary, source string) string {
 	w("| a submodule of an API other than 0, in the DAP or a module it can use | %d | %d | %d |\n", f.FilesAPI, f.DAPsAPI, f.ConvertedAPI)
 	w("| … of them in the plugged configuration (the DAP's submodules, modules in slots) | | %d | %d |\n", f.DAPsPluggedAPI, f.ConvertedPluggedAPI)
 	w("| a record whose index is a number above 0x7FFF (ToModel keeps 0xB000-0xBFFF, refuses the others) | %d | %d | %d |\n", f.FilesHighRecords, f.DAPsHighRecords, f.ConvertedHighRecords)
+	w("| a configurable submodule (UseableSubmodules) in the DAP or a module it references; ToModel converts none | %d | %d | %d |\n", f.FilesConfigurable, f.DAPsConfigurable, f.ConvertedConfigurable)
 	w("\nConverted DAPs whose model does not keep the APIs of their plugged configuration: %d.\n", f.APIMismatch)
+	w("\nDAPs with a configurable submodule a configuration needs (FixedInSubslots or UsedInSubslots), in the DAP or a module it references: %d; ToModel refuses those where the DAP or a plugged module needs one. Converted DAPs whose catalog leaves out a module that needs one: %d (%d module references). A converted DAP leaves its optional configurable submodules out of the model, and the address comparison below does not see them.\n", f.DAPsRequiredSubmodules, f.DAPsOmittedModules, f.OmittedModules)
 	w("\n### Addresses\n\nEvery converted DAP's plugged configuration, as the file states it (API, slot, subslot, SubmoduleIdentNumber, record indexes), against the submodules a device built from its model serves.\n\n")
 	w("| Converted DAPs compared | Submodule addresses | Record indexes | DAPs failed | Lost | Extra | Changed | Records lost | Records extra | Unread |\n|---|---|---|---|---|---|---|---|---|---|\n")
 	w("| %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n", f.DAPsAddressChecked, f.Addresses, f.AddressRecords, f.DAPsAddressFailed, f.AddressLost, f.AddressExtra, f.AddressChanged, f.AddressRecordsLost, f.AddressRecordsExtra, f.AddressUnread)

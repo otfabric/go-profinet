@@ -4,6 +4,7 @@ package gsdml
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/model"
@@ -79,6 +80,12 @@ type ModelReport struct {
 	Blocked bool `json:"blocked"`
 	// Modules are the DAP's UseableModules references, in file order.
 	Modules []ModuleReport `json:"modules"`
+	// ConfigurableSubmodules are the DAP's own UseableSubmodules
+	// references, in file order. ToModel does not convert configurable
+	// submodules: a required one is the DAP's DAPErr and fails it, an
+	// optional one is left out of its model. Those of the modules are in
+	// each ModuleReport; OmitsSubmodules reports both.
+	ConfigurableSubmodules []SubmoduleRef `json:"configurable_submodules,omitempty"`
 	// Model is ToModel's model when Outcome is OutcomeConverted, nil
 	// otherwise: AnalyzeModels never returns a partial model.
 	Model *model.Device `json:"-"`
@@ -119,6 +126,90 @@ type ModuleReport struct {
 	// RecordOctets are the octets of the module's parameter records, for
 	// one slot, when it converts.
 	RecordOctets int `json:"record_octets"`
+	// ConfigurableSubmodules are the UseableSubmodules references of the
+	// module it names, in file order: submodules ToModel does not convert,
+	// so the model's module has none of them.
+	ConfigurableSubmodules []SubmoduleRef `json:"configurable_submodules,omitempty"`
+	// Omitted reports that ToModel leaves the module out of the model's
+	// Catalog: it needs a configurable submodule (ModuleOutcome
+	// unsupported, ModuleErr why) and this reference plugs it in no slot.
+	// An omitted module does not block the DAP; plugged, it would.
+	Omitted bool `json:"omitted"`
+}
+
+// SubmoduleRef is a configurable submodule: a SubmoduleItemRef of a
+// UseableSubmodules list, which ToModel does not convert.
+type SubmoduleRef struct {
+	// Target is the reference's SubmoduleItemTarget, and Path its element
+	// path.
+	Target string `json:"target"`
+	Path   string `json:"path"`
+	// ConfiguredSubslots are the subslots the reference puts its
+	// submodule in (its FixedInSubslots, else UsedInSubslots), as listed;
+	// none when it does not parse or is only allowed. Required reports
+	// that there is at least one: ToModel then refuses the DAP, or the
+	// module where it is plugged, with profinet.ErrUnsupported and leaves
+	// a module only in the catalog out of it, since the model would lack a
+	// configured submodule. An optional reference (Required false) is left
+	// out of a model that still converts. Outcome and Error are the
+	// reference's own: malformed when its subslot attributes do not parse,
+	// unsupported when it is required, converted (left out) otherwise.
+	ConfiguredSubslots []uint32 `json:"configured_subslots,omitempty"`
+	Required           bool     `json:"required"`
+	Outcome            Outcome  `json:"outcome"`
+	Error              string   `json:"error,omitempty"`
+}
+
+// OmitsSubmodules reports whether the DAP or a module it references has
+// configurable submodules (UseableSubmodules). ToModel converts none of
+// them: it refuses a required one and leaves an optional one out of the
+// model.
+func (r ModelReport) OmitsSubmodules() bool {
+	if len(r.ConfigurableSubmodules) > 0 {
+		return true
+	}
+	for _, m := range r.Modules {
+		if len(m.ConfigurableSubmodules) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// OmitsModules reports whether ToModel leaves a module the DAP references
+// out of the model's Catalog (ModuleReport.Omitted): a converted DAP's
+// catalog is then not every module the file lets it use.
+func (r ModelReport) OmitsModules() bool {
+	for _, m := range r.Modules {
+		if m.Omitted {
+			return true
+		}
+	}
+	return false
+}
+
+// submoduleRefs lists the references of a UseableSubmodules list at path
+// (the path of its parent element).
+func submoduleRefs(us *UseableSubmodules, path string) []SubmoduleRef {
+	if us == nil {
+		return nil
+	}
+	var out []SubmoduleRef
+	for _, ref := range us.SubmoduleItemRefs {
+		sr := SubmoduleRef{Target: ref.SubmoduleItemTarget,
+			Path: path + "/UseableSubmodules/SubmoduleItemRef[" + pathID(ref.SubmoduleItemTarget) + "]"}
+		l, err := configuredSubslots(ref)
+		sr.ConfiguredSubslots, sr.Required = l, len(l) > 0
+		if err == nil && sr.Required {
+			err = fmt.Errorf("gsdml: %w: configurable submodule %s configured in subslot %d is not converted", profinet.ErrUnsupported, clip(ref.SubmoduleItemTarget), l[0])
+		}
+		sr.Outcome, sr.Error = outcomeOf(err), errText(err)
+		if err != nil && !errors.Is(err, profinet.ErrUnsupported) {
+			sr.ConfiguredSubslots, sr.Required = nil, false
+		}
+		out = append(out, sr)
+	}
+	return out
 }
 
 // moduleResult is the conversion of one module, shared by the references
@@ -127,6 +218,9 @@ type moduleResult struct {
 	ident  uint32
 	err    error
 	octets int
+	// omittable: err is the module's need of a configurable submodule,
+	// which ToModel refuses only where the module is plugged.
+	omittable bool
 }
 
 // AnalyzeModels converts every device access point of a document with
@@ -134,6 +228,14 @@ type moduleResult struct {
 // reference gets its own status and that of the module it names,
 // converted on its own, so that one that does not convert does not hide
 // the others.
+//
+// Configurable submodules (UseableSubmodules) are not converted by
+// ToModel, which refuses a required one of the DAP or of a plugged module
+// and leaves a module only in the catalog that needs one out of the
+// catalog. The report lists every one with why (ConfigurableSubmodules,
+// OmitsSubmodules, ModuleReport.Omitted, OmitsModules), so that a
+// converted DAP that leaves something out is told from one that describes
+// all of it.
 //
 // It is a diagnostic: ToModel stays the conversion to use. A report's
 // Outcome and Err are always ToModel's, and its Model is ToModel's, only
@@ -169,6 +271,8 @@ func AnalyzeModels(doc *Document) ([]ModelReport, error) {
 		r.ident, _ = ParseUint32(mi.ModuleIdentNumber)
 		if err == nil {
 			r.octets = recordOctets(mod.Submodules)
+			r.err = moduleSubmodules(mi)
+			r.omittable = errors.Is(r.err, profinet.ErrUnsupported)
 		}
 		results[k] = r
 		return r
@@ -184,6 +288,7 @@ func AnalyzeModels(doc *Document) ([]ModelReport, error) {
 		c.budget = MaxModelRecordOctets
 		_, _, rep.DAPErr = c.dapModel(dap.ID)
 		rep.DAPError = errText(rep.DAPErr)
+		rep.ConfigurableSubmodules = submoduleRefs(dap.UseableSubmodules, rep.Path)
 		if um := dap.UseableModules; um != nil {
 			used := map[uint16]bool{}
 			for _, ref := range um.ModuleItemRefs {
@@ -195,6 +300,7 @@ func AnalyzeModels(doc *Document) ([]ModelReport, error) {
 					r := convert(mi)
 					mr.ModuleIdent, mr.ModuleErr, mr.RecordOctets = r.ident, r.err, r.octets
 					mr.ModuleOutcome, mr.ModuleError = outcomeOf(r.err), errText(r.err)
+					mr.ConfigurableSubmodules = submoduleRefs(mi.UseableSubmodules, mr.ModulePath)
 				}
 				// The slots as ToModel plugs them: the first reference to
 				// a slot takes it.
@@ -210,7 +316,10 @@ func AnalyzeModels(doc *Document) ([]ModelReport, error) {
 					mr.ConfiguredSlots = append(mr.ConfiguredSlots, uint16(s))
 				}
 				mr.ReferenceOutcome, mr.ReferenceError = outcomeOf(mr.ReferenceErr), errText(mr.ReferenceErr)
-				if mr.ReferenceErr != nil || mr.ModuleErr != nil {
+				if mi := modules[collapseSpace(ref.ModuleItemTarget)]; mi != nil && mr.ReferenceErr == nil {
+					mr.Omitted = convert(mi).omittable && len(mr.ConfiguredSlots) == 0
+				}
+				if mr.ReferenceErr != nil || mr.ModuleErr != nil && !mr.Omitted {
 					rep.Blocked = true
 				}
 				rep.Modules = append(rep.Modules, mr)
