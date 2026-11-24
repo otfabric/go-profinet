@@ -98,6 +98,23 @@ choices and still refuses one that needs configurable submodules.
   on a port of the `SubmoduleList` and a `SubmoduleList` without items,
   as the reference schemas state.
 
+### Breaking
+
+- `gsdml.CatalogSHA256` has a new value, because the catalog changed
+  (`SubmoduleList.PortSubmoduleItems`, `DeviceAccessPointItem`
+  `PhysicalSubslots`, `PortSubmoduleItem` `SubslotNumber` optional). It is
+  the only API change gorelease reports as incompatible (`-base=v0.23.0
+  -version=v0.24.0`: valid).
+- Behaviour: `SubmoduleParameters` returns the records of a configurable
+  submodule where it returned `ErrNotFound`; `Check` reports a port with
+  `SubslotNumber` in the `SubmoduleList` and an empty `SubmoduleList` as
+  structure errors.
+
+Consumer assessment: no direct consumer (profinetctl, profinet-interop's
+`own/go-profinet`) reads `CatalogSHA256`. profinetctl calls `Check` and
+`PlanParameters`; its test suite passes against this change. A document
+with the new structure errors gets them in `profinetctl gsdml check`.
+
 ### Evidence
 
 On the local corpus of 249 public GSDML files (779 device access points)
