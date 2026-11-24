@@ -232,6 +232,9 @@ type Device struct {
 	// afterDiagChange, when set (tests), runs after a diagnosis operation
 	// changed the state and before it reports it.
 	afterDiagChange func()
+	// diagFailed, when set (tests), runs when a diagnosis alarm was not
+	// delivered, before the rest is owed.
+	diagFailed func()
 	// mrpNew, when set (tests), starts the MRP entity in place of mrp.New.
 	mrpNew func(mrp.Config) (*mrp.Entity, error)
 

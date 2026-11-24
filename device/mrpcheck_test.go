@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-profinet"
+	"github.com/otfabric/go-profinet/l2/bridge"
 	"github.com/otfabric/go-profinet/lldp"
 	"github.com/otfabric/go-profinet/model"
 	"github.com/otfabric/go-profinet/mrp"
@@ -393,4 +394,125 @@ func TestMRPCheckLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait("MRP off")
+}
+
+// A PDInterfaceMrpDataCheck written while an adjustment replaces the
+// entity is not lost when the adjustment is refused and rolled back: the
+// check write waits for the adjustment (the RPC server runs the calls of
+// several ARs at once). Before, the rollback restored the check the
+// adjustment had found and discarded the write that succeeded meanwhile.
+func TestMRPCheckDuringAdjustRollback(t *testing.T) {
+	dom := [16]byte{0xD0, 7}
+	d, n := mrpRingDevice(t, &MRPConfig{Role: mrp.RoleClient, Domain: dom, DomainName: "ring-a"})
+	x := newPDevPeer(t, n, d)
+	// A second supervisor, whose calls the RPC server runs alongside x's.
+	p2 := n.peer(d, "192.168.0.5", true)
+	sar2 := p2.ioSAR()
+	if _, err := p2.connect(sar2); err != nil {
+		t.Fatal(err)
+	}
+	x2 := &pdevPeer{t: t, p: p2, ar: sar2.AR.ARUUID}
+	chk := pnio.PDInterfaceMrpDataCheck{Domain: dom, Check: pnio.MrpCheckDomainUUID}
+	inEntity := make(chan struct{})
+	checkDone := make(chan error, 1)
+	var calls atomic.Int32
+	d.mrpNew = func(c mrp.Config) (*mrp.Entity, error) {
+		if calls.Add(1) == 1 {
+			close(inEntity)
+			// Give the concurrent check write the time to finish, if
+			// nothing holds it back.
+			select {
+			case err := <-checkDone:
+				checkDone <- err
+			case <-time.After(300 * time.Millisecond):
+			}
+			return nil, profinet.ErrInvalidConfig
+		}
+		return mrp.New(c)
+	}
+	a := pnio.PDInterfaceMrpDataAdjust{Domain: dom, Role: pnio.MrpRoleManager, DomainName: "ring-a"}
+	adjDone := make(chan error, 1)
+	go func() { adjDone <- x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)) }()
+	<-inEntity
+	go func() {
+		checkDone <- x2.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck, chk.Append(nil))
+	}()
+	wantStatus(t, <-adjDone, pnio.RWInvalidParameter, 0)
+	if err := <-checkDone; err != nil {
+		t.Fatalf("check write: %v", err)
+	}
+	if b, err := x.read(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck); err != nil || string(b) != string(chk.Append(nil)) {
+		t.Fatalf("the concurrent check write was lost: % x %v", b, err)
+	}
+}
+
+// When neither the new entity nor the previous one starts, no MRP entity
+// runs and the device says so: MRPStatus reports none, the ring ports
+// send no MRP port status in LLDP, PDInterfaceMrpDataReal reports the
+// role off and PDPortMrpDataReal nothing, and the domain check reports no
+// mismatch. The configuration asked for stays, and the ring ports keep
+// the forwarding state the last entity left. Before, the device kept
+// advertising its MRP domain with no entity running.
+func TestMRPRestoreFails(t *testing.T) {
+	dom := [16]byte{0xD0, 1}
+	other := [16]byte{0xEE, 1}
+	d, n := mrpRingDevice(t, &MRPConfig{Role: mrp.RoleClient, Domain: dom, DomainName: "ring-x", RingPorts: [2]int{1, 2}})
+	const port = model.SubslotPort1 + 1
+	var peerDom atomic.Pointer[[16]byte]
+	peerDom.Store(&other)
+	mrpNeighbor(t, n, &peerDom)
+	eventually(t, 5*time.Second, "neighbor", func() bool { nb, ok := d.ports[1].lldpA.Latest(); return ok && nb.Frame.MRPPortStatus != nil })
+	x := newPDevPeer(t, n, d)
+	chk := pnio.PDInterfaceMrpDataCheck{Domain: dom, Check: pnio.MrpCheckDomainUUID}
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataCheck, chk.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 5*time.Second, "mismatch", func() bool { return equalTypes(portMismatch(d, port), []uint16{extPeerMRPDomainMismatch}) })
+	br := d.cfg.Bridge
+	states := func() [2]bridge.State { return [2]bridge.State{br.State(0), br.State(1)} }
+	before := states()
+
+	d.mrpNew = func(mrp.Config) (*mrp.Entity, error) { return nil, profinet.ErrInvalidConfig }
+	a := pnio.PDInterfaceMrpDataAdjust{Domain: dom, Role: pnio.MrpRoleManager, DomainName: "ring-x"}
+	wantStatus(t, x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)), pnio.RWInvalidParameter, 0)
+
+	if st, ok := d.MRPStatus(); ok {
+		t.Fatalf("MRPStatus reports an entity: %+v", st)
+	}
+	d.mu.Lock()
+	lp := d.mrpLLDP(d.ports[1])
+	d.mu.Unlock()
+	if lp != nil || d.lldpInfo(d.ports[1]).MRP != nil {
+		t.Fatalf("MRP port status advertised without an entity: %+v", lp)
+	}
+	if r := mrpInterfaceReal(t, x); r.Role != pnio.MrpRoleOff || r.HasRingState {
+		t.Fatalf("PDInterfaceMrpDataReal %+v", r)
+	}
+	if b, err := x.read(port, pnio.IndexPDPortMrpDataReal); err != nil || len(b) != 0 {
+		t.Fatalf("PDPortMrpDataReal % x %v", b, err)
+	}
+	eventually(t, 5*time.Second, "no mismatch without an entity", func() bool { return len(portMismatch(d, port)) == 0 })
+	d.mu.Lock()
+	c := d.mrpSt.cfg
+	d.mu.Unlock()
+	if c.Role != mrp.RoleClient || c.Domain != dom {
+		t.Fatalf("configuration %+v", c)
+	}
+	if got := states(); got != before {
+		t.Fatalf("ring ports %v, were %v", got, before)
+	}
+	// A later write whose entity starts brings MRP back.
+	d.mrpNew = nil
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if st, ok := d.MRPStatus(); !ok || st.Role != mrp.RoleManager {
+		t.Fatalf("%+v %v", st, ok)
+	}
+	d.mu.Lock()
+	lp = d.mrpLLDP(d.ports[1])
+	d.mu.Unlock()
+	if lp == nil {
+		t.Fatal("no MRP port status once the entity runs")
+	}
 }

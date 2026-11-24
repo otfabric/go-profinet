@@ -247,9 +247,11 @@ first and report it second; an error describes the report, not the state:
 | `AddDiagnosis`, diagnosis identical to an active one | nil, with or without an AR; nothing sent (since v0.25.0) |
 | `AddDiagnosis`, changed diagnosis whose first or second alarm fails | that error; the new value is recorded, and the alarms not delivered are owed: the next diagnosis call of the submodule (an identical `AddDiagnosis` included) sends them first |
 | either, ctx ends while another diagnosis call reports | `ctx.Err()`; nothing recorded |
-| `RemoveDiagnosis`, no diagnosis of that channel and error type | `ErrNotFound` |
+| `RemoveDiagnosis`, no diagnosis of that channel and error type | `ErrNotFound`; when alarms of the submodule are owed to its owner (a removal repeated after its alarm failed), they are sent and their result is returned instead |
 | `RemoveDiagnosis`, an alarm fails | that error; the diagnoses are removed, the alarms not delivered are owed as above |
 | either, alarm not acknowledged | `ErrTimeout`, `ErrAborted` or a `*pnio.StatusError` as for `SendAlarm` |
+| `SendAlarm` or a diagnosis call, ctx ends after the alarm was delivered | `ctx.Err()`; the alarm stays outstanding: the next alarm of its priority waits for its AlarmAck, the end of the AR or the AlarmAck timer |
+| `SendAlarm` or a diagnosis call, no AlarmAck within the AlarmAck timer | `ErrTimeout`; the alarm is taken as lost and the priority is free |
 
 ## Lifecycle errors
 
