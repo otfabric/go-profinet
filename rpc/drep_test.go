@@ -35,11 +35,10 @@ func TestReassemblyMixedDRep(t *testing.T) {
 	// and octets) do not matter; one byte order completes.
 	r := newReassembly(0)
 	_, _, _ = r.add(&Header{Flags1: FlagFrag, FragNum: 1, Flags2: 0, DRep: [3]byte{DRepLittleEndian | 1, 1}}, []byte{2})
-	b, done, err := r.add(&Header{Flags1: FlagFrag, DRep: [3]byte{DRepLittleEndian}}, []byte{1})
-	if done || err != nil {
+	if _, done, err := r.add(&Header{Flags1: FlagFrag, DRep: [3]byte{DRepLittleEndian}}, []byte{1}); done || err != nil {
 		t.Fatalf("done %v err %v", done, err)
 	}
-	b, done, err = r.add(&Header{Flags1: FlagFrag | FlagLastFrag, FragNum: 2, DRep: [3]byte{DRepLittleEndian}}, []byte{3})
+	b, done, err := r.add(&Header{Flags1: FlagFrag | FlagLastFrag, FragNum: 2, DRep: [3]byte{DRepLittleEndian}}, []byte{3})
 	if !done || err != nil || string(b) != "\x01\x02\x03" {
 		t.Fatalf("% x done %v err %v", b, done, err)
 	}
