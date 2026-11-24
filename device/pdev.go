@@ -45,6 +45,12 @@ type pdevState struct {
 	// active are the extended error types of the remote mismatch
 	// diagnoses each port reports.
 	active map[uint16][]uint16
+	// gen counts the changes of what the port evaluation reads besides
+	// the LLDP neighbors and the links: the port checks, active, the
+	// mismatch diagnoses a reset removes, the MRP domain, check and
+	// entity. It changes under d.mu with them; an evaluation records its
+	// result only when gen is still the one it read (setPortMismatch).
+	gen uint64
 }
 
 // interfaceMode returns the MultipleInterfaceMode in effect: the
@@ -157,6 +163,7 @@ func (d *Device) writeCheck(q pnio.WriteReq, blk pnio.RawBlock) error {
 	} else {
 		d.pd.checks[q.Subslot] = &c
 	}
+	d.pd.gen++
 	d.mu.Unlock()
 	d.pokePDev()
 	return nil
@@ -388,6 +395,9 @@ func (d *Device) resetPDev(a *ar, locked map[key]bool) (undo func()) {
 		delete(d.pd.active, sub)
 		d.diags[k] = slices.DeleteFunc(d.diags[k], isPDevMismatch)
 	}
+	if len(prev) > 0 {
+		d.pd.gen++
+	}
 	d.mu.Unlock()
 	if len(prev) == 0 {
 		return func() {}
@@ -397,6 +407,7 @@ func (d *Device) resetPDev(a *ar, locked map[key]bool) (undo func()) {
 	d.pokePDev()
 	return func() {
 		d.mu.Lock()
+		d.pd.gen++
 		for sub, s := range prev {
 			if d.pd.checks[sub] != nil || d.pd.adjusts[sub] != nil {
 				continue // written since the reset: the write stands
@@ -482,10 +493,18 @@ func peerMismatch(c *pnio.PDPortDataCheck, peer lldp.Neighbor, found bool) []uin
 	return out
 }
 
+// evalPort evaluates the checks of a port and records the remote
+// mismatch diagnoses they find. What it read can change while it reads
+// the LLDP neighbor: a Connect resets the port, a controller writes a
+// check, the MRP domain changes. setPortMismatch then records nothing
+// (the change pokes the evaluator, which evaluates again), so a result
+// of the previous configuration never reaches the diagnoses or the
+// controller.
 func (d *Device) evalPort(subslot uint16) {
 	d.mu.Lock()
 	c := d.pd.checks[subslot]
 	active := d.pd.active[subslot]
+	gen := d.pd.gen
 	d.mu.Unlock()
 	var peer lldp.Neighbor
 	found := false
@@ -497,29 +516,58 @@ func (d *Device) evalPort(subslot uint16) {
 	if d.mrpDomainMismatch(subslot, peer, found) {
 		want = append(want, extPeerMRPDomainMismatch)
 	}
+	if d.pd.gen != gen {
+		// The MRP state read here is newer than the checks read above.
+		d.mu.Unlock()
+		return
+	}
 	d.mu.Unlock()
 	if equalTypes(want, active) {
 		return
 	}
+	if d.evalPaused != nil {
+		d.evalPaused(subslot)
+	}
 	ctx, cancel := context.WithTimeout(d.ctx, 5*time.Second)
 	defer cancel()
-	if len(active) > 0 {
-		if err := d.RemoveDiagnosis(ctx, 0, subslot, pdevChannel, pnio.ChannelErrRemoteMismat); err != nil {
-			d.log.Debugf("device: port %#x: %v", subslot, err)
-		}
+	recorded, err := d.setPortMismatch(ctx, subslot, gen, want)
+	if err != nil {
+		d.log.Debugf("device: port %#x: %v", subslot, err)
 	}
-	for _, ext := range want {
-		item := pnio.DiagnosisItem{ChannelNumber: pdevChannel, ErrorType: pnio.ChannelErrRemoteMismat, ExtErrorType: ext}
-		if err := d.AddDiagnosis(ctx, 0, subslot, item); err != nil {
-			d.log.Debugf("device: port %#x: %v", subslot, err)
-		}
-	}
-	d.mu.Lock()
-	d.pd.active[subslot] = want
-	d.mu.Unlock()
-	if len(want) > 0 {
+	if recorded && len(want) > 0 {
 		d.log.Infof("device: port %#x: remote mismatch %#x", subslot, want)
 	}
+}
+
+// setPortMismatch makes want the remote mismatch diagnoses of a port, in
+// one change of the diagnoses: the previous ones disappear, those of want
+// appear, and active records want. It does so only when d.pd.gen is gen,
+// the generation the evaluation read; otherwise it changes and reports
+// nothing and returns false. The alarms go out as for AddDiagnosis and
+// RemoveDiagnosis, in that order, holding diagSem.
+func (d *Device) setPortMismatch(ctx context.Context, subslot uint16, gen uint64, want []uint16) (bool, error) {
+	if err := d.lockDiag(ctx); err != nil {
+		return false, err
+	}
+	defer d.unlockDiag()
+	k := key{0, subslot}
+	owner := d.alarmOwner(k)
+	d.mu.Lock()
+	if d.pd.gen != gen {
+		d.mu.Unlock()
+		return false, nil
+	}
+	notes, _ := d.removeDiagnosisLocked(k, pdevChannel, pnio.ChannelErrRemoteMismat)
+	for _, ext := range want {
+		item := pnio.DiagnosisItem{ChannelNumber: pdevChannel, ErrorType: pnio.ChannelErrRemoteMismat, ExtErrorType: ext,
+			ChannelProperties: pnio.ChanSpecAppears}
+		notes = append(notes, d.addDiagnosisLocked(k, item)...)
+	}
+	d.pd.active[subslot] = want
+	d.pd.gen++
+	notes = d.takeOwed(k, owner, notes)
+	d.mu.Unlock()
+	return true, d.reportDiag(ctx, k, owner, notes)
 }
 
 func equalTypes(a, b []uint16) bool {

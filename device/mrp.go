@@ -121,6 +121,7 @@ func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 	st.ent = nil
 	st.cfg.Role, st.cfg.Domain, st.cfg.DomainName = role, domain, name
 	c := st.cfg
+	d.pd.gen++
 	d.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
@@ -144,6 +145,7 @@ func (d *Device) setMRPRole(role mrp.Role, domain [16]byte, name string) error {
 	}
 	d.mu.Lock()
 	st.ent = ent
+	d.pd.gen++
 	d.mu.Unlock()
 	d.log.Infof("device: MRP %s on ports %d and %d", role, c.RingPorts[0], c.RingPorts[1])
 	return nil
@@ -332,6 +334,7 @@ func (d *Device) writeMRPCheck(st *mrpState, data []byte) error {
 		return rwErr(pnio.RWInvalidParameter)
 	}
 	st.check = &c
+	d.pd.gen++
 	d.mu.Unlock()
 	d.pokePDev()
 	return nil
@@ -459,6 +462,7 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 		// A check names the domain it checks, which must be the device's
 		// (writeMRPCheck): it does not survive a change of domain.
 		st.check = nil
+		d.pd.gen++
 	}
 	d.mu.Unlock()
 	if same {
@@ -472,6 +476,7 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 		d.log.Infof("device: MRP: %v; the previous configuration is restored", err)
 		d.mu.Lock()
 		st.cfg, st.adjust, st.check = prevCfg, prevAdjust, prevCheck
+		d.pd.gen++
 		d.mu.Unlock()
 		if rerr := d.setMRPRole(prevCfg.Role, prevCfg.Domain, prevCfg.DomainName); rerr != nil {
 			// The configuration stays as it was asked for; nothing runs, so

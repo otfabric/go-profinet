@@ -277,6 +277,14 @@ func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pn
 	k := key{slot, subslot}
 	owner := d.alarmOwner(k)
 	d.mu.Lock()
+	notes := d.takeOwed(k, owner, d.addDiagnosisLocked(k, item))
+	d.mu.Unlock()
+	return d.reportDiag(ctx, k, owner, notes)
+}
+
+// addDiagnosisLocked makes item, an appearing diagnosis, active and
+// returns the alarms that report it; d.mu held.
+func (d *Device) addDiagnosisLocked(k key, item pnio.DiagnosisItem) []diagNote {
 	old, replaced, changed, spec := d.upsertDiagnosis(k, item)
 	var notes []diagNote
 	if changed {
@@ -286,9 +294,7 @@ func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pn
 		old.ChannelProperties = old.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecOtherRemain
 		notes = append(notes, diagNote{pnio.AlarmDiagnosis, old, spec})
 	}
-	notes = d.takeOwed(k, owner, notes)
-	d.mu.Unlock()
-	return d.reportDiag(ctx, k, owner, notes)
+	return notes
 }
 
 // diagNote is a diagnosis alarm to send.
@@ -461,6 +467,24 @@ func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, er
 	k := key{slot, subslot}
 	owner := d.alarmOwner(k)
 	d.mu.Lock()
+	notes, found := d.removeDiagnosisLocked(k, channel, errorType)
+	if !found {
+		owed := d.takeOwed(k, owner, nil)
+		d.mu.Unlock()
+		if len(owed) > 0 {
+			return d.reportDiag(ctx, k, owner, owed)
+		}
+		return fmt.Errorf("device: diagnosis %d/%d channel %d type %d: %w", slot, subslot, channel, errorType, profinet.ErrNotFound)
+	}
+	notes = d.takeOwed(k, owner, notes)
+	d.mu.Unlock()
+	return d.reportDiag(ctx, k, owner, notes)
+}
+
+// removeDiagnosisLocked removes the diagnoses of a channel with the
+// error type and returns the alarms that report their disappearance,
+// found false when there was none; d.mu held.
+func (d *Device) removeDiagnosisLocked(k key, channel, errorType uint16) ([]diagNote, bool) {
 	var kept, removed []pnio.DiagnosisItem
 	for _, it := range d.diags[k] {
 		if it.ChannelNumber == channel && it.ErrorType == errorType {
@@ -470,12 +494,7 @@ func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, er
 		kept = append(kept, it)
 	}
 	if len(removed) == 0 {
-		owed := d.takeOwed(k, owner, nil)
-		d.mu.Unlock()
-		if len(owed) > 0 {
-			return d.reportDiag(ctx, k, owner, owed)
-		}
-		return fmt.Errorf("device: diagnosis %d/%d channel %d type %d: %w", slot, subslot, channel, errorType, profinet.ErrNotFound)
+		return nil, false
 	}
 	d.diags[k] = kept
 	spec := diagSpecifier(kept)
@@ -488,9 +507,7 @@ func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, er
 		it.ChannelProperties = it.ChannelProperties&^pnio.ChanSpecMask | chSpec
 		notes = append(notes, diagNote{t, it, spec})
 	}
-	notes = d.takeOwed(k, owner, notes)
-	d.mu.Unlock()
-	return d.reportDiag(ctx, k, owner, notes)
+	return notes, true
 }
 
 // Diagnoses returns the recorded diagnoses of a submodule.
