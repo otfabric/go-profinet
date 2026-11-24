@@ -156,6 +156,12 @@ writes, within the 200 ms and 500 ms profiles.
   configuration and entity are restored. Before, the write was refused
   but its role, domain, priority and timers stayed recorded with no
   entity running.
+- **No MRP is advertised without an entity**: when neither a new MRP
+  entity nor the previous one starts, the ring ports send no MRP port
+  status, PDInterfaceMrpDataReal reports the role off and the domain
+  check reports nothing. A PDInterfaceMrpDataCheck written while an
+  adjustment replaces the entity waits for it, so a rollback no longer
+  discards it.
 - **The MRP domain check follows the domain**: a PDInterfaceMrpDataAdjust
   that changes the MRP domain drops the PDInterfaceMrpDataCheck of the
   old one, and the check compares the neighbor with the domain it names.
@@ -212,7 +218,9 @@ pending PDU is dropped after its retries. `TestMRPDomainCheck` and
 `TestMRPCheckRefused` (the check refused with 0xA9) and
 `TestMRPAdjustTimers` (no profile applied) fail before the MRP change,
 `TestMRPAdjustRollback` (a refused write left its configuration and no
-entity) and `TestMRPCheckLifecycle` (the old domain's check kept) before
+entity), `TestMRPCheckLifecycle` (the old domain's check kept),
+`TestMRPCheckDuringAdjustRollback` (a concurrent check write discarded)
+and `TestMRPRestoreFails` (the domain advertised with no entity) before
 their fixes;
 `TestWrittenProfile` covers each field and the extreme values,
 `TestMRPPortStatusTLV` the TLV against its layout, and e2e

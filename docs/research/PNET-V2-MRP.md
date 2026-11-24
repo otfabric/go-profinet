@@ -96,13 +96,42 @@ profile.
   profile was considered and not done in v0.25.0: it changes what the
   controller sends to every device, which needs interop evidence against
   a device that reads them (none in the matrix runs MRP records).
-- MRP_TSTshortT is matched as part of the profile and not applied: the
-  entity has no short test phase after a topology change, so implementing
-  it is a change to the MRP state machine, not to the record. A write
-  whose TSTshortT is not the profile's is refused, so no value is
-  accepted that differs from what the profile table says.
+- MRP_TSTshortT is matched as part of the profile and not applied. A
+  write whose TSTshortT is not the profile's is refused, so no value is
+  accepted that differs from what the profile table says; the profile's
+  other timers are applied. This is a partial implementation of the
+  record, not a fix of it.
+  - What it would do, from microchip-ung/mrp (`state_machine.c`,
+    `mrp_recv_ring_link`, at the commit profinet-interop builds,
+    `177717ee`; GPL-2.0, read for behaviour only): when the manager learns
+    of a link change (a client's MRP_LinkDown/LinkUp, in PRM_UP, CHK_RO
+    and CHK_RC), it sends its MRP_Test frames at the short interval
+    instead of the default one, once per such event (an `add_test`
+    flag), and returns to the default interval later. Clients do not use
+    it. Where exactly the default interval resumes was not read in full.
+  - What go-profinet does: on a client's MRP_LinkUp the manager tests at
+    once (`mrp/entity.go`, the `testNow` wake-up), then at the default
+    interval; on MRP_LinkDown it opens the ring at once.
+  - Applying TSTshortT is a change to the manager's timing, whose
+    evidence is one implementation, and which only the interop rings
+    (umrp, microchip-ung/mrp, the kernel's MRP) can check. It is not done
+    in v0.25.0; accepting the record with the value matched but not
+    applied is a maintainer decision (LIMITATIONS.md).
 - Ranges: no range check beyond the exact match; the comparison is done
   on `time.Duration`, which holds 65535 × 10 ms without overflow.
+- MRP record writes are one transaction at a time: a
+  PDInterfaceMrpDataCheck write waits for an adjustment that is
+  replacing the entity, so a rollback cannot discard it (the RPC server
+  runs the calls of several ARs at once; one AR's calls are already
+  serialized). `TestMRPCheckDuringAdjustRollback`.
+- No entity running: when neither the new entity nor the previous one
+  starts, the configuration asked for is kept, but nothing is advertised
+  or reported as running: no MRP port status in LLDP, MRP_Role off in
+  PDInterfaceMrpDataReal, no PDPortMrpDataReal, no domain check,
+  `MRPStatus` reports none. The ring ports keep the forwarding state the
+  last entity left: forwarding both could close a loop the manager had
+  opened, blocking one could cut the only path, and which is right
+  without an entity is not established. `TestMRPRestoreFails`.
 - Atomicity: the whole record is checked before anything changes. A
   refused write leaves the role, domain, priority, timers, the stored
   adjustment and check as they were. An accepted write stores the record

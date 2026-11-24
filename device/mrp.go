@@ -221,9 +221,12 @@ func (d *Device) readMRP(q pnio.ReadReq) (b []byte, handled bool, err error) {
 	}
 	switch q.Index {
 	case pnio.IndexPDInterfaceMrpDataReal:
-		role := st.cfg.Role
+		// The role that runs: none (off) when the configured entity did
+		// not start; PDInterfaceMrpDataAdjust keeps what was asked for.
+		role := mrp.RoleDisabled
 		var es mrp.Status
 		if st.ent != nil {
+			role = st.cfg.Role
 			es = st.ent.Status()
 			if role == mrp.RoleAuto {
 				role = es.Acting
@@ -246,7 +249,7 @@ func (d *Device) readMRP(q pnio.ReadReq) (b []byte, handled bool, err error) {
 			return a.Append(nil), true, nil
 		}
 	case pnio.IndexPDPortMrpDataReal:
-		if d.isRingPort(q.Subslot) && st.cfg.Role != mrp.RoleDisabled {
+		if d.isRingPort(q.Subslot) && st.cfg.Role != mrp.RoleDisabled && st.ent != nil {
 			r := pnio.PDPortMrpData{Real: true, Domain: st.cfg.Domain}
 			return r.Append(nil), true, nil
 		}
@@ -265,9 +268,12 @@ func (d *Device) readMRP(q pnio.ReadReq) (b []byte, handled bool, err error) {
 // rt-labs p-net sends the TLV on the ring ports of a client, and once
 // after a role change (pf_lldp_get_mrp_port_status); go-profinet sends it
 // while the role is client or manager.
+//
+// It is sent only while an entity runs: a configuration whose entity did
+// not start (setMRPRole failed) advertises no MRP domain.
 func (d *Device) mrpLLDP(p *port) *lldp.MRPPortStatus {
 	st := d.mrpSt
-	if st == nil || st.cfg.Role == mrp.RoleDisabled || !slices.Contains(st.cfg.RingPorts[:], p.n) {
+	if st == nil || st.ent == nil || st.cfg.Role == mrp.RoleDisabled || !slices.Contains(st.cfg.RingPorts[:], p.n) {
 		return nil
 	}
 	return &lldp.MRPPortStatus{Domain: st.cfg.Domain, MRRT: lldp.MRRTOff}
@@ -289,7 +295,7 @@ func (d *Device) mrpLLDP(p *port) *lldp.MRPPortStatus {
 // for the new AR. mu held.
 func (d *Device) mrpDomainMismatch(subslot uint16, peer lldp.Neighbor, found bool) bool {
 	st := d.mrpSt
-	if st == nil || st.check == nil || st.check.Check&pnio.MrpCheckDomainUUID == 0 || st.cfg.Role == mrp.RoleDisabled || !d.isRingPort(subslot) {
+	if st == nil || st.ent == nil || st.check == nil || st.check.Check&pnio.MrpCheckDomainUUID == 0 || st.cfg.Role == mrp.RoleDisabled || !d.isRingPort(subslot) {
 		return false
 	}
 	return found && peer.Frame.MRPPortStatus != nil && peer.Frame.MRPPortStatus.Domain != st.check.Domain
@@ -316,6 +322,10 @@ func (d *Device) writeMRPCheck(st *mrpState, data []byte) error {
 		// Reserved bits: nothing is known that they would check.
 		return rwErr(pnio.RWInvalidParameter)
 	}
+	// After an adjustment in progress, which may restore the check it
+	// found (the RPC server runs calls of several ARs at once).
+	d.mrpMu.Lock()
+	defer d.mrpMu.Unlock()
 	d.mu.Lock()
 	if c.Domain != st.cfg.Domain {
 		d.mu.Unlock()
@@ -464,7 +474,13 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 		st.cfg, st.adjust, st.check = prevCfg, prevAdjust, prevCheck
 		d.mu.Unlock()
 		if rerr := d.setMRPRole(prevCfg.Role, prevCfg.Domain, prevCfg.DomainName); rerr != nil {
-			d.log.Errorf("device: MRP: restoring %s: %v", prevCfg.Role, rerr)
+			// The configuration stays as it was asked for; nothing runs, so
+			// nothing is advertised (mrpLLDP), reported as real or checked.
+			// The ring ports keep the forwarding state the last entity left:
+			// forwarding both could close a loop the manager had opened,
+			// blocking one could cut the only path; which is right without
+			// an entity is not established.
+			d.log.Errorf("device: MRP: restoring %s: %v; no MRP entity runs", prevCfg.Role, rerr)
 		}
 		return true, rwErr(pnio.RWInvalidParameter)
 	}
