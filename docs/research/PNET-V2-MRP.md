@@ -115,18 +115,37 @@ profile.
     TSTshortT, then at TSTdefaultT; the short expiry counts as a test
     interval like any other (row 44 counts every expiry in CHK_RC).
     `TestAdditionalTest` (mrp) fails before the change.
+  - One decision for both kinds: with MRP_TSTshortT a LinkUp asks for no
+    test round of its own; ADD_TEST decides, as for a LinkDown. The first
+    version kept the manager's own round at once on a LinkUp, which a
+    LinkUp while ADD_TEST was set still triggered (third review,
+    R3-132-01). `TestAdditionalTestEvents` covers down-down, up-up,
+    down-up and up-down; it fails before the change for the three with
+    a LinkUp. A profile without TestShortInterval keeps the round at once
+    on a LinkUp (`TestLinkUpTestWithoutShortInterval`).
+  - Timing: the tests are timed by a timer set to the next test; the
+    ticker only polls the links. Before, the deadline was looked at on
+    each tick and every interval was rounded up: on a development
+    machine `Profile200` tested every 30 ms (20 ms wanted), `Profile500`
+    every 60 ms (50 ms), and MRP_TSTshortT came after 20 and 40 ms (10
+    and 30 ms wanted). Now the medians are within about 1 ms
+    (`TestProfileTestTiming`, which checks the median of several
+    intervals within 8 ms and fails before). This is a general-purpose
+    OS: no single interval is bounded, and no real-time claim is made.
   - Not read: the CHK_RC rows for LinkChangeInd (after page 89), and
     REACT_MODE, which row 1 initialises false. go-profinet keeps its
     reaction to a client's MRP_LinkDown (it opens the ring at once, as
-    microchip-ung/mrp does when it reacts on link changes) and to an
-    MRP_LinkUp (a test round at once); whether the standard does so in
-    CHK_RC is not established.
+    microchip-ung/mrp does when it reacts on link changes), and, without
+    MRP_TSTshortT, to an MRP_LinkUp (a test round at once); whether the
+    standard does so in CHK_RC is not established.
   - microchip-ung/mrp (`state_machine.c`, `mrp_recv_ring_link`, at
     `177717ee`, the commit profinet-interop builds; GPL-2.0, read for
     behaviour only) uses the short interval on the same events with an
     `add_test` flag. Clients do not use it, in either source.
   - Interop: the MRP suite of profinet-interop v0.15.0 passed with the
-    change against umrp (manager, client, ring faults, auto). The
+    change against umrp (manager, client, ring faults, auto). It does not
+    check the additional test's timing: that the suite passes shows the
+    change breaks no ring, not that a peer verified MRP_TSTshortT. The
     microchip-ung/mrp rings were not run: the Docker host's kernel does
     not accept an MRP instance on a software bridge, and the suite
     records them as not applicable.
@@ -151,6 +170,16 @@ profile.
   first version of `TestMRPRestoreFails` hit it about once in 30 runs
   (the reply to the refused write was lost). The test now waits for the
   client's PT_IDLE. `TestMRPRestoreFails`.
+  - Three things are kept apart. The configuration asked for is always
+    restored. An entity runs again only when one starts: a later write
+    starts it, the same configuration included (before, that write was
+    taken as changing nothing, since its fields equal the stored ones,
+    and no entity ran: third review, R3-132-02; `TestMRPRestoreFails`
+    fails before). The forwarding state is never repaired without an
+    entity. `TestMRPRestoreFailsBlocked` holds port 2 blocked in PT (a
+    two-minute link-up wait), fails both starts with the controller on
+    port 3, outside the ring, and reads the bridge: the port stays
+    blocked, and rewriting the configuration starts the client.
 - Atomicity: the whole record is checked before anything changes. A
   refused write leaves the role, domain, priority, timers, the stored
   adjustment and check as they were. An accepted write stores the record

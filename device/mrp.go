@@ -444,8 +444,10 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 	if a.Manager != nil && a.Manager.Prio != 0 {
 		prio = a.Manager.Prio
 	}
+	// The same configuration changes nothing only when its entity runs:
+	// after a failed start and restore it is rewritten to start it again.
 	same := st.cfg.Role == mrp.Role(a.Role) && st.cfg.Domain == a.Domain && st.cfg.DomainName == a.DomainName &&
-		st.cfg.Prio == prio && st.cfg.Profile == prof
+		st.cfg.Prio == prio && st.cfg.Profile == prof && (st.ent != nil) == (st.cfg.Role != mrp.RoleDisabled)
 	prevCfg, prevAdjust, prevCheck := st.cfg, st.adjust, st.check
 	st.adjust = &a
 	st.cfg.Prio, st.cfg.Profile = prio, prof

@@ -516,8 +516,23 @@ func TestMRPRestoreFails(t *testing.T) {
 	if got := states(); got != before {
 		t.Fatalf("ring ports %v, were %v", got, before)
 	}
-	// A later write whose entity starts brings MRP back.
+	// The configuration asked for, written again, starts its entity: the
+	// write is not taken for one that changes nothing. Before, it was
+	// accepted and no entity ran.
 	d.mrpNew = nil
+	orig := pnio.PDInterfaceMrpDataAdjust{Domain: dom, Role: pnio.MrpRoleClient, DomainName: "ring-x"}
+	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, orig.Append(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if st, ok := d.MRPStatus(); !ok || st.Role != mrp.RoleClient {
+		t.Fatalf("after rewriting the configuration: %+v %v", st, ok)
+	}
+	eventually(t, 5*time.Second, "domain advertised again", func() bool {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+		return d.mrpLLDP(d.ports[1]) != nil
+	})
+	// A write of another role replaces the entity as before.
 	if err := x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)); err != nil {
 		t.Fatal(err)
 	}
