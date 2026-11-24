@@ -346,19 +346,19 @@ func TestConfigurableSubmodules(t *testing.T) {
 	// catalog), DAP_2P plugs it (refused).
 	cat := analyze(fixture(t, modular, "</VirtualSubmoduleList>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\"",
 		"</VirtualSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"D\" UsedInSubslots=\"2\"/></UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\""))
-	if d := cat.DAPs[0]; d.Outcome != gsdml.OutcomeConverted || d.OmittedModules != 1 || d.RequiredSubmodules != 1 || d.Blocked || len(d.Failures) != 0 {
+	if d := cat.DAPs[0]; d.Outcome != gsdml.OutcomeConverted || d.OmittedModules != 1 || d.RequiredSubmodules != 0 || d.CatalogRequiredSubmodules != 1 || d.Blocked || len(d.Failures) != 0 {
 		t.Fatalf("DAP_1P %+v", d)
 	}
-	if d := cat.DAPs[1]; d.Outcome != gsdml.OutcomeUnsupported || d.OmittedModules != 0 || !d.Blocked || len(d.Failures) != 1 || d.Failures[0].Class != gsdml.OutcomeUnsupported {
+	if d := cat.DAPs[1]; d.Outcome != gsdml.OutcomeUnsupported || d.OmittedModules != 0 || d.RequiredSubmodules != 1 || d.CatalogRequiredSubmodules != 0 || !d.Blocked || len(d.Failures) != 1 || d.Failures[0].Class != gsdml.OutcomeUnsupported {
 		t.Fatalf("DAP_2P %+v", d)
 	}
 	s := Summarize([]FileResult{opt, req, plain, cat})
-	if f := s.Fidelity; f.FilesConfigurable != 3 || f.DAPsConfigurable != 5 || f.DAPsRequiredSubmodules != 3 || f.ConvertedConfigurable != 3 || f.DAPsOmittedModules != 1 || f.OmittedModules != 1 {
+	if f := s.Fidelity; f.FilesConfigurable != 3 || f.DAPsConfigurable != 5 || f.DAPsRequiredSubmodules != 2 || f.DAPsCatalogRequired != 1 || f.ConvertedConfigurable != 3 || f.DAPsOmittedModules != 1 || f.OmittedModules != 1 {
 		t.Fatalf("%+v", f)
 	}
 	md := Markdown(s, "")
 	if !strings.Contains(md, "| a configurable submodule (UseableSubmodules) in the DAP or a module it references; ToModel converts none | 3 | 5 | 3 |") ||
-		!strings.Contains(md, "(FixedInSubslots or UsedInSubslots), in the DAP or a module it references: 3;") || !strings.Contains(md, "needs one: 1 (1 module references).") {
+		!strings.Contains(md, "(FixedInSubslots or UsedInSubslots), which ToModel refuses: 2.") || !strings.Contains(md, "only in the catalog that needs one: 1; converted DAPs whose catalog leaves such a module out: 1 (1 module references).") {
 		t.Fatal(md)
 	}
 }

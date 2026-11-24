@@ -291,7 +291,7 @@ func TestAnalyzeModelsOptionalSubmodules(t *testing.T) {
 		onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" AllowedInSubslots="2..9"/><SubmoduleItemRef SubmoduleItemTarget="SM_CH2" AllowedInSubslots="10 12"/>`)...)
 	doc, reps := analyzeVariant(t, edits...)
 	dap1, dap2 := reps[0], reps[1]
-	wantDAP := []SubmoduleRef{{Target: "SM_OPT", Path: dap1.Path + "/UseableSubmodules/SubmoduleItemRef[SM_OPT]", Outcome: OutcomeConverted}}
+	wantDAP := []SubmoduleRef{{Target: "SM_OPT", Path: dap1.Path + "/UseableSubmodules/SubmoduleItemRef[SM_OPT]", Outcome: OutcomeOmitted}}
 	if !reflect.DeepEqual(dap1.ConfigurableSubmodules, wantDAP) || dap2.ConfigurableSubmodules != nil {
 		t.Fatalf("DAP refs %+v %+v", dap1.ConfigurableSubmodules, dap2.ConfigurableSubmodules)
 	}
@@ -323,7 +323,7 @@ func TestAnalyzeModelsOptionalSubmodules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(b, []byte(`"configurable_submodules":[{"target":"SM_OPT","path":`)) || !bytes.Contains(b, []byte(`"required":false,"outcome":"converted"`)) {
+	if !bytes.Contains(b, []byte(`"configurable_submodules":[{"target":"SM_OPT","path":`)) || !bytes.Contains(b, []byte(`"required":false,"outcome":"omitted"`)) {
 		t.Fatalf("%s", b)
 	}
 	if b, _ := json.Marshal(plain[0]); bytes.Contains(b, []byte("configurable_submodules")) {
@@ -403,7 +403,7 @@ func TestToModelSingleAllowedSubmodule(t *testing.T) {
 		if _, err := ToModel(doc, r.DAP); err != nil || r.Outcome != OutcomeConverted || r.Blocked {
 			t.Fatalf("%s: %s %v", r.DAP, r.Outcome, err)
 		}
-		if refs := moduleOf(t, r, "MOD_DI16").ConfigurableSubmodules; len(refs) != 1 || refs[0].Required || refs[0].ConfiguredSubslots != nil || refs[0].Outcome != OutcomeConverted {
+		if refs := moduleOf(t, r, "MOD_DI16").ConfigurableSubmodules; len(refs) != 1 || refs[0].Required || refs[0].ConfiguredSubslots != nil || refs[0].Outcome != OutcomeOmitted {
 			t.Fatalf("%s: %+v", r.DAP, refs)
 		}
 	}

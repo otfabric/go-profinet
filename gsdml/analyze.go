@@ -29,6 +29,10 @@ const (
 	// go-profinet (profinet.ErrResourceExhausted), for example
 	// MaxModelRecordOctets.
 	OutcomeResourceExhausted Outcome = "resource_exhausted"
+	// OutcomeOmitted: valid, and left out of the model. Only a
+	// SubmoduleRef has it: an optional configurable submodule, which
+	// model.Device does not contain.
+	OutcomeOmitted Outcome = "omitted"
 )
 
 // outcomeOf classifies a conversion error. Malformed content is never
@@ -153,7 +157,8 @@ type SubmoduleRef struct {
 	// configured submodule. An optional reference (Required false) is left
 	// out of a model that still converts. Outcome and Error are the
 	// reference's own: malformed when its subslot attributes do not parse,
-	// unsupported when it is required, converted (left out) otherwise.
+	// unsupported when it is required, omitted otherwise. It is never
+	// converted: no configurable submodule is in a model.
 	ConfiguredSubslots []uint32 `json:"configured_subslots,omitempty"`
 	Required           bool     `json:"required"`
 	Outcome            Outcome  `json:"outcome"`
@@ -204,6 +209,9 @@ func submoduleRefs(us *UseableSubmodules, path string) []SubmoduleRef {
 			err = fmt.Errorf("gsdml: %w: configurable submodule %s configured in subslot %d is not converted", profinet.ErrUnsupported, clip(ref.SubmoduleItemTarget), l[0])
 		}
 		sr.Outcome, sr.Error = outcomeOf(err), errText(err)
+		if err == nil {
+			sr.Outcome = OutcomeOmitted
+		}
 		if err != nil && !errors.Is(err, profinet.ErrUnsupported) {
 			sr.ConfiguredSubslots, sr.Required = nil, false
 		}

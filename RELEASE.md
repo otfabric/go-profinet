@@ -55,9 +55,11 @@ leaves out, with why. Parsing, validation and inspection are unchanged.
     `SubmoduleList` no reference names is not read; malformed subslot
     attributes of a reference fail with `ErrMalformed`.
 - **`gsdmlcorpus`**: per DAP `configurable_submodules`,
-  `required_submodules` and `omitted_modules`, their totals in the
-  summary's fidelity, and a row and a sentence in the matrix; an omitted
-  module is not among a DAP's failures.
+  `required_submodules` (in the selected configuration: the DAP and its
+  plugged modules), `catalog_required_submodules` (in modules only in the
+  catalog) and `omitted_modules`, their totals in the summary's fidelity,
+  and a row and a sentence in the matrix; an omitted module is not among
+  a DAP's failures.
 
 ### Added
 
@@ -65,7 +67,9 @@ leaves out, with why. Parsing, validation and inspection are unchanged.
   - `ModelReport.ConfigurableSubmodules` and
     `ModuleReport.ConfigurableSubmodules`: the references, each a
     `SubmoduleRef` with `Required`, `ConfiguredSubslots`, `Outcome` and
-    `Error`.
+    `Error`. Its outcome is `unsupported` (required), `malformed` or the
+    new `OutcomeOmitted` (optional, left out), never `converted`: no
+    configurable submodule is in a model.
   - `ModuleReport.Omitted`: the module is left out of `Catalog`; it does
     not block the DAP.
   - `ModelReport.OmitsSubmodules` and `OmitsModules`.

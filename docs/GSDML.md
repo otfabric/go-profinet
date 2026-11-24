@@ -234,6 +234,7 @@ compare both, structurally and as JSON). No partial model is returned.
 | `malformed` | an error of `ErrMalformed`, or of no other class |
 | `unsupported` | `ErrUnsupported`: content go-profinet does not implement, such as a field without a verified encoding |
 | `resource_exhausted` | `ErrResourceExhausted`, such as parameter records beyond `MaxModelRecordOctets` in the modules as plugged |
+| `omitted` | a configurable submodule reference only (`SubmoduleRef`): valid and optional, and left out of the model |
 
 Malformed content is reported as malformed, never as unsupported: an error
 that matches `ErrMalformed` is classified first. For a DAP that does not
@@ -263,9 +264,9 @@ convert, the rest of the report says why:
 - `ConfigurableSubmodules`, of the DAP (`ModelReport`) and of each module
   (`ModuleReport`), list the `UseableSubmodules` references: `Required`
   with the `ConfiguredSubslots` for a fixed or used one, and the
-  reference's own `Outcome` (`unsupported` when required, `converted` when
+  reference's own `Outcome` (`unsupported` when required, `omitted` when
   optional and left out, `malformed` when its subslot attributes do not
-  parse). A required one of the DAP is its `DAPErr`; of a module, its
+  parse; never `converted`, as no configurable submodule is in a model). A required one of the DAP is its `DAPErr`; of a module, its
   `ModuleOutcome` is `unsupported`. `Omitted` marks a reference whose
   module `ToModel` leaves out of `Catalog` because it needs one and the
   reference plugs it nowhere; an omitted module does not block the DAP.
