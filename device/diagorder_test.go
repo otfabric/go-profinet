@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/otfabric/go-profinet"
 	"github.com/otfabric/go-profinet/alarm"
 	"github.com/otfabric/go-profinet/pnio"
 )
@@ -248,5 +249,147 @@ func TestARDiagnosisStateScope(t *testing.T) {
 	an, _ := nextAlarm(t, got)
 	if an.Slot != 1 || spec(an) != 0 {
 		t.Fatalf("slot %d specifier %#x", an.Slot, spec(an))
+	}
+}
+
+// An alarm stays outstanding until the controller's AlarmAck, also when
+// its caller stops waiting: alarm A is delivered (the transport
+// acknowledges it), its AlarmAck is late, the caller's ctx ends, and
+// alarm B of the same priority goes out only after A's AlarmAck. Before,
+// B went out at once, with A unacknowledged.
+func TestAlarmOutstandingAfterCancel(t *testing.T) {
+	d, got, acked := policyPeer(t, func(n int, _ pnio.AlarmNotification) (pnio.Status, time.Duration) {
+		if n == 1 {
+			return pnio.Status{}, 400 * time.Millisecond
+		}
+		return pnio.Status{}, 0
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if err := d.SendAlarm(ctx, Alarm{Type: pnio.AlarmProcess, Slot: 1, Subslot: 1}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("A: %v", err)
+	}
+	a, _ := nextArrival(t, got)
+	if err := d.SendAlarm(context.Background(), Alarm{Type: pnio.AlarmProcess, Slot: 3, Subslot: 1}); err != nil {
+		t.Fatalf("B: %v", err)
+	}
+	b, _ := nextArrival(t, got)
+	if ack := acked(1); ack.IsZero() || b.at.Before(ack) {
+		t.Fatalf("B at %v, A's AlarmAck at %v (A at %v)", b.at, ack, a.at)
+	}
+	// B waited within its ctx: one that ends first gives up.
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel2()
+	d.mu.Lock()
+	var x *ar
+	for _, v := range d.ars {
+		x = v
+	}
+	d.mu.Unlock()
+	x.alarmSem[0] <- struct{}{} // a priority kept busy
+	err := d.SendAlarm(ctx2, Alarm{Type: pnio.AlarmProcess, Slot: 1, Subslot: 1})
+	<-x.alarmSem[0]
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("C: %v", err)
+	}
+}
+
+// Repeating a RemoveDiagnosis whose alarm was not delivered retries the
+// alarm: the repeat sends what is owed and returns nil; once nothing is
+// owed, a further repeat returns ErrNotFound. Before, the repeat returned
+// ErrNotFound and the controller kept the diagnosis.
+func TestRemoveDiagnosisRetry(t *testing.T) {
+	refused := pnio.Status{Code: 0xDF, Decode: 0x80, Code1: 0x22}
+	d, got, _ := policyPeer(t, func(n int, _ pnio.AlarmNotification) (pnio.Status, time.Duration) {
+		if n == 2 {
+			return refused, 0
+		}
+		return pnio.Status{}, 0
+	})
+	ctx := context.Background()
+	fault := pnio.DiagnosisItem{ChannelNumber: 1, ChannelProperties: pnio.ChanDirInput, ErrorType: pnio.ChannelErrLineBreak}
+	if err := d.AddDiagnosis(ctx, 1, 1, fault); err != nil {
+		t.Fatal(err)
+	}
+	nextArrival(t, got)
+	var se *pnio.StatusError
+	if err := d.RemoveDiagnosis(ctx, 1, 1, 1, pnio.ChannelErrLineBreak); !errors.As(err, &se) {
+		t.Fatalf("removal with a refused alarm: %v", err)
+	}
+	nextArrival(t, got)
+	if err := d.RemoveDiagnosis(ctx, 1, 1, 1, pnio.ChannelErrLineBreak); err != nil {
+		t.Fatalf("repeated removal: %v", err)
+	}
+	a, it := nextArrival(t, got)
+	if a.an.Type != pnio.AlarmDiagnosisDisappears || it.ChannelProperties&pnio.ChanSpecMask != pnio.ChanSpecDisappears {
+		t.Fatalf("retried alarm %v %#x", a.an.Type, it.ChannelProperties)
+	}
+	if err := d.RemoveDiagnosis(ctx, 1, 1, 1, pnio.ChannelErrLineBreak); !errors.Is(err, profinet.ErrNotFound) {
+		t.Fatalf("removal with nothing owed: %v", err)
+	}
+}
+
+// The alarms of a diagnosis operation belong to the AR they were sent to:
+// when the submodule moves to another AR while an alarm fails, what is
+// owed stays with the first AR and is dropped, so the new AR receives no
+// historical alarm (it reads the diagnoses in its records). Before, the
+// owner was looked up after the failure and the new AR received the old
+// AR's alarm.
+func TestOwedDiagnosisStaysWithItsAR(t *testing.T) {
+	n := newNet(t)
+	d, _ := n.device(nil)
+	refused := pnio.Status{Code: 0xDF, Decode: 0x80, Code1: 0x22}
+	p1 := n.peer(d, "192.168.0.2", true)
+	req1 := p1.ioCAR()
+	resp1 := p1.establish(req1)
+	p1.openAlarms(req1, resp1, func(_ bool, an pnio.AlarmNotification, ep *alarm.Endpoint) {
+		ack := pnio.AckFor(&an, refused)
+		go func() { _ = ep.Send(context.Background(), ack.Append(nil)) }()
+	})
+	p2 := n.peer(d, "192.168.0.3", true)
+	req2 := p2.ioCAR()
+	resp2 := p2.establish(req2)
+	got2 := make(chan pnio.AlarmNotification, 4)
+	p2.openAlarms(req2, resp2, func(_ bool, an pnio.AlarmNotification, ep *alarm.Endpoint) {
+		got2 <- an
+		ack := pnio.AckFor(&an, pnio.Status{})
+		go func() { _ = ep.Send(context.Background(), ack.Append(nil)) }()
+	})
+	d.mu.Lock()
+	a2 := d.ars[req2.AR.ARUUID]
+	d.mu.Unlock()
+	if a2 == nil || a2.currentState() != ARStateData {
+		t.Fatal("second AR not in Data")
+	}
+	k := key{1, 1}
+	// The submodule moves to the second AR while the first one's alarm
+	// fails.
+	d.diagFailed = func() {
+		d.imgMu.Lock()
+		d.owner[k] = a2
+		d.imgMu.Unlock()
+	}
+	ctx := context.Background()
+	fault := pnio.DiagnosisItem{ChannelNumber: 1, ChannelProperties: pnio.ChanDirInput, ErrorType: pnio.ChannelErrLineBreak}
+	var se *pnio.StatusError
+	if err := d.AddDiagnosis(ctx, 1, 1, fault); !errors.As(err, &se) {
+		t.Fatalf("refused alarm: %v", err)
+	}
+	d.diagFailed = nil
+	// An identical AddDiagnosis sends only what is owed to the new owner:
+	// nothing.
+	if err := d.AddDiagnosis(ctx, 1, 1, fault); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SendAlarm(ctx, Alarm{Type: pnio.AlarmProcess, Slot: 1, Subslot: 1}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case an := <-got2:
+		if an.Type != pnio.AlarmProcess {
+			t.Fatalf("the new AR received the old AR's %v", an.Type)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no alarm at the new AR")
 	}
 }

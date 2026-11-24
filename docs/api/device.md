@@ -270,6 +270,9 @@ type Device struct {
 	// afterDiagChange, when set (tests), runs after a diagnosis operation
 	// changed the state and before it reports it.
 
+	// diagFailed, when set (tests), runs when a diagnosis alarm was not
+	// delivered, before the rest is owed.
+
 	// dhcp are the DHCP options DCP reports; ipDHCP marks ip as set by
 	// DHCP. Both under mu.
 
@@ -400,6 +403,8 @@ func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, er
 ```
 
 RemoveDiagnosis removes the diagnoses of a submodule channel with the error type (every direction and extended error type) and reports the disappearance of each with an alarm: "disappears, others remain" while another diagnosis of the submodule remains, and for the last one, when none remains, "disappears" in a DiagnosisDisappears alarm. It returns an error matching profinet.ErrNotFound when there is none, and the first alarm error otherwise; the diagnoses are removed either way, and the alarms not delivered are owed as for AddDiagnosis.
+
+Repeating a RemoveDiagnosis whose alarms were not delivered retries them: when no diagnosis matches but alarms of the submodule are owed to its alarm owner, they are sent and RemoveDiagnosis returns their result (nil once delivered) instead of ErrNotFound. So a caller retries a failed removal until it returns nil or an error matching profinet.ErrNotFound, which then means nothing was left to report.
 
 #### func (Device) SendAlarm
 
