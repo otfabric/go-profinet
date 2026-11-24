@@ -372,19 +372,21 @@ func (e *Entity) linkUp(i int) bool {
 // run follows the links and, for a manager, sends the test frames.
 func (e *Entity) run() {
 	defer e.wg.Done()
-	poll := min(e.cfg.Profile.TestInterval, 20*time.Millisecond)
-	if s := e.cfg.Profile.TestShortInterval; s > 0 {
-		poll = min(poll, s)
-	}
-	t := time.NewTicker(poll)
+	// The ticker polls the links; the test timer fires at the next test,
+	// so that the test intervals are not rounded up to a polling tick
+	// (with a 10 ms ticker a 20 ms interval came every 30 to 40 ms).
+	t := time.NewTicker(min(e.cfg.Profile.TestInterval, 20*time.Millisecond))
 	defer t.Stop()
 	nextTest := time.Now()
+	test := time.NewTimer(0)
+	defer test.Stop()
 	for {
 		now := false
 		select {
 		case <-e.ctx.Done():
 			return
 		case <-t.C:
+		case <-test.C:
 		case <-e.testNow:
 			now = true
 		}
@@ -399,6 +401,7 @@ func (e *Entity) run() {
 		due := !time.Now().Before(nextTest)
 		if due {
 			nextTest = time.Now().Add(e.cfg.Profile.TestInterval)
+			test.Reset(time.Until(nextTest))
 		}
 		// TestRingReq(MRP_TSTshortT): a test now, the next one after the
 		// short interval. The expiry of that timer, like any, ends the
@@ -412,6 +415,7 @@ func (e *Entity) run() {
 		e.mu.Unlock()
 		if short {
 			nextTest = time.Now().Add(e.cfg.Profile.TestShortInterval)
+			test.Reset(time.Until(nextTest))
 			now = true
 		}
 		if now || due {
@@ -724,15 +728,21 @@ func (e *Entity) managerRecv(port int, f Frame) {
 		}
 	case f.Link != nil:
 		e.linkChanges.Add(1)
-		e.additionalTest()
+		// With MRP_TSTshortT the additional test decides when to test,
+		// for a LinkUp as for a LinkDown: at once unless ADD_TEST is set
+		// already (additionalTest).
+		short := e.additionalTest()
 		if f.Link.Up {
-			// A client's port came up: the ring may close now. Test it
-			// at once rather than at the next interval; a test that
-			// comes around closes it (a LinkUp alone may be a late one
-			// of a ring that is open again).
-			select {
-			case e.testNow <- struct{}{}:
-			default:
+			// A client's port came up: the ring may close now. Without
+			// MRP_TSTshortT (a profile with no TestShortInterval) test it
+			// at once rather than at the next interval; a test that comes
+			// around closes it (a LinkUp alone may be a late one of a
+			// ring that is open again).
+			if !short {
+				select {
+				case e.testNow <- struct{}{}:
+				default:
+				}
 			}
 			return
 		}
@@ -761,11 +771,17 @@ func (e *Entity) managerRecv(port int, f Frame) {
 // ADD_TEST false sets it and calls TestRingReq(MRP_TSTshortT); with
 // ADD_TEST set the LinkChange asks for none). The manager's loop sends a
 // test round at once and times the next one TestShortInterval later.
-func (e *Entity) additionalTest() {
+//
+// It reports whether the profile has MRP_TSTshortT, so that the caller
+// asks for no test of its own.
+func (e *Entity) additionalTest() bool {
+	if e.cfg.Profile.TestShortInterval <= 0 {
+		return false
+	}
 	e.mu.Lock()
-	if e.addTest || e.cfg.Profile.TestShortInterval <= 0 {
+	if e.addTest {
 		e.mu.Unlock()
-		return
+		return true
 	}
 	e.addTest, e.shortNext = true, true
 	e.mu.Unlock()
@@ -773,6 +789,7 @@ func (e *Entity) additionalTest() {
 	case e.testNow <- struct{}{}:
 	default:
 	}
+	return true
 }
 
 // sa returns the MRP_SA of a frame, the station that sent it.

@@ -27,6 +27,13 @@ import (
 // device and a test network on the segment of port 2, for a peer.
 func mrpRingDevice(t *testing.T, cfg *MRPConfig) (*Device, *tnet) {
 	t.Helper()
+	return mrpRingDeviceOn(t, cfg, 1)
+}
+
+// mrpRingDeviceOn is mrpRingDevice with the test network on the segment
+// of port seg+1 (port 3, seg 2, is not a ring port).
+func mrpRingDeviceOn(t *testing.T, cfg *MRPConfig, seg int) (*Device, *tnet) {
+	t.Helper()
 	var segs [3]*vnet.Network
 	var ports []l2.Port
 	for i := range segs {
@@ -64,7 +71,7 @@ func mrpRingDevice(t *testing.T, cfg *MRPConfig) (*Device, *tnet) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = d.Close() })
-	return d, &tnet{t: t, net: segs[1]}
+	return d, &tnet{t: t, net: segs[seg]}
 }
 
 // mrpInterfaceReal reads and decodes PDInterfaceMrpDataReal.

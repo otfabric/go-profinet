@@ -69,10 +69,19 @@ writes, within the 200 ms and 500 ms profiles.
   MRP_LinkDown or MRP_LinkUp makes the manager send its test frames at
   once and again after MRP_TSTshortT, then at MRP_TSTdefaultT, as
   IEC 62439-2:2016 Table 45 (ADD_TEST, TestRingReq(MRP_TSTshortT))
-  states; a further LinkChange before the test timer expires asks for
-  none. New field `mrp.Profile.TestShortInterval` (10 ms in `Profile200`,
-  30 ms in `Profile500`; zero: no additional test). Before, the manager
-  waited for the next default interval after an MRP_LinkDown.
+  states; a further LinkChange before the test timer expires, MRP_LinkUp
+  or MRP_LinkDown, asks for none. New field `mrp.Profile.TestShortInterval`
+  (10 ms in `Profile200`, 30 ms in `Profile500`; zero: no additional test,
+  and an MRP_LinkUp makes the manager test at once, as before). Before,
+  the manager waited for the next default interval after an MRP_LinkDown.
+- **MRP test intervals are kept**: the manager's tests (and an automatic
+  manager's monitoring) are timed by a timer set to the next test, not
+  by the link polling tick. Before, every interval was rounded up to a
+  tick: `Profile200` tested every 30 ms instead of 20 ms and `Profile500`
+  every 60 ms instead of 50 ms, which lengthened the detection of an open
+  ring (MRP_TSTNRmax intervals) by half and a fifth. The medians measured
+  on a development machine are now within about 1 ms; a general-purpose
+  OS gives no bound on a single interval.
 - **Device: written MRP timers are applied**: the timers of a written
   MrpManagerParams/MrpClientParams select `mrp.Profile200` or
   `mrp.Profile500` (units from Wireshark: MRP_TOPchgT in 10 ms, the
@@ -165,7 +174,10 @@ writes, within the 200 ms and 500 ms profiles.
   entity of the new configuration does not start, the previous records,
   configuration and entity are restored. Before, the write was refused
   but its role, domain, priority and timers stayed recorded with no
-  entity running.
+  entity running. When the previous entity does not start either, the
+  configuration is still restored with no entity running, and writing it
+  again starts its entity; before, a write of the same configuration was
+  accepted as changing nothing and no entity ran.
 - **No MRP is advertised without an entity**: when neither a new MRP
   entity nor the previous one starts, the ring ports send no MRP port
   status, PDInterfaceMrpDataReal reports the role off and the domain
@@ -232,7 +244,13 @@ entity), `TestMRPCheckLifecycle` (the old domain's check kept),
 `TestMRPCheckDuringAdjustRollback` (a concurrent check write discarded)
 and `TestMRPRestoreFails` (the domain advertised with no entity) before
 their fixes, `TestAdditionalTest` (mrp; the first test came 519 ms after
-a LinkChange, at the default interval) before the additional test;
+a LinkChange, at the default interval) before the additional test,
+`TestAdditionalTestEvents` (a LinkUp while ADD_TEST was set tested at
+once) and `TestProfileTestTiming` (the intervals rounded up to the
+polling tick) before their fixes, and `TestMRPRestoreFails` (the same
+configuration rewritten started no entity) before its fix;
+`TestMRPRestoreFailsBlocked` shows the forwarding state kept, with the
+controller outside the ring;
 `TestWrittenProfile` covers each field and the extreme values,
 `TestMRPPortStatusTLV` the TLV against its layout, and e2e
 `TestMRPRecords` the records through the controller. The
