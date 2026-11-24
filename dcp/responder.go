@@ -448,6 +448,12 @@ func (r *Responder) apply(b Block) BlockError {
 		}
 		return r.station.SetName(name, permanent)
 	case IPParameter:
+		// Exactly three IPv4 addresses (Wireshark's PN-DCP dissector);
+		// DecodeIPSuite reads the first 12 octets of longer blocks, such
+		// as a Full IP Suite, which a Set of this suboption must not be.
+		if len(b.Data) != ipSuiteLen {
+			return BlockErrorSetNotPossible
+		}
 		s, err := DecodeIPSuite(b.Data)
 		if err != nil {
 			return BlockErrorSetNotPossible

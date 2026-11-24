@@ -597,16 +597,19 @@ func (d *Device) connect(ctx context.Context, from net.Addr, req *pnio.ConnectRe
 	if !iosar {
 		locked = d.claimOwnership(a)
 	}
+	undoPDev := func() {}
 	if arb.Type == pnio.ARTypeIOCARSingle {
-		d.resetPDev(a, locked)
+		undoPDev = d.resetPDev(a, locked)
 	}
 	diff, _ := d.moduleDiff(req.Expected, locked)
-	// A Connect that fails from here on gives its submodules back.
+	// A Connect that fails from here on gives its submodules back, and the
+	// port state it reset.
 	established := false
 	defer func() {
 		if !established && !iosar {
 			d.releaseOwnership(a)
 			d.srLeave(a)
+			undoPDev()
 		}
 	}()
 

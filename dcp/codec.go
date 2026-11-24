@@ -466,9 +466,12 @@ func AppendIPSuite(dst []byte, s IPSuite) []byte {
 	return dst
 }
 
+// ipSuiteLen is the length of an IP parameter: address, mask, gateway.
+const ipSuiteLen = 12
+
 // DecodeIPSuite decodes the data of an IP/Parameter or IP/FullSuite block.
 func DecodeIPSuite(b []byte) (IPSuite, error) {
-	if len(b) < 12 {
+	if len(b) < ipSuiteLen {
 		return IPSuite{}, fmt.Errorf("dcp: %w: IP parameter of %d octets", profinet.ErrMalformed, len(b))
 	}
 	return IPSuite{

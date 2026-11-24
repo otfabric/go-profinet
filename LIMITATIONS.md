@@ -386,8 +386,13 @@ data (PACKET_AUXDATA).
   remote mismatch diagnoses they cause belong to the AR that wrote them:
   the Connect of an IOCAR resets them for the DAP ports it takes, as
   p-net v2.0.0's `pf_pdport_reset_ar`; an IOSAR and S2 ARs keep them, and
-  a port another AR holds keeps its state. The standard's text on this is
-  not read.
+  a port another AR holds keeps its state. A Connect refused after the
+  reset gives the ports their state back (go-profinet's rule; p-net's
+  source does not show it). The standard's text on this is not read.
+- An alarm endpoint whose DATA PDU was not acknowledged within its
+  retries sends no further DATA PDU: the AR is expected to be aborted, as
+  the device does. Whether the standard's alarm machine allows anything
+  else is not read.
 - The LLDP TTL of 21 s is p-net v2.0.0's (its release notes cite the
   PROFINET test specification, which go-profinet has not read).
 

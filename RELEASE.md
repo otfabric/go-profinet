@@ -99,6 +99,21 @@ fault only when a fault diagnosis is active.
   of sequence, and the next alarm aborted the AR. A PDU that never left
   gives its number back; a sent, cancelled one stays pending and the next
   `Send` retransmits it first. Found auditing p-net issue 2701.
+- **A pending alarm PDU owns its payload** (`alarm.Endpoint.Send`): the
+  endpoint keeps a copy of the VarPart; before, a caller that reused its
+  buffer after a cancelled `Send` changed what the retransmission sent.
+- **An alarm endpoint whose DATA PDU timed out sends no further DATA PDU**:
+  `Send` returns `ErrInvalidState` (the AR is to be aborted; `SendErr`
+  still works). Before, the next `Send` used the next sequence number
+  after a PDU the peer may never have received.
+- **A refused Connect leaves the port checks as they were**: the PDev
+  reset of an IOCAR's Connect is undone when the Connect is refused after
+  it (an abort while the AR is built, no FrameID, no alarm endpoint).
+  Before, the refused Connect erased the checks, adjustments and mismatch
+  diagnoses another controller had written.
+- **DCP Set of IP/Parameter must be 12 octets**: a longer block is
+  refused with "set not possible" and changes nothing; before, the first
+  12 octets were applied and the rest ignored.
 - **Port checks no longer outlive their AR**: an IOCAR's Connect resets
   the PDPortDataCheck, PDPortDataAdjust and remote mismatch diagnoses of
   the DAP ports it takes (p-net's `pf_pdport_reset_ar`). Before, a stale
@@ -118,7 +133,9 @@ fault only when a fault diagnosis is active.
   neighbor table keeps the device one second longer; a controller that
   reconnects with a new IOCAR writes its port checks again (they are no
   longer kept from the previous AR); fragmented RPC calls in mixed byte
-  order are refused.
+  order are refused; `alarm.Endpoint.Send` after a timed-out DATA PDU
+  returns `ErrInvalidState`; a DCP Set of an IP/Parameter longer than 12
+  octets is refused.
 
 ### Evidence
 
@@ -136,7 +153,11 @@ ARDiagnosisState. `TestSendAfterTransmitFailure` and
 `TestSendAfterCancelledSend` (the next alarm timed out),
 `TestPDevResetOnConnect` (a stale mismatch after the Connect) and
 `TestReassemblyMixedDRep` (mixed byte order reassembled) fail before
-their fixes; `TestSendPendingTimeout` checks the pending PDU is dropped
+their fixes, and so do `TestSendPendingOwnsPayload` (the retransmission
+sent the caller's later bytes), `TestSendAfterTimeoutIsTerminal` (a DATA
+PDU sent after the timeout), `TestPDevResetUndoneOnRefusedConnect` (the
+checks erased by a refused Connect) and `TestResponderSetIPLength` (a
+13-octet IP parameter applied); `TestSendPendingTimeout` checks the pending PDU is dropped
 after its retries. The behaviour follows p-net v2.0.0's source; it is not
 tested against p-net v2.0.0, PI's test bundle or a PLC.
 
