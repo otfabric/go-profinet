@@ -470,9 +470,24 @@ func TestMRPRestoreFails(t *testing.T) {
 	eventually(t, 5*time.Second, "mismatch", func() bool { return equalTypes(portMismatch(d, port), []uint16{extPeerMRPDomainMismatch}) })
 	br := d.cfg.Bridge
 	states := func() [2]bridge.State { return [2]bridge.State{br.State(0), br.State(1)} }
-	before := states()
-
-	d.mrpNew = func(mrp.Config) (*mrp.Entity, error) { return nil, profinet.ErrInvalidConfig }
+	// The client forwards on both ports once its link timer ran out. The
+	// controller is behind ring port 2: closed in PT, the client would
+	// leave that port blocked, and no entity unblocks it (LIMITATIONS).
+	eventually(t, 5*time.Second, "client in PT_IDLE", func() bool {
+		st, ok := d.MRPStatus()
+		return ok && st.State == mrp.StatePTIdle && states() == [2]bridge.State{bridge.Forwarding, bridge.Forwarding}
+	})
+	// The states the last entity left: taken when the new entity would
+	// start, after the old one closed (its link timer may still have been
+	// unblocking a port before).
+	var before [2]bridge.State
+	var starts atomic.Int32
+	d.mrpNew = func(mrp.Config) (*mrp.Entity, error) {
+		if starts.Add(1) == 1 {
+			before = states()
+		}
+		return nil, profinet.ErrInvalidConfig
+	}
 	a := pnio.PDInterfaceMrpDataAdjust{Domain: dom, Role: pnio.MrpRoleManager, DomainName: "ring-x"}
 	wantStatus(t, x.write(model.SubslotInterface, pnio.IndexPDInterfaceMrpDataAdjust, a.Append(nil)), pnio.RWInvalidParameter, 0)
 

@@ -144,7 +144,13 @@ profile.
   `MRPStatus` reports none. The ring ports keep the forwarding state the
   last entity left: forwarding both could close a loop the manager had
   opened, blocking one could cut the only path, and which is right
-  without an entity is not established. `TestMRPRestoreFails`.
+  without an entity is not established. That includes a port a client
+  was still holding blocked in its link-up wait (state PT, until
+  MRP_LNKupT × MRP_LNKNRmax ran out): nothing unblocks it, and a
+  controller reaching the device through that port loses its path; the
+  first version of `TestMRPRestoreFails` hit it about once in 30 runs
+  (the reply to the refused write was lost). The test now waits for the
+  client's PT_IDLE. `TestMRPRestoreFails`.
 - Atomicity: the whole record is checked before anything changes. A
   refused write leaves the role, domain, priority, timers, the stored
   adjustment and check as they were. An accepted write stores the record
