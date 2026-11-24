@@ -45,9 +45,12 @@ Restrictions:
   included: a Handler implements it. The other ranges Wireshark reserves
   for profiles (slot 0xD000–0xDFFF, AR 0xEC00–0xEFFF, API 0xF400–0xF7FF,
   device 0xFC00–0xFFFF) are not a submodule's records and stay refused in
-  a model. No independent device accepts a record of 0xB000–0xBFFF: the
-  evidence is tshark's decoding of the wire format and go-profinet's own
-  controller and device.
+  a model. go-profinet's device serves them to an independent controller:
+  profinet-py reads and writes 0xB600 in API 0x4E01, and the device
+  refuses another API, a read-only record and a wrong length
+  (`TestProfinetPyAPI`). No independent device accepts a record of
+  0xB000–0xBFFF, so the controller side's evidence is tshark's decoding
+  of the wire format and go-profinet's own device.
 - A subslot number is unique in its slot whatever the API
   (`model.Device.Validate`), so the device can find a submodule by slot and
   subslot; a device that numbers subslots per API cannot be modelled.
@@ -67,11 +70,13 @@ Restrictions:
   API is not the submodule's, or another read in an API the device does not
   have, is refused with "invalid area/API". Not checked against IEC
   61158-6-10 (not read). Against independent peers with an API other than
-  0: p-net's answers to 0xE001 and 0xF000 (`TestPnetAPI`), and
-  profinet-py's reads of go-profinet's device, 0xF000 per API and record
-  reads refused with invalid area/API (`TestProfinetPyAPI`). The
-  slot-level and subslot-level identification reads in a non-zero API
-  are not exchanged with a peer. tshark and scapy decode the
+  0: p-net's answers to 0xE001, 0xF000, 0xC001 and 0x8001 (`TestPnetAPI`),
+  and profinet-py's reads of go-profinet's device, 0xF000, 0xC001 and
+  0x8001 per API and record reads refused with invalid area/API
+  (`TestProfinetPyAPI`). Where the address has no submodule in the read's
+  API, p-net answers 0xC001 and 0x8001 with no record data; go-profinet
+  answers 0xC001 with the API and no slot and refuses 0x8001. Neither is
+  checked against the standard. tshark and scapy decode the
   frames without a malformed frame (the interop suite's codec scenario);
   the field values they decode are not compared.
 - APIData (index 0xF821) lists the device's APIs, API 0 among them, in

@@ -36,7 +36,7 @@ permissions:
   contents: read
 
 env:
-  INTEROP_REF: ${{ inputs.interop_ref || 'v0.13.0' }}
+  INTEROP_REF: ${{ inputs.interop_ref || '2cbeb2d5248730cc64ea2a602e1c377b4ba92dc6' }}
   KERNEL: v6.12
   GOWORK: "off"
 

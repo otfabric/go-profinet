@@ -102,6 +102,19 @@
                 "name": "Profile parameter",
                 "length": 2,
                 "default": "AAI="
+              },
+              {
+                "index": 46592,
+                "name": "Profile record",
+                "length": 16,
+                "default": "gAEBEP//8PDw8PDw8P8ABQ=="
+              },
+              {
+                "index": 47360,
+                "name": "Read-only profile record",
+                "length": 4,
+                "default": "gAEAEQ==",
+                "readOnly": true
               }
             ]
           }
