@@ -5,6 +5,7 @@ package alarm
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -71,6 +72,11 @@ type Endpoint struct {
 	waitSeq  uint16 // the sequence number of that DATA PDU
 	acked    chan struct{}
 	nacked   chan struct{}
+	// pending is a DATA PDU that was transmitted and is not acknowledged:
+	// its Send was cancelled. The next Send retransmits it first, so the
+	// peer, which may have accepted it, and this side agree on the
+	// sequence numbers.
+	pending *PDU
 
 	deliver chan []byte
 	done    chan struct{}
@@ -146,6 +152,15 @@ func (e *Endpoint) transmit(ctx context.Context, p *PDU) error {
 // acknowledged (the owner then aborts the AR), and one matching
 // profinet.ErrInvalidConfig, before any sequence number is used, for a
 // varPart longer than 65535 octets.
+//
+// A PDU that never left (its first transmission failed, or ctx ended
+// before it) gives its sequence number back: the error is returned and
+// the next Send uses the number again. A transmission that fails after
+// the PDU was on the wire counts as a lost frame and is retried. When ctx
+// ends while a transmitted PDU awaits its acknowledgement, the PDU stays
+// pending and the next Send retransmits it, with its own Retries, before
+// its own PDU: the peer may have accepted it, and skipping its number
+// would make the peer refuse every later PDU as out of sequence.
 func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	if len(varPart) > math.MaxUint16 {
 		return varPartTooLong(len(varPart))
@@ -158,50 +173,90 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	default:
 	}
 	e.mu.Lock()
-	seq := e.nextSend
+	pending := e.pending
+	e.mu.Unlock()
+	if pending != nil {
+		if _, err := e.await(ctx, pending, true); err != nil {
+			return err
+		}
+	}
+	e.mu.Lock()
+	seq, prevSend := e.nextSend, e.sendSeq
 	e.nextSend = nextSeq(seq)
 	e.sendSeq = seq
-	e.waiting, e.waitSeq = true, seq
+	ack := e.lastRecv
+	e.mu.Unlock()
+	p := &PDU{Type: PDUData, AddFlags: WindowSize | FlagTACK, SendSeq: seq, AckSeq: ack, VarPart: varPart}
+	sent, err := e.await(ctx, p, false)
+	if !sent {
+		// Nothing reached the wire: the number was not used.
+		e.mu.Lock()
+		e.nextSend, e.sendSeq = seq, prevSend
+		e.mu.Unlock()
+	}
+	return err
+}
+
+// await transmits the DATA PDU p (retransmitted reports that it was sent
+// before) until its acknowledgement, Retries times after the first. sent
+// reports whether p reached the wire. On a cancelled ctx a sent p is left
+// in e.pending; otherwise e.pending is cleared.
+func (e *Endpoint) await(ctx context.Context, p *PDU, retransmitted bool) (sent bool, err error) {
+	sent = retransmitted
+	e.mu.Lock()
 	acked := make(chan struct{})
 	nacked := make(chan struct{}, 1)
+	e.waiting, e.waitSeq = true, p.SendSeq
 	e.acked, e.nacked = acked, nacked
-	ack := e.lastRecv
 	e.mu.Unlock()
 	defer func() {
 		e.mu.Lock()
 		e.waiting = false
+		e.pending = nil
+		if sent && err != nil && ctx.Err() != nil && !errors.Is(err, profinet.ErrClosed) {
+			e.pending = p
+		}
 		e.mu.Unlock()
 	}()
-
-	p := PDU{Type: PDUData, AddFlags: WindowSize | FlagTACK, SendSeq: seq, AckSeq: ack, VarPart: varPart}
+	var lost error
 	for attempt := 0; attempt <= e.cfg.Retries; attempt++ {
-		if attempt > 0 {
+		if attempt > 0 || retransmitted {
 			e.retrans.Add(1)
 			e.mu.Lock()
 			p.AckSeq = e.lastRecv
 			e.mu.Unlock()
 		}
-		if err := e.transmit(ctx, &p); err != nil {
-			return fmt.Errorf("alarm: send: %w", err)
+		if err := e.transmit(ctx, p); err != nil {
+			if !sent || ctx.Err() != nil {
+				return sent, fmt.Errorf("alarm: send: %w", err)
+			}
+			// The PDU was on the wire before: this copy is lost like a
+			// dropped frame; the timer retransmits it.
+			lost = err
+		} else {
+			sent = true
+			e.sent.Add(1)
 		}
-		e.sent.Add(1)
 		t := time.NewTimer(e.cfg.Timeout)
 		select {
 		case <-acked:
 			t.Stop()
-			return nil
+			return sent, nil
 		case <-nacked:
 			t.Stop()
 		case <-t.C:
 		case <-ctx.Done():
 			t.Stop()
-			return ctx.Err()
+			return sent, ctx.Err()
 		case <-e.done:
 			t.Stop()
-			return fmt.Errorf("alarm: %w", profinet.ErrClosed)
+			return sent, fmt.Errorf("alarm: %w", profinet.ErrClosed)
 		}
 	}
-	return fmt.Errorf("alarm: DATA %d not acknowledged after %d retransmissions: %w", seq, e.cfg.Retries, profinet.ErrTimeout)
+	if lost != nil {
+		return sent, fmt.Errorf("alarm: DATA %d not acknowledged after %d retransmissions (last send: %v): %w", p.SendSeq, e.cfg.Retries, lost, profinet.ErrTimeout)
+	}
+	return sent, fmt.Errorf("alarm: DATA %d not acknowledged after %d retransmissions: %w", p.SendSeq, e.cfg.Retries, profinet.ErrTimeout)
 }
 
 // SendErr sends an ERR PDU with status, the abort of the AR.
