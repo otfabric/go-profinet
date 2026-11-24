@@ -47,7 +47,11 @@ func (e *env) sharedController(ip string, slots []uint16, alarms chan<- controll
 // stallHold is a data hold and watchdog factor, in cycles of the default 4
 // ms, that rides out the scheduling stalls of shared CI runners (seen up to
 // 2.4 s): tests of ownership, not of the watchdog, use it so that a stall
-// does not end every AR at once and hand their submodules around.
+// does not end every AR at once and hand their submodules around, and so
+// do tests that run one AR through a model's data and records (fixtures,
+// parameter plans, resolved configurations), which a stall beyond the
+// default 60 ms hold time aborts (TestFixtureDevices/DAP_1P, seen once
+// under -race).
 const stallHold = 1500
 
 // lockedSlots returns the slots whose submodules a controller's ModuleDiff

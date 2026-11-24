@@ -127,7 +127,8 @@ func TestConfigurableSubmodules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "configured", Model: expected, Parameters: params})
+	cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "configured", Model: expected, Parameters: params,
+		DataHoldFactor: stallHold, WatchdogFactor: stallHold})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,8 @@ func TestConfigurablePort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "configured-2p", Model: expected})
+	cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "configured-2p", Model: expected,
+		DataHoldFactor: stallHold, WatchdogFactor: stallHold})
 	if err != nil {
 		t.Fatal(err)
 	}
