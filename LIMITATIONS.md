@@ -399,7 +399,12 @@ data (PACKET_AUXDATA).
 - An alarm whose `SendAlarm` was cancelled before the transport
   acknowledged it stays pending in the endpoint: the next alarm of its
   priority retransmits it first and then goes out without waiting for
-  its AlarmAck. A delivered alarm waits for its AlarmAck (see above). A
+  its AlarmAck. A delivered alarm waits for its AlarmAck (see above).
+  The transport acknowledgement does not show that the controller
+  accepted the alarm: a diagnosis alarm whose caller stopped waiting
+  after it is not owed, so when its AlarmAck later refuses it or never
+  comes, the device does not report it again (the diagnosis records stay
+  authoritative). A
   diagnosis alarm cancelled in that way is also owed (the device cannot
   tell from the endpoint whether the PDU left), so the controller may
   receive it twice: once retransmitted, once as the owed alarm. Its
