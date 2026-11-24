@@ -378,7 +378,9 @@ data (PACKET_AUXDATA).
   MaintenanceItem (USI 0x8100) p-net puts before a maintenance alarm's
   diagnosis item, manufacturer-specific diagnoses (USI below 0x8000), and
   the PortDataChangeNotification alarm type p-net uses for remote mismatch
-  diagnoses (go-profinet sends a Diagnosis alarm). See
+  diagnoses (go-profinet sends a Diagnosis alarm). Alarms of one priority are sent one at a time, each after
+  the previous one's AlarmAck (p-net's behaviour; the standard's alarm
+  machine text is not read). See
   [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
 - Port checks and adjustments (PDPortDataCheck, PDPortDataAdjust) and the
   remote mismatch diagnoses they cause belong to the AR that wrote them:
