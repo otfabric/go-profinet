@@ -321,3 +321,44 @@ func TestLimited(t *testing.T) {
 		t.Fatalf("%q", b.String())
 	}
 }
+
+// Configurable submodules are counted per DAP, a module several
+// references name once, and the summary tells refused DAPs from those
+// converted without their optional ones.
+func TestConfigurableSubmodules(t *testing.T) {
+	t.Parallel()
+	di16 := "</VirtualSubmoduleList>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_DO16\""
+	opt := analyze(fixture(t, modular, di16, "</VirtualSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"A\" AllowedInSubslots=\"2..3\"/><SubmoduleItemRef SubmoduleItemTarget=\"B\" AllowedInSubslots=\"4 5\"/></UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_DO16\""))
+	for _, d := range opt.DAPs {
+		if d.Outcome != gsdml.OutcomeConverted || d.ConfigurableSubmodules != 2 || d.RequiredSubmodules != 0 {
+			t.Fatalf("optional %+v", d)
+		}
+	}
+	req := analyze(fixture(t, modular, "</SystemDefinedSubmoduleList>", "</SystemDefinedSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"C\" FixedInSubslots=\"2\"/></UseableSubmodules>"))
+	if d := req.DAPs[0]; d.Outcome != gsdml.OutcomeUnsupported || d.ConfigurableSubmodules != 1 || d.RequiredSubmodules != 1 || req.Stage != StageModel {
+		t.Fatalf("required %+v", d)
+	}
+	if d := req.DAPs[1]; d.ConfigurableSubmodules != 0 || d.Outcome != gsdml.OutcomeConverted {
+		t.Fatalf("DAP_2P %+v", d)
+	}
+	plain := analyze(fixture(t, modular))
+	// MOD_DIO8 needs one: DAP_1P only lists it (omitted from its
+	// catalog), DAP_2P plugs it (refused).
+	cat := analyze(fixture(t, modular, "</VirtualSubmoduleList>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\"",
+		"</VirtualSubmoduleList><UseableSubmodules><SubmoduleItemRef SubmoduleItemTarget=\"D\" UsedInSubslots=\"2\"/></UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\""))
+	if d := cat.DAPs[0]; d.Outcome != gsdml.OutcomeConverted || d.OmittedModules != 1 || d.RequiredSubmodules != 0 || d.CatalogRequiredSubmodules != 1 || d.Blocked || len(d.Failures) != 0 {
+		t.Fatalf("DAP_1P %+v", d)
+	}
+	if d := cat.DAPs[1]; d.Outcome != gsdml.OutcomeUnsupported || d.OmittedModules != 0 || d.RequiredSubmodules != 1 || d.CatalogRequiredSubmodules != 0 || !d.Blocked || len(d.Failures) != 1 || d.Failures[0].Class != gsdml.OutcomeUnsupported {
+		t.Fatalf("DAP_2P %+v", d)
+	}
+	s := Summarize([]FileResult{opt, req, plain, cat})
+	if f := s.Fidelity; f.FilesConfigurable != 3 || f.DAPsConfigurable != 5 || f.DAPsRequiredSubmodules != 2 || f.DAPsCatalogRequired != 1 || f.ConvertedConfigurable != 3 || f.DAPsOmittedModules != 1 || f.OmittedModules != 1 {
+		t.Fatalf("%+v", f)
+	}
+	md := Markdown(s, "")
+	if !strings.Contains(md, "| a configurable submodule (UseableSubmodules) in the DAP or a module it references; ToModel converts none | 3 | 5 | 3 |") ||
+		!strings.Contains(md, "(FixedInSubslots or UsedInSubslots), which ToModel refuses: 2.") || !strings.Contains(md, "only in the catalog that needs one: 1; converted DAPs whose catalog leaves such a module out: 1 (1 module references).") {
+		t.Fatal(md)
+	}
+}

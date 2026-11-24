@@ -258,3 +258,214 @@ func TestOutcomeOf(t *testing.T) {
 		}
 	}
 }
+
+// Edits of the modular fixture: configurable submodules (refs, the
+// SubmoduleItemRef elements) on DAP_1P, on MOD_DI16 (plugged in both
+// DAPs) and on MOD_DIO8 (only in DAP_1P's catalog, plugged in DAP_2P).
+func onDAP1(refs string) []string {
+	return []string{"</SystemDefinedSubmoduleList>", "</SystemDefinedSubmoduleList><UseableSubmodules>" + refs + "</UseableSubmodules>"}
+}
+
+func onDI16(refs string) []string {
+	return []string{"</VirtualSubmoduleList>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_DO16\"",
+		"</VirtualSubmoduleList><UseableSubmodules>" + refs + "</UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_DO16\""}
+}
+
+func onDIO8(refs string) []string {
+	return []string{"</VirtualSubmoduleList>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\"",
+		"</VirtualSubmoduleList><UseableSubmodules>" + refs + "</UseableSubmodules>\n        </ModuleItem>\n        <ModuleItem ID=\"MOD_AI4\""}
+}
+
+// Optional configurable submodules (allowed in several subslots) are
+// listed and left out: the DAPs convert to the model of the file without
+// them.
+func TestAnalyzeModelsOptionalSubmodules(t *testing.T) {
+	t.Parallel()
+	plainDoc, plain := analyzeVariant(t)
+	for _, r := range plain {
+		if r.OmitsSubmodules() || r.OmitsModules() || r.ConfigurableSubmodules != nil {
+			t.Fatalf("%s: %+v", r.DAP, r.ConfigurableSubmodules)
+		}
+	}
+	edits := append(onDAP1(`<SubmoduleItemRef SubmoduleItemTarget="SM_OPT" AllowedInSubslots="2..3"/>`),
+		onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" AllowedInSubslots="2..9"/><SubmoduleItemRef SubmoduleItemTarget="SM_CH2" AllowedInSubslots="10 12"/>`)...)
+	doc, reps := analyzeVariant(t, edits...)
+	dap1, dap2 := reps[0], reps[1]
+	wantDAP := []SubmoduleRef{{Target: "SM_OPT", Path: dap1.Path + "/UseableSubmodules/SubmoduleItemRef[SM_OPT]", Outcome: OutcomeOmitted}}
+	if !reflect.DeepEqual(dap1.ConfigurableSubmodules, wantDAP) || dap2.ConfigurableSubmodules != nil {
+		t.Fatalf("DAP refs %+v %+v", dap1.ConfigurableSubmodules, dap2.ConfigurableSubmodules)
+	}
+	for i, r := range reps {
+		// Optional submodules leave every module in the catalog.
+		if r.Outcome != OutcomeConverted || r.Blocked || !r.OmitsSubmodules() || r.OmitsModules() {
+			t.Fatalf("%s: %s blocked %v omits %v, %v", r.DAP, r.Outcome, r.Blocked, r.OmitsSubmodules(), r.OmitsModules())
+		}
+		di := moduleOf(t, r, "MOD_DI16")
+		if len(di.ConfigurableSubmodules) != 2 || di.ConfigurableSubmodules[1].Target != "SM_CH2" || di.ConfigurableSubmodules[1].Required ||
+			di.ConfigurableSubmodules[1].Path != di.ModulePath+"/UseableSubmodules/SubmoduleItemRef[SM_CH2]" {
+			t.Fatalf("%s MOD_DI16 %+v", r.DAP, di.ConfigurableSubmodules)
+		}
+		if do := moduleOf(t, r, "MOD_DO16"); do.ConfigurableSubmodules != nil {
+			t.Fatalf("%s MOD_DO16 %+v", r.DAP, do.ConfigurableSubmodules)
+		}
+		got, err := ToModel(doc, r.DAP)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := ToModel(plainDoc, r.DAP)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(r.Model, want) || !reflect.DeepEqual(plain[i].Model, want) {
+			t.Fatalf("%s: optional configurable submodules changed the model", r.DAP)
+		}
+	}
+	b, err := json.Marshal(dap1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte(`"configurable_submodules":[{"target":"SM_OPT","path":`)) || !bytes.Contains(b, []byte(`"required":false,"outcome":"omitted"`)) {
+		t.Fatalf("%s", b)
+	}
+	if b, _ := json.Marshal(plain[0]); bytes.Contains(b, []byte("configurable_submodules")) {
+		t.Fatalf("%s", b)
+	}
+}
+
+// A configurable submodule a configuration needs (fixed or used) on the
+// DAP or on a plugged module fails ToModel with ErrUnsupported;
+// AnalyzeModels says which and why. An unreferenced SubmoduleList alone
+// changes nothing.
+func TestToModelRequiredSubmodules(t *testing.T) {
+	t.Parallel()
+	type want struct {
+		dap1, dap2 Outcome
+	}
+	for _, tc := range []struct {
+		name  string
+		edits []string
+		want  want
+		// where the refusal shows: "dap" (DAP_1P's own), or a module
+		where    string
+		subslots []uint32
+	}{
+		{"used in a plugged module", onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" AllowedInSubslots="2..9" UsedInSubslots="2 3"/>`), want{OutcomeUnsupported, OutcomeUnsupported}, "MOD_DI16", []uint32{2, 3}},
+		{"fixed in a plugged module", onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" AllowedInSubslots="2" FixedInSubslots="2"/>`), want{OutcomeUnsupported, OutcomeUnsupported}, "MOD_DI16", []uint32{2}},
+		{"on the DAP", onDAP1(`<SubmoduleItemRef SubmoduleItemTarget="SM_OPT" AllowedInSubslots="2..3" FixedInSubslots="2"/>`), want{OutcomeUnsupported, OutcomeConverted}, "dap", []uint32{2}},
+		{"empty attribute", onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" UsedInSubslots=""/>`), want{OutcomeMalformed, OutcomeMalformed}, "MOD_DI16", nil},
+		{"no ValueList", onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" AllowedInSubslots="x"/>`), want{OutcomeMalformed, OutcomeMalformed}, "MOD_DI16", nil},
+		{"unreferenced SubmoduleList", []string{"<ModuleList>", `<SubmoduleList><SubmoduleItem ID="SM_X" SubmoduleIdentNumber="0x00000099"/></SubmoduleList><ModuleList>`}, want{OutcomeConverted, OutcomeConverted}, "", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			doc, reps := analyzeVariant(t, tc.edits...)
+			for i, w := range []Outcome{tc.want.dap1, tc.want.dap2} {
+				r := reps[i]
+				_, err := ToModel(doc, r.DAP)
+				if r.Outcome != w || outcomeOf(err) != w {
+					t.Fatalf("%s: %s (ToModel %v), want %s", r.DAP, r.Outcome, err, w)
+				}
+				if w == OutcomeUnsupported && (!errors.Is(err, profinet.ErrUnsupported) || !strings.Contains(err.Error(), "SM_CH1") && !strings.Contains(err.Error(), "SM_OPT")) {
+					t.Fatalf("%s: %v", r.DAP, err)
+				}
+			}
+			r := reps[0]
+			var refs []SubmoduleRef
+			switch tc.where {
+			case "":
+				if r.OmitsSubmodules() || reps[1].OmitsSubmodules() {
+					t.Fatal("an unreferenced SubmoduleList is reported")
+				}
+				return
+			case "dap":
+				refs = r.ConfigurableSubmodules
+				if !errors.Is(r.DAPErr, profinet.ErrUnsupported) || r.Blocked {
+					t.Fatalf("DAP error %v blocked %v", r.DAPErr, r.Blocked)
+				}
+			default:
+				m := moduleOf(t, r, tc.where)
+				refs = m.ConfigurableSubmodules
+				if m.ModuleOutcome != tc.want.dap1 || !r.Blocked || r.DAPErr != nil {
+					t.Fatalf("module %s %s blocked %v DAP %v", tc.where, m.ModuleOutcome, r.Blocked, r.DAPErr)
+				}
+			}
+			if len(refs) != 1 || !slices.Equal(refs[0].ConfiguredSubslots, tc.subslots) || refs[0].Required != (tc.subslots != nil) || refs[0].Outcome != tc.want.dap1 || refs[0].Error == "" {
+				t.Fatalf("refs %+v", refs)
+			}
+		})
+	}
+}
+
+// A submodule only allowed, even in a single subslot, is optional.
+func TestToModelSingleAllowedSubmodule(t *testing.T) {
+	t.Parallel()
+	doc, reps := analyzeVariant(t, onDI16(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" AllowedInSubslots="4"/>`)...)
+	for _, r := range reps {
+		if _, err := ToModel(doc, r.DAP); err != nil || r.Outcome != OutcomeConverted || r.Blocked {
+			t.Fatalf("%s: %s %v", r.DAP, r.Outcome, err)
+		}
+		if refs := moduleOf(t, r, "MOD_DI16").ConfigurableSubmodules; len(refs) != 1 || refs[0].Required || refs[0].ConfiguredSubslots != nil || refs[0].Outcome != OutcomeOmitted {
+			t.Fatalf("%s: %+v", r.DAP, refs)
+		}
+	}
+}
+
+// A module that needs a configurable submodule is left out of the catalog
+// of a DAP that only lists it (DAP_1P, MOD_DIO8), which converts, and
+// refuses a DAP that plugs it (DAP_2P, slot 4).
+func TestToModelOmitsCatalogModule(t *testing.T) {
+	t.Parallel()
+	plainDoc, _ := analyzeVariant(t)
+	doc, reps := analyzeVariant(t, onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" UsedInSubslots="2"/>`)...)
+	dap1, dap2 := reps[0], reps[1]
+	got, err := ToModel(doc, "DAP_1P")
+	if err != nil || dap1.Outcome != OutcomeConverted || dap1.Blocked || !dap1.OmitsModules() || dap1.OmitsSubmodules() != true {
+		t.Fatalf("DAP_1P: %s blocked %v omits %v (%v)", dap1.Outcome, dap1.Blocked, dap1.OmitsModules(), err)
+	}
+	plain, err := ToModel(plainDoc, "DAP_1P")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Slots, plain.Slots) || !reflect.DeepEqual(got.DAP, plain.DAP) || !reflect.DeepEqual(dap1.Model, got) {
+		t.Fatal("DAP_1P: the plugged configuration changed")
+	}
+	var idents []uint32
+	for _, m := range got.Catalog {
+		idents = append(idents, m.IdentNumber)
+	}
+	var plainIdents []uint32
+	for _, m := range plain.Catalog {
+		if m.IdentNumber != 0x30 {
+			plainIdents = append(plainIdents, m.IdentNumber)
+		}
+	}
+	if !slices.Equal(idents, plainIdents) || len(plainIdents) == len(plain.Catalog) {
+		t.Fatalf("catalog %#x, want %#x", idents, plainIdents)
+	}
+	dio := moduleOf(t, dap1, "MOD_DIO8")
+	if !dio.Omitted || dio.ModuleOutcome != OutcomeUnsupported || !errors.Is(dio.ModuleErr, profinet.ErrUnsupported) || !strings.Contains(dio.ModuleError, "SM_CH1") ||
+		len(dio.ConfigurableSubmodules) != 1 || !dio.ConfigurableSubmodules[0].Required {
+		t.Fatalf("DAP_1P MOD_DIO8 %+v", dio)
+	}
+	if moduleOf(t, dap1, "MOD_DI16").Omitted {
+		t.Fatal("MOD_DI16 omitted")
+	}
+	_, err = ToModel(doc, "DAP_2P")
+	if !errors.Is(err, profinet.ErrUnsupported) || dap2.Outcome != OutcomeUnsupported || !dap2.Blocked || dap2.Model != nil {
+		t.Fatalf("DAP_2P: %s blocked %v (%v)", dap2.Outcome, dap2.Blocked, err)
+	}
+	if m := moduleOf(t, dap2, "MOD_DIO8"); m.Omitted || m.ModuleOutcome != OutcomeUnsupported {
+		t.Fatalf("DAP_2P MOD_DIO8 %+v", m)
+	}
+	if b, _ := json.Marshal(dio); !bytes.Contains(b, []byte(`"omitted":true`)) {
+		t.Fatalf("%s", b)
+	}
+	// Malformed subslot attributes of a catalog module fail every DAP, as
+	// any malformed module does.
+	bdoc, breps := analyzeVariant(t, onDIO8(`<SubmoduleItemRef SubmoduleItemTarget="SM_CH1" UsedInSubslots="y"/>`)...)
+	for _, r := range breps {
+		if _, err := ToModel(bdoc, r.DAP); !errors.Is(err, profinet.ErrMalformed) || r.Outcome != OutcomeMalformed || !r.Blocked || moduleOf(t, r, "MOD_DIO8").Omitted {
+			t.Fatalf("%s: %s %v", r.DAP, r.Outcome, err)
+		}
+	}
+}

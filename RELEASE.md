@@ -26,6 +26,67 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.23.0
+
+**Date:** 2026-11-24
+**Previous release:** v0.22.1
+
+## Summary
+
+`gsdml.ToModel` no longer converts a device access point whose
+configuration needs configurable submodules (`UseableSubmodules`), which
+the model cannot hold: it returned a model without them. `AnalyzeModels`
+reports every configurable submodule and the catalog modules `ToModel`
+leaves out, with why. Parsing, validation and inspection are unchanged.
+
+## Changes
+
+### Changed
+
+- **`gsdml.ToModel` and configurable submodules:**
+  - **Refused:** a DAP whose own `UseableSubmodules` or those of a module
+    it plugs have a reference with `FixedInSubslots` or `UsedInSubslots`
+    fails with `ErrUnsupported`, naming the DAP or module and the
+    submodule.
+  - **Left out of the catalog:** a module only in the catalog that needs
+    one; plugging it from the catalog is then not possible.
+  - **Unchanged:** optional references (only `AllowedInSubslots`, even a
+    single subslot) are left out of the model, as before; a
+    `SubmoduleList` no reference names is not read; malformed subslot
+    attributes of a reference fail with `ErrMalformed`.
+- **`gsdmlcorpus`**: per DAP `configurable_submodules`,
+  `required_submodules` (in the selected configuration: the DAP and its
+  plugged modules), `catalog_required_submodules` (in modules only in the
+  catalog) and `omitted_modules`, their totals in the summary's fidelity,
+  and a row and a sentence in the matrix; an omitted module is not among
+  a DAP's failures.
+
+### Added
+
+- **`gsdml.AnalyzeModels`**:
+  - `ModelReport.ConfigurableSubmodules` and
+    `ModuleReport.ConfigurableSubmodules`: the references, each a
+    `SubmoduleRef` with `Required`, `ConfiguredSubslots`, `Outcome` and
+    `Error`. Its outcome is `unsupported` (required), `malformed` or the
+    new `OutcomeOmitted` (optional, left out), never `converted`: no
+    configurable submodule is in a model.
+  - `ModuleReport.Omitted`: the module is left out of `Catalog`; it does
+    not block the DAP.
+  - `ModelReport.OmitsSubmodules` and `OmitsModules`.
+
+### Breaking
+
+`ToModel` returns `ErrUnsupported` for files it converted before. On the
+local corpus of 249 public GSDML files, 68 of the 779 device access
+points are refused (22 for the DAP's own submodules, 46 for a plugged
+module's, every one with `FixedInSubslots` or `UsedInSubslots`), and 238
+of the 711 that convert have a smaller catalog. That result stays local,
+like the corpus. A caller that plugs modules from `Catalog` by ident
+(profinetctl's `--plug`) no longer finds an omitted module;
+`AnalyzeModels` says why.
+
+---
+
 ## v0.22.1
 
 **Date:** 2026-11-23

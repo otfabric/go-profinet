@@ -141,6 +141,16 @@ func recordOctets(subs []model.Submodule) int {
 // device access point with more than 1440 submodules, which is more than
 // a C_SDU carries, and one matching profinet.ErrResourceExhausted for
 // parameter records beyond MaxModelRecordOctets.
+//
+// Submodules come from the VirtualSubmoduleList of the DAP and of each
+// module. Configurable submodules (UseableSubmodules, SubmoduleItemRef)
+// are not converted. One a configuration needs (FixedInSubslots or
+// UsedInSubslots) fails ToModel with profinet.ErrUnsupported when it is
+// the DAP's or a plugged module's; a module only in the catalog that needs
+// one is left out of Catalog. Optional ones (only AllowedInSubslots) are
+// left out of the model. A SubmoduleList no reference names does not
+// matter. AnalyzeModels reports each with why (ModelReport.OmitsSubmodules,
+// OmitsModules, ModuleReport.Omitted).
 func ToModel(doc *Document, dapID string) (*model.Device, error) {
 	c := newConv(doc)
 	m, dap, err := c.dapModel(dapID)
@@ -302,7 +312,9 @@ func (c *conv) dapModel(dapID string) (*model.Device, *DeviceAccessPointItem, er
 			m.Capabilities.Ports++
 		}
 	}
-
+	if err := requiredSubmodules(dap.UseableSubmodules, "DAP "+clip(dap.ID)); err != nil {
+		return nil, nil, err
+	}
 	return m, dap, nil
 }
 
@@ -326,6 +338,10 @@ func (c *conv) addModules(m *model.Device, dap *DeviceAccessPointItem) (*model.D
 		used := map[uint16]bool{}
 		converted := map[string]model.Module{}
 		octets := map[string]int{}
+		// subErr is a module's moduleSubmodules error: a malformed one
+		// fails the DAP; an unsupported one fails it where the module is
+		// plugged and leaves it out of the catalog otherwise.
+		subErr := map[string]error{}
 		for _, r := range dap.UseableModules.ModuleItemRefs {
 			mi := modules[collapseSpace(r.ModuleItemTarget)]
 			if mi == nil {
@@ -340,6 +356,11 @@ func (c *conv) addModules(m *model.Device, dap *DeviceAccessPointItem) (*model.D
 				}
 				converted[r.ModuleItemTarget] = mod
 				octets[r.ModuleItemTarget] = recordOctets(mod.Submodules)
+				subErr[r.ModuleItemTarget] = moduleSubmodules(mi)
+			}
+			se := subErr[r.ModuleItemTarget]
+			if se != nil && !errors.Is(se, profinet.ErrUnsupported) {
+				return nil, se
 			}
 			list, err := configuredSlots(r)
 			if err != nil {
@@ -349,13 +370,18 @@ func (c *conv) addModules(m *model.Device, dap *DeviceAccessPointItem) (*model.D
 				if s == 0 || s > 0x7FFF || used[uint16(s)] {
 					continue
 				}
+				if se != nil {
+					return nil, se
+				}
 				used[uint16(s)] = true
 				if plugged += octets[r.ModuleItemTarget]; plugged > MaxModelRecordOctets {
 					return nil, fmt.Errorf("gsdml: %w: parameter records of more than %d octets in the plugged modules", profinet.ErrResourceExhausted, MaxModelRecordOctets)
 				}
 				m.Slots = append(m.Slots, model.Slot{Number: uint16(s), Module: mod})
 			}
-			m.Catalog = append(m.Catalog, mod)
+			if se == nil {
+				m.Catalog = append(m.Catalog, mod)
+			}
 		}
 		sort.Slice(m.Slots, func(i, j int) bool { return m.Slots[i].Number < m.Slots[j].Number })
 	}
@@ -466,6 +492,66 @@ func (c *conv) toModule(mi *ModuleItem) (model.Module, error) {
 		}
 	}
 	return m, nil
+}
+
+// moduleSubmodules is the error of a module's configurable submodules
+// (requiredSubmodules): unsupported when one is required, malformed when
+// a reference does not parse.
+func moduleSubmodules(mi *ModuleItem) error {
+	return requiredSubmodules(mi.UseableSubmodules, "module "+clip(mi.ID))
+}
+
+// configuredSubslots returns the subslots a configurable submodule
+// reference puts its submodule in: those it is fixed in, else those it is
+// used in (the attributes configuredSlots reads first for a module
+// reference). None means the submodule is optional: a reference only
+// allowed in subslots, even in one, states no configuration that holds
+// it. Each attribute present must be a ValueList.
+func configuredSubslots(r *SubmoduleItemRef) ([]uint32, error) {
+	for _, a := range []string{"FixedInSubslots", "UsedInSubslots", "AllowedInSubslots"} {
+		if emptyIn(r.empty, a) {
+			return nil, malformed("submodule %s %s is empty", clip(r.SubmoduleItemTarget), a)
+		}
+	}
+	if r.AllowedInSubslots != "" {
+		if _, err := ParseValueList(r.AllowedInSubslots, 4096); err != nil && !errors.Is(err, profinet.ErrResourceExhausted) {
+			return nil, fmt.Errorf("gsdml: submodule %s AllowedInSubslots: %w", clip(r.SubmoduleItemTarget), err)
+		}
+	}
+	subslots, attr := r.FixedInSubslots, "FixedInSubslots"
+	if subslots == "" {
+		subslots, attr = r.UsedInSubslots, "UsedInSubslots"
+	}
+	l, err := ParseValueList(subslots, 4096)
+	if err != nil {
+		return nil, fmt.Errorf("gsdml: submodule %s %s: %w", clip(r.SubmoduleItemTarget), attr, err)
+	}
+	return l, nil
+}
+
+// requiredSubmodules refuses a UseableSubmodules list (of the DAP or
+// module named by owner) with a reference that puts its submodule in a
+// subslot (fixed or used): ToModel does not convert configurable
+// submodules, and a model without a required one would be an incomplete
+// configuration. Optional references (only allowed) are left out of the
+// model; AnalyzeModels lists them. A SubmoduleList no reference names is
+// never consulted. A reference whose subslot attributes do not parse is
+// malformed.
+func requiredSubmodules(us *UseableSubmodules, owner string) error {
+	if us == nil {
+		return nil
+	}
+	for _, ref := range us.SubmoduleItemRefs {
+		l, err := configuredSubslots(ref)
+		if err != nil {
+			return err
+		}
+		if len(l) > 0 {
+			return fmt.Errorf("gsdml: %w: %s: configurable submodule %s (UseableSubmodules) configured in subslot %d: configurable submodules are not converted",
+				profinet.ErrUnsupported, owner, clip(ref.SubmoduleItemTarget), l[0])
+		}
+	}
+	return nil
 }
 
 func (c *conv) toSubmodule(vs *VirtualSubmoduleItem, defSubslot uint16) (model.Submodule, error) {

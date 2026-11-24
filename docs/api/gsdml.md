@@ -236,6 +236,8 @@ ToModel converts the device access point dapID (the first one when empty) of a d
 
 It returns an error matching profinet.ErrMalformed for a module or a device access point with more than 1440 submodules, which is more than a C\_SDU carries, and one matching profinet.ErrResourceExhausted for parameter records beyond MaxModelRecordOctets.
 
+Submodules come from the VirtualSubmoduleList of the DAP and of each module. Configurable submodules (UseableSubmodules, SubmoduleItemRef) are not converted. One a configuration needs (FixedInSubslots or UsedInSubslots) fails ToModel with profinet.ErrUnsupported when it is the DAP's or a plugged module's; a module only in the catalog that needs one is left out of Catalog. Optional ones (only AllowedInSubslots) are left out of the model. A SubmoduleList no reference names does not matter. AnalyzeModels reports each with why (ModelReport.OmitsSubmodules, OmitsModules, ModuleReport.Omitted).
+
 ### func Validate
 
 ```go
@@ -455,6 +457,12 @@ type ModelReport struct {
 	Blocked bool `json:"blocked"`
 	// Modules are the DAP's UseableModules references, in file order.
 	Modules []ModuleReport `json:"modules"`
+	// ConfigurableSubmodules are the DAP's own UseableSubmodules
+	// references, in file order. ToModel does not convert configurable
+	// submodules: a required one is the DAP's DAPErr and fails it, an
+	// optional one is left out of its model. Those of the modules are in
+	// each ModuleReport; OmitsSubmodules reports both.
+	ConfigurableSubmodules []SubmoduleRef `json:"configurable_submodules,omitempty"`
 	// Model is ToModel's model when Outcome is OutcomeConverted, nil
 	// otherwise: AnalyzeModels never returns a partial model.
 	Model *model.Device `json:"-"`
@@ -471,9 +479,27 @@ func AnalyzeModels(doc *Document) ([]ModelReport, error)
 
 AnalyzeModels converts every device access point of a document with ToModel and reports, for each, the outcome and why: every module reference gets its own status and that of the module it names, converted on its own, so that one that does not convert does not hide the others.
 
+Configurable submodules (UseableSubmodules) are not converted by ToModel, which refuses a required one of the DAP or of a plugged module and leaves a module only in the catalog that needs one out of the catalog. The report lists every one with why (ConfigurableSubmodules, OmitsSubmodules, ModuleReport.Omitted, OmitsModules), so that a converted DAP that leaves something out is told from one that describes all of it.
+
 It is a diagnostic: ToModel stays the conversion to use. A report's Outcome and Err are always ToModel's, and its Model is ToModel's, only for a DAP that converts.
 
 A module several references name is converted once. It returns an error matching profinet.ErrMalformed for a nil document and for one without device access points.
+
+#### func (ModelReport) OmitsModules
+
+```go
+func (r ModelReport) OmitsModules() bool
+```
+
+OmitsModules reports whether ToModel leaves a module the DAP references out of the model's Catalog (ModuleReport.Omitted): a converted DAP's catalog is then not every module the file lets it use.
+
+#### func (ModelReport) OmitsSubmodules
+
+```go
+func (r ModelReport) OmitsSubmodules() bool
+```
+
+OmitsSubmodules reports whether the DAP or a module it references has configurable submodules (UseableSubmodules). ToModel converts none of them: it refuses a required one and leaves an optional one out of the model.
 
 ### type ModuleReport
 
@@ -511,6 +537,15 @@ type ModuleReport struct {
 	// RecordOctets are the octets of the module's parameter records, for
 	// one slot, when it converts.
 	RecordOctets int `json:"record_octets"`
+	// ConfigurableSubmodules are the UseableSubmodules references of the
+	// module it names, in file order: submodules ToModel does not convert,
+	// so the model's module has none of them.
+	ConfigurableSubmodules []SubmoduleRef `json:"configurable_submodules,omitempty"`
+	// Omitted reports that ToModel leaves the module out of the model's
+	// Catalog: it needs a configurable submodule (ModuleOutcome
+	// unsupported, ModuleErr why) and this reference plugs it in no slot.
+	// An omitted module does not block the DAP; plugged, it would.
+	Omitted bool `json:"omitted"`
 }
 ```
 
@@ -551,6 +586,10 @@ const (
 	// go-profinet (profinet.ErrResourceExhausted), for example
 	// MaxModelRecordOctets.
 	OutcomeResourceExhausted Outcome = "resource_exhausted"
+	// OutcomeOmitted: valid, and left out of the model. Only a
+	// SubmoduleRef has it: an optional configurable submodule, which
+	// model.Device does not contain.
+	OutcomeOmitted Outcome = "omitted"
 )
 ```
 
@@ -962,6 +1001,34 @@ func (s *Severity) UnmarshalText(b []byte) error
 ```
 
 UnmarshalText reads the names MarshalText writes, so that a Report decodes from its own JSON.
+
+### type SubmoduleRef
+
+```go
+type SubmoduleRef struct {
+	// Target is the reference's SubmoduleItemTarget, and Path its element
+	// path.
+	Target string `json:"target"`
+	Path   string `json:"path"`
+	// ConfiguredSubslots are the subslots the reference puts its
+	// submodule in (its FixedInSubslots, else UsedInSubslots), as listed;
+	// none when it does not parse or is only allowed. Required reports
+	// that there is at least one: ToModel then refuses the DAP, or the
+	// module where it is plugged, with profinet.ErrUnsupported and leaves
+	// a module only in the catalog out of it, since the model would lack a
+	// configured submodule. An optional reference (Required false) is left
+	// out of a model that still converts. Outcome and Error are the
+	// reference's own: malformed when its subslot attributes do not parse,
+	// unsupported when it is required, omitted otherwise. It is never
+	// converted: no configurable submodule is in a model.
+	ConfiguredSubslots []uint32 `json:"configured_subslots,omitempty"`
+	Required           bool     `json:"required"`
+	Outcome            Outcome  `json:"outcome"`
+	Error              string   `json:"error,omitempty"`
+}
+```
+
+SubmoduleRef is a configurable submodule: a SubmoduleItemRef of a UseableSubmodules list, which ToModel does not convert.
 
 ### type ValidationError
 

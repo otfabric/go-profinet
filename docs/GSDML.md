@@ -28,6 +28,12 @@ m, err := gsdml.ToModel(doc, "DAP 1") // "" for the first device access point
 - the modules that the DAP fixes or uses in slots (`FixedInSlots`,
   `UsedInSlots`) as the plugged `Slots`, and the other usable modules as the
   `Catalog`;
+- configurable submodules (`UseableSubmodules`): none. A DAP whose own
+  references or a plugged module's put one in a subslot (`FixedInSubslots`
+  or `UsedInSubslots`) fails with `ErrUnsupported`, since the model would
+  lack it; a module only in the catalog that needs one is left out of
+  `Catalog`; optional ones (only `AllowedInSubslots`) are left out. An
+  unreferenced `SubmoduleList` is not read;
 - per submodule: its API (`VirtualSubmoduleItem` `API`, an Unsigned32;
   absent is API 0), the IO data lengths (`DataItemSize` of each DataItem)
   and the parameter records with their default values (Const and Ref).
@@ -228,6 +234,7 @@ compare both, structurally and as JSON). No partial model is returned.
 | `malformed` | an error of `ErrMalformed`, or of no other class |
 | `unsupported` | `ErrUnsupported`: content go-profinet does not implement, such as a field without a verified encoding |
 | `resource_exhausted` | `ErrResourceExhausted`, such as parameter records beyond `MaxModelRecordOctets` in the modules as plugged |
+| `omitted` | a configurable submodule reference only (`SubmoduleRef`): valid and optional, and left out of the model |
 
 Malformed content is reported as malformed, never as unsupported: an error
 that matches `ErrMalformed` is classified first. For a DAP that does not
@@ -254,6 +261,18 @@ convert, the rest of the report says why:
 - `RecordOctets` are what one slot of the module adds. A DAP whose modules
   each convert but together exceed the limit is `resource_exhausted` and
   not blocked, and the modules' octets show where the size goes.
+- `ConfigurableSubmodules`, of the DAP (`ModelReport`) and of each module
+  (`ModuleReport`), list the `UseableSubmodules` references: `Required`
+  with the `ConfiguredSubslots` for a fixed or used one, and the
+  reference's own `Outcome` (`unsupported` when required, `omitted` when
+  optional and left out, `malformed` when its subslot attributes do not
+  parse; never `converted`, as no configurable submodule is in a model). A required one of the DAP is its `DAPErr`; of a module, its
+  `ModuleOutcome` is `unsupported`. `Omitted` marks a reference whose
+  module `ToModel` leaves out of `Catalog` because it needs one and the
+  reference plugs it nowhere; an omitted module does not block the DAP.
+  `OmitsSubmodules` and `OmitsModules` say whether a report has any: a
+  converted DAP for which either is true does not describe everything the
+  file lets it use.
 
 Each error is kept (`Err`, `DAPErr`, `ReferenceErr`, `ModuleErr`, for
 `errors.Is`); the JSON form carries their texts and the element paths.
