@@ -337,14 +337,8 @@ func (d *Device) writeMRPCheck(st *mrpState, data []byte) error {
 	return nil
 }
 
-// mrpParamProfiles are the timer profiles a controller can select, with
-// their MRP_TSTshortT, which mrp.Profile has no field for (the entity does
-// not shorten its test interval after a topology change): 10 ms and
-// 30 ms, as microchip-ung/mrp's state_machine.c.
-var mrpParamProfiles = []struct {
-	p     mrp.Profile
-	short time.Duration
-}{{mrp.Profile200, 10 * time.Millisecond}, {mrp.Profile500, 30 * time.Millisecond}}
+// mrpParamProfiles are the timer profiles a controller can select.
+var mrpParamProfiles = []mrp.Profile{mrp.Profile200, mrp.Profile500}
 
 // writtenProfile returns the timer profile a PDInterfaceMrpDataAdjust
 // selects; ok is false when its timers are not those of a profile in
@@ -355,8 +349,9 @@ var mrpParamProfiles = []struct {
 // block whose timers are all zero selects nothing and keeps cur: the
 // go-profinet controller sends MrpManagerParams with the priority only.
 // That is an OT Fabric convention, not a meaning of zero known from the
-// standard or another implementation. MRP_TSTshortT is matched, not
-// applied. The arithmetic is on time.Duration, which holds 65535 ×
+// standard or another implementation. Every timer of the profile,
+// MRP_TSTshortT included (mrp.Profile.TestShortInterval), is what the
+// entity runs. The arithmetic is on time.Duration, which holds 65535 ×
 // 10 ms without overflow.
 func writtenProfile(a *pnio.PDInterfaceMrpDataAdjust, cur mrp.Profile) (mrp.Profile, bool) {
 	m, c := a.Manager, a.Client
@@ -370,10 +365,9 @@ func writtenProfile(a *pnio.PDInterfaceMrpDataAdjust, cur mrp.Profile) (mrp.Prof
 		return cur, true
 	}
 	ms := time.Millisecond
-	for _, w := range mrpParamProfiles {
-		p := w.p
+	for _, p := range mrpParamProfiles {
 		if m != nil && (time.Duration(m.TopChangeT)*10*ms != p.TopChangeInterval || int(m.TopNRmax) != p.TopChangeRepeat ||
-			time.Duration(m.TestShortT)*ms != w.short || time.Duration(m.TestDefaultT)*ms != p.TestInterval || int(m.TestNRmax) != p.TestMax) {
+			time.Duration(m.TestShortT)*ms != p.TestShortInterval || time.Duration(m.TestDefaultT)*ms != p.TestInterval || int(m.TestNRmax) != p.TestMax) {
 			continue
 		}
 		if c != nil && (time.Duration(c.LinkDownT)*ms != p.LinkInterval || time.Duration(c.LinkUpT)*ms != p.LinkInterval || int(c.LinkNRmax) != p.LinkRepeat) {

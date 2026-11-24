@@ -96,27 +96,40 @@ profile.
   profile was considered and not done in v0.25.0: it changes what the
   controller sends to every device, which needs interop evidence against
   a device that reads them (none in the matrix runs MRP records).
-- MRP_TSTshortT is matched as part of the profile and not applied. A
-  write whose TSTshortT is not the profile's is refused, so no value is
-  accepted that differs from what the profile table says; the profile's
-  other timers are applied. This is a partial implementation of the
-  record, not a fix of it.
-  - What it would do, from microchip-ung/mrp (`state_machine.c`,
-    `mrp_recv_ring_link`, at the commit profinet-interop builds,
-    `177717ee`; GPL-2.0, read for behaviour only): when the manager learns
-    of a link change (a client's MRP_LinkDown/LinkUp, in PRM_UP, CHK_RO
-    and CHK_RC), it sends its MRP_Test frames at the short interval
-    instead of the default one, once per such event (an `add_test`
-    flag), and returns to the default interval later. Clients do not use
-    it. Where exactly the default interval resumes was not read in full.
-  - What go-profinet does: on a client's MRP_LinkUp the manager tests at
-    once (`mrp/entity.go`, the `testNow` wake-up), then at the default
-    interval; on MRP_LinkDown it opens the ring at once.
-  - Applying TSTshortT is a change to the manager's timing, whose
-    evidence is one implementation, and which only the interop rings
-    (umrp, microchip-ung/mrp, the kernel's MRP) can check. It is not done
-    in v0.25.0; accepting the record with the value matched but not
-    applied is a maintainer decision (LIMITATIONS.md).
+- MRP_TSTshortT is applied (`mrp.Profile.TestShortInterval`, 10 ms in
+  `Profile200`, 30 ms in `Profile500`; a write whose TSTshortT is not
+  the profile's is refused). Its meaning is from IEC 62439-2:2016,
+  Table 45 (the MRA state machine, pages 79 to 89 of the public preview
+  of UNE-EN 62439-2:2017; the MRM table itself is not in the preview,
+  and the MRA machine is stated to combine the MRM and MRC machines):
+  - In PRM_UP and CHK_RO, a LinkChangeInd (a client's MRP_LinkDown or
+    MRP_LinkUp) while ADD_TEST is false sets ADD_TEST and calls
+    TestRingReq(MRP_TSTshortT); while ADD_TEST is true it is ignored
+    (rows 16, 17, 33, 34).
+  - Every TestTimer expiry clears ADD_TEST and calls
+    TestRingReq(MRP_TSTdefaultT) (rows 8, 25, 44; also rows 42 and 43).
+  - go-profinet reads TestRingReq(t) as: send the test frames now and
+    time the next ones t later, as the expiry rows use it. The definition
+    of TestRingReq is not in the preview.
+  - So after a client's LinkChange the manager tests at once, again after
+    TSTshortT, then at TSTdefaultT; the short expiry counts as a test
+    interval like any other (row 44 counts every expiry in CHK_RC).
+    `TestAdditionalTest` (mrp) fails before the change.
+  - Not read: the CHK_RC rows for LinkChangeInd (after page 89), and
+    REACT_MODE, which row 1 initialises false. go-profinet keeps its
+    reaction to a client's MRP_LinkDown (it opens the ring at once, as
+    microchip-ung/mrp does when it reacts on link changes) and to an
+    MRP_LinkUp (a test round at once); whether the standard does so in
+    CHK_RC is not established.
+  - microchip-ung/mrp (`state_machine.c`, `mrp_recv_ring_link`, at
+    `177717ee`, the commit profinet-interop builds; GPL-2.0, read for
+    behaviour only) uses the short interval on the same events with an
+    `add_test` flag. Clients do not use it, in either source.
+  - Interop: the MRP suite of profinet-interop v0.15.0 passed with the
+    change against umrp (manager, client, ring faults, auto). The
+    microchip-ung/mrp rings were not run: the Docker host's kernel does
+    not accept an MRP instance on a software bridge, and the suite
+    records them as not applicable.
 - Ranges: no range check beyond the exact match; the comparison is done
   on `time.Duration`, which holds 65535 × 10 ms without overflow.
 - MRP record writes are one transaction at a time: a
@@ -149,8 +162,6 @@ profile.
 ## Not done
 
 - The MediaRedundancyManager check and the manager diagnoses.
-- The short test interval after a topology change (MRP_TSTshortT): the
-  entity has no such phase; the value is only matched (see above).
 - The controller writing the complete timers of a profile (see above).
 - MRRT, MRP interconnection (LLDP subtype 8), several MRP instances.
 - Interop: none of this is tested against p-net or a PLC. profinet-interop

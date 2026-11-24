@@ -46,6 +46,8 @@ writes, within the 200 ms and 500 ms profiles.
 
 ### Added
 
+- **`mrp.Profile.TestShortInterval`**: MRP_TSTshortT, the interval of the
+  manager's additional test after a client's LinkChange (see Changed).
 - **`lldp.AgentOptions.TTL`**: the TTL announced, in place of
   `TTLFactor` × `Interval`, in whole seconds within 1..65535. Without it
   the default stays 20 s (4 × 5 s).
@@ -63,11 +65,19 @@ writes, within the 200 ms and 500 ms profiles.
 
 ### Changed
 
+- **MRP manager: the additional test after a LinkChange**: a client's
+  MRP_LinkDown or MRP_LinkUp makes the manager send its test frames at
+  once and again after MRP_TSTshortT, then at MRP_TSTdefaultT, as
+  IEC 62439-2:2016 Table 45 (ADD_TEST, TestRingReq(MRP_TSTshortT))
+  states; a further LinkChange before the test timer expires asks for
+  none. New field `mrp.Profile.TestShortInterval` (10 ms in `Profile200`,
+  30 ms in `Profile500`; zero: no additional test). Before, the manager
+  waited for the next default interval after an MRP_LinkDown.
 - **Device: written MRP timers are applied**: the timers of a written
   MrpManagerParams/MrpClientParams select `mrp.Profile200` or
   `mrp.Profile500` (units from Wireshark: MRP_TOPchgT in 10 ms, the
   others in ms; MRP_TSTshortT 10/30 ms from microchip-ung/mrp), and the
-  entity restarts with it; any other set of timers is refused with
+  entity restarts with it, MRP_TSTshortT included; any other set of timers is refused with
   "feature not supported" and changes nothing. All-zero timers keep the
   profile (the go-profinet controller writes MrpManagerParams with the
   priority alone). A changed manager priority alone now restarts the
@@ -221,7 +231,8 @@ pending PDU is dropped after its retries. `TestMRPDomainCheck` and
 entity), `TestMRPCheckLifecycle` (the old domain's check kept),
 `TestMRPCheckDuringAdjustRollback` (a concurrent check write discarded)
 and `TestMRPRestoreFails` (the domain advertised with no entity) before
-their fixes;
+their fixes, `TestAdditionalTest` (mrp; the first test came 519 ms after
+a LinkChange, at the default interval) before the additional test;
 `TestWrittenProfile` covers each field and the extreme values,
 `TestMRPPortStatusTLV` the TLV against its layout, and e2e
 `TestMRPRecords` the records through the controller. The
