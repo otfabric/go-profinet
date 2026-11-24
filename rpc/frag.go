@@ -87,6 +87,10 @@ type reassembly struct {
 	last  int // index of the last fragment, -1 until seen
 	size  int
 	max   int
+	// drep is the integer representation (DRep[0]&0xF0) of the first
+	// fragment; hasDRep is set once a fragment arrived.
+	drep    uint8
+	hasDRep bool
 }
 
 func newReassembly(maxMessage int) *reassembly {
@@ -101,6 +105,16 @@ func newReassembly(maxMessage int) *reassembly {
 func (r *reassembly) add(h *Header, body []byte) ([]byte, bool, error) {
 	if h.Flags1&FlagFrag == 0 {
 		return append([]byte(nil), body...), true, nil
+	}
+	// The fragments carry one body marshalled in one representation: a
+	// fragment in another byte order cannot belong to it. p-net refuses
+	// such a call too (pf_cmrpc.c, rtlabs-com/p-net v2.0.0), and its issue
+	// 2275 was a device that changed the byte order after the first
+	// fragment of a response.
+	if order := h.DRep[0] & 0xF0; !r.hasDRep {
+		r.drep, r.hasDRep = order, true
+	} else if order != r.drep {
+		return nil, false, fmt.Errorf("rpc: %w: fragment %d in another byte order (DRep %#02x, first %#02x)", profinet.ErrMalformed, h.FragNum, order, r.drep)
 	}
 	n := int(h.FragNum)
 	if n >= MaxFragments {
