@@ -396,6 +396,10 @@ data (PACKET_AUXDATA).
   retries sends no further DATA PDU: the AR is expected to be aborted, as
   the device does. Whether the standard's alarm machine allows anything
   else is not read.
+- An alarm whose `SendAlarm` was cancelled before the transport
+  acknowledged it stays pending in the endpoint: the next alarm of its
+  priority retransmits it first and then goes out without waiting for
+  its AlarmAck. A delivered alarm waits for its AlarmAck (see above).
 - The LLDP TTL of 21 s is p-net v2.0.0's (its release notes cite the
   PROFINET test specification, which go-profinet has not read).
 
