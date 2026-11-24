@@ -137,7 +137,9 @@ profile.
     reaction to a client's MRP_LinkDown (it opens the ring at once, as
     microchip-ung/mrp does when it reacts on link changes), and, without
     MRP_TSTshortT, to an MRP_LinkUp (a test round at once); whether the
-    standard does so in CHK_RC is not established.
+    standard does so in CHK_RC is not established. The evidence per
+    transition, and the search for the missing rows, are in
+    "CHK_RC evidence" below.
   - microchip-ung/mrp (`state_machine.c`, `mrp_recv_ring_link`, at
     `177717ee`, the commit profinet-interop builds; GPL-2.0, read for
     behaviour only) uses the short interval on the same events with an
@@ -201,3 +203,48 @@ profile.
 - MRRT, MRP interconnection (LLDP subtype 8), several MRP instances.
 - Interop: none of this is tested against p-net or a PLC. profinet-interop
   v0.15.0 builds p-net `ea5e554`, without `PNET_OPTION_MRP`.
+
+## CHK_RC evidence
+
+Follow-up F5 after v0.25.0 #134: what is known about the manager's
+reaction to a client's MRP_LinkChange, per transition. Sources:
+
+- **Std**: IEC 62439-2:2016 Table 45 (MRA state machine), pages 79 to
+  89 of the public preview of UNE-EN 62439-2:2017, read for v0.25.0.
+- **mchp**: microchip-ung/mrp `sm.c` at `177717ee` (GPL-2.0, read for
+  behaviour only; no code taken), `mrp_recv_ring_link`. Its
+  `react_on_link_change` is 1 when an instance is created (`mrp_create`) and then set by `mrp_add` from its configuration; the name suggests
+  the standard's REACT_MODE, which is not established.
+- **go**: `mrp/entity.go`, the `f.Link != nil` case of the manager's
+  receive path and `additionalTest`.
+
+| State | Event, condition | Std | mchp | go | Status |
+|---|---|---|---|---|---|
+| PRM_UP, CHK_RO | LinkChangeInd, ADD_TEST false | rows 16, 33: set ADD_TEST, TestRingReq(TSTshortT) | same (`add_test`) | same (`additionalTest`) | read, matches |
+| PRM_UP, CHK_RO | LinkChangeInd, ADD_TEST true | rows 17, 34: ignored | same | same | read, matches |
+| any manager state | TestTimer expiry | rows 8, 25, 44 (also 42, 43): clear ADD_TEST, TestRingReq(TSTdefaultT) | same | same | read, matches |
+| CHK_RC | MRP_LinkDown | not in the preview | react on: secondary port forwarding, TopologyChange(0), CHK_RO; react off and the client blocks: ADD_TEST and a short test | opens the ring at once (secondary port forwarding, FDB flush, TopologyChange(0), CHK_RO) and, with TSTshortT, also starts the additional test | not verified; go matches mchp with react on, except the additional test |
+| CHK_RC | MRP_LinkUp | not in the preview | react on: TopologyChange(0) and the remaining test count set to TestMax − 1, stays in CHK_RC; react off and the client blocks: ADD_TEST and a short test | with TSTshortT the additional test; without, a test round at once; no TopologyChange | not verified; differs from mchp (no TopologyChange, no change of the test count) |
+| initialisation | REACT_MODE | row 1: false; what sets it is not in the preview | `react_on_link_change` 1 at creation, then as configured (`mrp_add`) | no such variable: behaves as reacting for a LinkDown | not verified |
+
+Search for the missing rows (2026-11-24):
+
+- IEC 62439-2:2021 (edition 3.0): the VDE Verlag preview
+  (`info_iec62439-2{ed3.0}b.pdf`) has the table of contents only. It
+  places the MRM state machine at Table 41 (page 68) and the MRA state
+  machine at Table 45 (page 85); neither is in the preview.
+- IEC 62439-2:2016: the iTeh sample (`IEC-62439-2-2016.pdf`, 15 pages)
+  is front matter only; it has none of the state machine tables.
+- IEC 62439-2:2010 (edition 1.0): the IEC webstore preview link
+  returned no PDF.
+- The UNE-EN 62439-2:2017 preview read for v0.25.0 ends at page 89,
+  before the CHK_RC LinkChange rows.
+
+Decision: nothing changes. Neither CHK_RC difference from mchp is
+confirmed by the standard, and taking mchp's behaviour would put a
+reading of a GPL implementation in place of the standard (AGENTS.md rules
+2 and 5). With the standard's Table 45 (or Table 41 of 2021), the two
+CHK_RC rows and REACT_MODE are what to read first; each difference then
+needs a test in `mrp/addtest_test.go` that fails before its change. The
+profinet-interop MRP suite does not distinguish them: it checks
+recovery, not which frames the manager sends on a LinkUp in CHK_RC.
