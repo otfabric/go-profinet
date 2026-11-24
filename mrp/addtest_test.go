@@ -3,12 +3,31 @@
 package mrp
 
 import (
+	"context"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/otfabric/go-profinet/ethernet"
 )
+
+// drainTests discards the MRP_Tests queued on ring port i and returns
+// how many there were, so that the next nextTest is a test sent after
+// the call.
+func (r *rig) drainTests(i int) int {
+	r.t.Helper()
+	buf := make([]byte, 1600)
+	n := 0
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
+		_, err := r.wire[i].ReadFrame(ctx, buf)
+		cancel()
+		if err != nil {
+			return n
+		}
+		n++
+	}
+}
 
 func linkFrame(up bool) Frame {
 	return Frame{Link: &LinkChange{Up: up, SA: ethernet.MAC{0x02, 0x20, 0, 0, 2, 1}, PortRole: PortPrimary, Interval: 20, Blocked: 1}}
@@ -31,6 +50,10 @@ func TestAdditionalTestEvents(t *testing.T) {
 			r := newRig(t, RoleManager, p, [2]bool{true, true})
 			r.nextTest(0)
 			time.Sleep(100 * time.Millisecond)
+			// Under load a test sent before the LinkChange may still be
+			// queued on the wire (seen once under make check): the
+			// timings below are of the tests sent after it.
+			r.drainTests(0)
 			sent := time.Now()
 			r.put(0, MACControl, linkFrame(c.ev1))
 			r.nextTest(0)
@@ -62,6 +85,7 @@ func TestLinkUpTestWithoutShortInterval(t *testing.T) {
 	r := newRig(t, RoleManager, p, [2]bool{true, true})
 	r.nextTest(0)
 	time.Sleep(50 * time.Millisecond)
+	r.drainTests(0)
 	sent := time.Now()
 	r.put(0, MACControl, linkFrame(true))
 	r.nextTest(0)

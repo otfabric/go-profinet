@@ -387,6 +387,7 @@ func TestAdditionalTest(t *testing.T) {
 	r := newRig(t, RoleManager, p, [2]bool{true, true})
 	r.nextTest(0) // the first round
 	time.Sleep(100 * time.Millisecond)
+	r.drainTests(0) // a test queued before the LinkChange (TestAdditionalTestEvents)
 	client := ethernet.MAC{0x02, 0x20, 0, 0, 2, 1}
 	down := Frame{Link: &LinkChange{SA: client, PortRole: PortPrimary, Interval: 20, Blocked: 1}}
 	sent := time.Now()
