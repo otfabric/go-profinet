@@ -131,7 +131,12 @@ writes, within the 200 ms and 500 ms profiles.
 - **Diagnosis alarms stay with their AR**: the alarms of a diagnosis
   operation go to, and are owed to, the AR that owned the submodule when
   the operation changed the state; a repeated `RemoveDiagnosis` retries
-  owed alarms instead of returning `ErrNotFound`.
+  owed alarms instead of returning `ErrNotFound`. Alarms owed to an AR
+  that is out of the Data state for a while (after a PrmBegin) stay owed
+  to it, so the repeated call sends them once it is back; before, they
+  were dropped and the repeat returned `ErrNotFound`. A diagnosis alarm
+  the controller received whose AlarmAck the caller did not wait for is
+  no longer owed; before, the next operation sent it a second time.
 - **Qualified diagnoses** are sent and served as QualifiedChannelDiagnosis
   (USI 0x8003); the `Qualifier` was dropped before.
 - README: the p-net column describes v2.0.0 (MRP client, S2, Device
@@ -170,6 +175,10 @@ writes, within the 200 ms and 500 ms profiles.
   check was reported in the next controller's ModuleDiffBlock and a stale
   NoLLDP boundary kept LLDP off. Found auditing p-net issue 2728 (the
   inverse defect: p-net reset every port at every Connect).
+- **MRP port adjustments wait for an interface adjustment in progress**:
+  a PDPortMrpDataAdjust is checked against the domain an adjustment
+  leaves, after its rollback. Before, one written by another AR during a
+  refused adjustment was checked against the refused domain and stored.
 - **A refused PDInterfaceMrpDataAdjust changes nothing**: when the MRP
   entity of the new configuration does not start, the previous records,
   configuration and entity are restored. Before, the write was refused
@@ -250,7 +259,9 @@ once) and `TestProfileTestTiming` (the intervals rounded up to the
 polling tick) before their fixes, and `TestMRPRestoreFails` (the same
 configuration rewritten started no entity) before its fix;
 `TestMRPRestoreFailsBlocked` shows the forwarding state kept, with the
-controller outside the ring;
+controller outside the ring; `TestOwedWhileNotInData`,
+`TestOutstandingDiagnosisNotOwed` and
+`TestMRPPortAdjustDuringAdjustRollback` fail before their fixes;
 `TestWrittenProfile` covers each field and the extreme values,
 `TestMRPPortStatusTLV` the TLV against its layout, and e2e
 `TestMRPRecords` the records through the controller. The

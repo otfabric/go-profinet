@@ -46,7 +46,9 @@ next one may go; what a controller does with it then is not
 established.
 
 An alarm that is not delivered without the AR ending (no AlarmAck, a
-refused AlarmAck, the context ending) is owed: the next diagnosis
+refused AlarmAck, the context ending before the controller's transport
+acknowledged it, the owning AR out of the Data state for a while, as
+after a PrmBegin) is owed: the next diagnosis
 operation of the submodule, an identical `AddDiagnosis` included, sends
 the owed alarms first, so repeating the call retries the report; a
 repeated `RemoveDiagnosis` whose diagnoses are already removed sends
@@ -55,7 +57,9 @@ alarms of an operation go to the AR that owned the submodule when the
 operation changed the state, and are owed to that AR: when the
 submodule moves to another AR (or another primary of an AR set), they
 are dropped, as the new owner reads the diagnoses in its ModuleDiffBlock
-and records. A transport timeout aborts the AR. At most 64 alarms are owed per
+and records. An alarm the controller's transport acknowledged whose
+AlarmAck the context did not wait for is not owed: it was delivered and
+stays outstanding, and owing it would send it twice. A transport timeout aborts the AR. At most 64 alarms are owed per
 submodule; older ones are dropped and logged.
 
 The AlarmSpecifier of a diagnosis alarm summarises the submodule's active

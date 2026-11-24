@@ -332,7 +332,7 @@ The diagnoses of a submodule are a set. A diagnosis is identified by its channel
 
 The diagnosis is recorded even when no AR can receive the alarm (it is then reported as an error matching profinet.ErrInvalidState); a controller that connects later reads it in the ModuleDiffBlock and the diagnosis records.
 
-Diagnosis operations are reported in the order they change the state: AddDiagnosis and RemoveDiagnosis wait, until ctx ends, for the alarms of the previous one (an error of ctx then, nothing recorded). An alarm that is not delivered while the AR lives (no or a refused AlarmAck, ctx ending) is owed: the next diagnosis operation of the submodule, an identical AddDiagnosis included, sends it first, so repeating the call retries the report.
+Diagnosis operations are reported in the order they change the state: AddDiagnosis and RemoveDiagnosis wait, until ctx ends, for the alarms of the previous one (an error of ctx then, nothing recorded). An alarm that is not delivered while the AR lives (no or a refused AlarmAck, ctx ending before the controller's transport acknowledged it, the AR out of the Data state for a while) is owed: the next diagnosis operation of the submodule, an identical AddDiagnosis included, sends it first, so repeating the call retries the report. An alarm the controller received whose AlarmAck ctx did not wait for is not owed: it stays outstanding.
 
 #### func (Device) Close
 

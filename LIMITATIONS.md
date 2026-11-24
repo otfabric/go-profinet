@@ -399,7 +399,18 @@ data (PACKET_AUXDATA).
 - An alarm whose `SendAlarm` was cancelled before the transport
   acknowledged it stays pending in the endpoint: the next alarm of its
   priority retransmits it first and then goes out without waiting for
-  its AlarmAck. A delivered alarm waits for its AlarmAck (see above).
+  its AlarmAck. A delivered alarm waits for its AlarmAck (see above). A
+  diagnosis alarm cancelled in that way is also owed (the device cannot
+  tell from the endpoint whether the PDU left), so the controller may
+  receive it twice: once retransmitted, once as the owed alarm. Its
+  AlarmSpecifier sequence number is taken when it is built: an alarm whose
+  context ends while the endpoint retransmits an earlier pending PDU
+  leaves a gap in the sequence numbers the controller sees; whether a
+  controller checks them is not established.
+- The reset of an IOCAR's port checks at its Connect does not wait for
+  the port check evaluator: a mismatch diagnosis the evaluator was adding
+  for the previous check may still appear, and be in the new AR's
+  ModuleDiffBlock, until the next evaluation removes it.
 - The LLDP TTL of 21 s is p-net v2.0.0's (its release notes cite the
   PROFINET test specification, which go-profinet has not read).
 

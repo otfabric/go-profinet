@@ -412,6 +412,10 @@ func (d *Device) writeMRP(q pnio.WriteReq, data []byte) (handled bool, err error
 		if err != nil || p.Real {
 			return true, rwErr(pnio.RWInvalidParameter)
 		}
+		// After an adjustment in progress, whose domain may be refused and
+		// restored (the RPC server runs calls of several ARs at once).
+		d.mrpMu.Lock()
+		defer d.mrpMu.Unlock()
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		if !d.isRingPort(q.Subslot) || p.Domain != st.cfg.Domain {

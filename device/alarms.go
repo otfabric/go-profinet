@@ -204,9 +204,14 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	case <-ctx.Done():
 		outstanding = true
 		go d.awaitAlarmAck(a, k, ch, sem, t)
-		return seq, ctx.Err()
+		return seq, fmt.Errorf("device: alarm to AR %s: %w: %w", a.uuid, errAlarmOutstanding, ctx.Err())
 	}
 }
+
+// errAlarmOutstanding marks the error of an alarm the controller's
+// transport acknowledged whose AlarmAck the caller stopped waiting for:
+// it was delivered, and stays outstanding (awaitAlarmAck).
+var errAlarmOutstanding = errors.New("delivered, its AlarmAck outstanding")
 
 // awaitAlarmAck keeps an alarm whose caller stopped waiting outstanding
 // until its AlarmAck arrives (alarmData delivers it on ch), the AR ends
@@ -255,9 +260,11 @@ const AlarmAckTimeout = 5 * time.Second
 // AddDiagnosis and RemoveDiagnosis wait, until ctx ends, for the alarms of
 // the previous one (an error of ctx then, nothing recorded). An alarm that
 // is not delivered while the AR lives (no or a refused AlarmAck, ctx
-// ending) is owed: the next diagnosis operation of the submodule, an
-// identical AddDiagnosis included, sends it first, so repeating the call
-// retries the report.
+// ending before the controller's transport acknowledged it, the AR out
+// of the Data state for a while) is owed: the next diagnosis operation of
+// the submodule, an identical AddDiagnosis included, sends it first, so
+// repeating the call retries the report. An alarm the controller received
+// whose AlarmAck ctx did not wait for is not owed: it stays outstanding.
 func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pnio.DiagnosisItem) error {
 	if _, ok := d.model.Submodule(slot, subslot); !ok {
 		return fmt.Errorf("device: diagnosis %d/%d: %w", slot, subslot, profinet.ErrNotFound)
@@ -350,8 +357,13 @@ func (d *Device) takeOwed(k key, owner *ar, notes []diagNote) []diagNote {
 // and records. On the first failure the alarms not delivered, that one
 // included, are owed to owner: the next diagnosis operation of the
 // submodule sends them first if owner still owns it, and drops them
-// otherwise. Nothing is owed when owner cannot receive alarms
-// (ErrInvalidState) or an alarm cannot be encoded (ErrInvalidConfig).
+// otherwise. An owner that cannot receive alarms now (ErrInvalidState:
+// not in the Data state, for example after a PrmBegin) is owed them as
+// well; with no owner nothing is owed, since the next AR reads the
+// diagnoses in its ModuleDiffBlock. An alarm that cannot be encoded
+// (ErrInvalidConfig) is not owed. An alarm the controller received, whose
+// AlarmAck the caller stopped waiting for (errAlarmOutstanding), is not
+// owed either: owing it would deliver it twice.
 func (d *Device) reportDiag(ctx context.Context, k key, owner *ar, notes []diagNote) error {
 	if d.afterDiagChange != nil {
 		d.afterDiagChange()
@@ -361,13 +373,20 @@ func (d *Device) reportDiag(ctx context.Context, k key, owner *ar, notes []diagN
 		if err == nil {
 			continue
 		}
-		if errors.Is(err, profinet.ErrInvalidState) || errors.Is(err, profinet.ErrInvalidConfig) {
+		if errors.Is(err, profinet.ErrInvalidConfig) || owner == nil {
 			return err
 		}
 		if d.diagFailed != nil {
 			d.diagFailed()
 		}
-		rest := append([]diagNote(nil), notes[i:]...)
+		from := i
+		if errors.Is(err, errAlarmOutstanding) {
+			from = i + 1
+		}
+		rest := append([]diagNote(nil), notes[from:]...)
+		if len(rest) == 0 {
+			return err
+		}
 		if len(rest) > maxOwedDiag {
 			d.log.Infof("device: diagnosis %d/%d: %d undelivered alarms dropped", k.slot, k.subslot, len(rest)-maxOwedDiag)
 			rest = rest[len(rest)-maxOwedDiag:]
