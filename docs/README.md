@@ -19,6 +19,7 @@
 | [research/GSDML.md](research/GSDML.md), [research/STACKS.md](research/STACKS.md) | the research behind the GSDML decision and the choice of reference implementations |
 | [research/NEXT-PROGRAM-REPORT.md](research/NEXT-PROGRAM-REPORT.md), [research/FEATURE-COMPLETION-REPORT.md](research/FEATURE-COMPLETION-REPORT.md) | the latest and the previous development round: outcome, evidence, blockers, roadmap |
 | [research/INDEPENDENT-CONTROLLER.md](research/INDEPENDENT-CONTROLLER.md), [research/GSDML-TOOLS.md](research/GSDML-TOOLS.md) | a second IO-Controller (CODESYS, a manual recipe); engineering-tool imports of the GSDML fixtures |
+| [research/PNET-V2-GAP-REPORT.md](research/PNET-V2-GAP-REPORT.md), [research/PNET-V2-MRP.md](research/PNET-V2-MRP.md), [research/PNET-V2-DESIGN.md](research/PNET-V2-DESIGN.md) | go-profinet against rt-labs p-net v2.0.0: the gap report and issue audit, the MRP check and timer findings, and a ranked design of the features p-net v2.0.0 has and go-profinet does not |
 | [research/SOFTWARE-ONLY-ROADMAP.md](research/SOFTWARE-ONLY-ROADMAP.md) | what can be built without PI membership or hardware, per feature with its evidence, priority and acceptance criteria; the evidence files `research/EVIDENCE-*.md` |
 
 The reference documents are in the repository root:
