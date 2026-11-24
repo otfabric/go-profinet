@@ -62,7 +62,6 @@ type Endpoint struct {
 	// slot is held by the DATA PDU being sent, from its Send or Start to
 	// its transport acknowledgement or terminal failure: window size 1.
 
-	// done is closed; under mu, which orders it with wg.Add
 	// the sequence number of the next DATA PDU
 	// the last DATA PDU sent, InitialAckSeq before any
 

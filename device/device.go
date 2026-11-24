@@ -235,9 +235,6 @@ type Device struct {
 	// diagFailed, when set (tests), runs when a diagnosis alarm was not
 	// delivered, before the rest is owed.
 	diagFailed func()
-	// alarmStarted, when set (tests), is called once an alarm was
-	// transmitted, before its caller waits for it.
-	alarmStarted func(high bool, seq uint16)
 	// evalPaused, when set (tests), is called by the port evaluation
 	// after it read the port's state and before it records its result.
 	evalPaused func(subslot uint16)

@@ -41,6 +41,7 @@ func TestStartAcknowledged(t *testing.T) {
 	if err := doneWithin(t, tr2, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+	waitFor(t, "delivery", func() bool { return len(b.received()) >= 2 })
 	if got := b.received(); len(got) != 2 || string(got[0]) != "one" || string(got[1]) != "two" {
 		t.Fatalf("received %q", got)
 	}
@@ -113,6 +114,7 @@ func TestStartWaitsForSlot(t *testing.T) {
 	if err := doneWithin(t, tr2, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+	waitFor(t, "delivery", func() bool { return len(b.received()) >= 2 })
 	if got := b.received(); len(got) != 2 || string(got[0]) != "x" || string(got[1]) != "y" {
 		t.Fatalf("received %q", got)
 	}
@@ -134,6 +136,7 @@ func TestStartTransmitFailure(t *testing.T) {
 	if err := doneWithin(t, tr, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+	waitFor(t, "delivery", func() bool { return len(b.received()) >= 1 })
 	if got := b.received(); len(got) != 1 || string(got[0]) != "y" {
 		t.Fatalf("received %q", got)
 	}
@@ -208,6 +211,7 @@ func TestStartAfterPendingSend(t *testing.T) {
 	if err := doneWithin(t, tr, 5*time.Second); err != nil {
 		t.Fatal(err)
 	}
+	waitFor(t, "delivery", func() bool { return len(b.received()) >= 2 })
 	if got := b.received(); len(got) != 2 || string(got[0]) != "x" || string(got[1]) != "y" {
 		t.Fatalf("received %q", got)
 	}
@@ -218,5 +222,20 @@ func TestStartTooLong(t *testing.T) {
 	_, _, ea, _ := pair(t, time.Second, 3)
 	if _, err := ea.Start(context.Background(), make([]byte, 70000)); !errors.Is(err, profinet.ErrInvalidConfig) || !strings.Contains(err.Error(), "70000") {
 		t.Fatalf("Start: %v", err)
+	}
+}
+
+// A send slot taken while the endpoint closes is given back: acquire
+// reports ErrClosed whichever of the slot and done it saw first.
+func TestAcquireAfterClose(t *testing.T) {
+	e := &Endpoint{slot: make(chan struct{}, 1), done: make(chan struct{})}
+	close(e.done)
+	for range 64 {
+		if err := e.acquire(context.Background()); !errors.Is(err, profinet.ErrClosed) {
+			t.Fatalf("acquire: %v", err)
+		}
+		if len(e.slot) != 0 {
+			t.Fatal("the slot stays taken")
+		}
 	}
 }

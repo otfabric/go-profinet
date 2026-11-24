@@ -67,7 +67,6 @@ type Endpoint struct {
 	slot chan struct{}
 
 	mu       sync.Mutex
-	closed   bool   // done is closed; under mu, which orders it with wg.Add
 	nextSend uint16 // the sequence number of the next DATA PDU
 	sendSeq  uint16 // the last DATA PDU sent, InitialAckSeq before any
 	lastRecv uint16
@@ -317,19 +316,9 @@ func (e *Endpoint) Start(ctx context.Context, varPart []byte) (*Transfer, error)
 	}
 	e.sent.Add(1)
 	tr := &Transfer{done: make(chan struct{})}
-	e.mu.Lock()
-	if e.closed {
-		e.waiting = false
-		e.mu.Unlock()
-		e.release()
-		tr.err = fmt.Errorf("alarm: %w", profinet.ErrClosed)
-		close(tr.done)
-		return tr, nil
-	}
-	e.wg.Add(1)
-	e.mu.Unlock()
+	// The transfer holds the slot until it ended; Close waits for the
+	// slot, so it returns after the transfer.
 	go func() {
-		defer e.wg.Done()
 		defer e.release()
 		_, err := e.wait(e.life, p, acked, nacked, false, true)
 		if e.life.Err() != nil && !errors.Is(err, profinet.ErrTimeout) {
@@ -514,13 +503,13 @@ func (e *Endpoint) handle(p *PDU) {
 // than once and from multiple goroutines.
 func (e *Endpoint) Close() {
 	e.once.Do(func() {
-		e.mu.Lock()
-		e.closed = true
 		close(e.done)
-		e.mu.Unlock()
 		e.stopLife()
 		e.mgr.remove(e)
 		e.wg.Wait()
+		// Wait for a Send or a Transfer holding the slot: each ends at
+		// done. The slot stays taken; a later acquire sees done.
+		e.slot <- struct{}{}
 	})
 }
 

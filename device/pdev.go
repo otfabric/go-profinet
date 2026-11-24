@@ -516,12 +516,9 @@ func (d *Device) evalPort(subslot uint16) {
 	if d.mrpDomainMismatch(subslot, peer, found) {
 		want = append(want, extPeerMRPDomainMismatch)
 	}
-	if d.pd.gen != gen {
-		// The MRP state read here is newer than the checks read above.
-		d.mu.Unlock()
-		return
-	}
 	d.mu.Unlock()
+	// The MRP state read here may be newer than the checks read above;
+	// then gen changed, and setPortMismatch records nothing.
 	if equalTypes(want, active) {
 		return
 	}

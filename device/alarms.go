@@ -189,9 +189,6 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 		notSent()
 		return seq, d.transportErr(a, err)
 	}
-	if d.alarmStarted != nil {
-		d.alarmStarted(al.High, seq)
-	}
 	// The caller waits as long as the transport would retransmit, and at
 	// least AlarmAckTimeout, for the AlarmAck.
 	t := time.NewTimer(max(a.alarmAckTimeout, AlarmAckTimeout))
