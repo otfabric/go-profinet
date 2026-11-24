@@ -26,6 +26,79 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.25.0
+
+**Date:** unreleased
+**Previous release:** v0.24.0
+
+## Summary
+
+Device fixes found by comparing go-profinet with rt-labs p-net v2.0.0: the
+IO-Device's LLDP TTL is 21 s, an unchanged diagnosis no longer adds an
+entry and an alarm, and a diagnosis alarm's AlarmSpecifier advertises a
+fault only when a fault diagnosis is active.
+
+## Changes
+
+### Added
+
+- **`lldp.AgentOptions.TTL`**: the TTL announced, in place of
+  `TTLFactor` × `Interval`, in whole seconds within 1..65535. Without it
+  the default stays 20 s (4 × 5 s).
+
+### Changed
+
+- **Device LLDP TTL**: the device's agents announce 21 s with the default
+  5 s interval (was 20 s); another `LLDPInterval` keeps four intervals. 21 s is p-net v2.0.0's `PF_LLDP_TTL`, whose release notes cite
+  the PROFINET test specification (not read here).
+- **`device.AddDiagnosis` keeps a set** (p-net issue 2729): a diagnosis is
+  identified by channel, channel group, direction, error type and extended
+  error type, as p-net's `pf_diag_find_entry`. An identical active
+  diagnosis changes nothing, sends no alarm and returns nil, also without
+  an AR (before: a second entry and alarm, or `ErrInvalidState`). One with
+  other values (severity, channel type, `ExtAddValue`, `Qualifier`)
+  replaces the active one and is reported with two alarms: the new one
+  appears, the old one disappears with others remaining. Check and update
+  are one step under the device lock; concurrent identical calls record
+  one entry.
+- **Diagnosis AlarmSpecifier** (p-net issue 2727): ChannelDiagnosis,
+  SubmoduleDiagnosisState and ARDiagnosisState are set when one of the
+  submodule's active diagnoses is a fault (Maintenance 0, or qualified with
+  a fault qualifier bit), and none of them otherwise. Before, every
+  diagnosis alarm set ChannelDiagnosis, and every appearing one all three,
+  so a maintenance-required or -demanded diagnosis advertised a fault.
+- **`device.RemoveDiagnosis` reports every diagnosis it removes**: one
+  alarm each ("disappears, others remain"), the last "disappears" in a
+  DiagnosisDisappears alarm when none remains. Before, it removed every
+  diagnosis of the channel and error type but reported only one.
+- **Qualified diagnoses** are sent and served as QualifiedChannelDiagnosis
+  (USI 0x8003); the `Qualifier` was dropped before.
+- README: the p-net column describes v2.0.0 (MRP client, S2, Device
+  Access, dynamic reconfiguration, PrmBegin/PrmEnd, Combined Object
+  Container, PA profile, multicast pruning), from its release notes and
+  source; the interop evidence stays against p-net `ea5e554`, which
+  profinet-interop v0.15.0 builds.
+
+### Breaking
+
+- Behaviour only: a repeated identical `AddDiagnosis` returns nil and
+  sends nothing; a changed one sends two alarms; the AlarmSpecifier of
+  maintenance diagnosis alarms has no fault bits; a controller's LLDP
+  neighbor table keeps the device one second longer.
+
+### Evidence
+
+Regression tests that fail before the change: `TestDeviceLLDPTTL` (TTL 20,
+want 21), `TestDiagnosisIdempotent` (a second alarm for an identical
+diagnosis), `TestDiagnosisAlarmSpecifier` (specifier 0xA800 for a
+maintenance-required diagnosis), `TestDiagnosisWithoutAR` (32 concurrent
+identical adds recorded 32 entries), `TestDiagnosisRecordQualified` (the
+qualifier dropped); `TestDiagnosisIdempotent` also checks one alarm per
+removed diagnosis. The behaviour follows p-net v2.0.0's source; it is not
+tested against p-net v2.0.0, PI's test bundle or a PLC.
+
+---
+
 ## v0.24.0
 
 **Date:** 2026-11-24

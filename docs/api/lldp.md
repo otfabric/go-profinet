@@ -177,6 +177,10 @@ type AgentOptions struct {
 	Interval time.Duration
 	// TTLFactor × Interval is the TTL announced; zero means 4.
 	TTLFactor int
+	// TTL, when positive, is the TTL announced instead of TTLFactor ×
+	// Interval, in whole seconds (at least 1, at most 65535). A PROFINET
+	// IO device announces 21 s with the 5 s interval (package device).
+	TTL time.Duration
 	// Local returns the information to announce; it is called for every
 	// frame. nil makes the agent receive only.
 	Local func() LocalInfo

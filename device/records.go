@@ -440,12 +440,7 @@ func (d *Device) diagnosis(q pnio.ReadReq) []byte {
 	dds := make([]pnio.DiagnosisData, 0, len(keys))
 	for _, k := range keys {
 		items := append([]pnio.DiagnosisItem(nil), d.diags[k]...)
-		usi := pnio.USIChannelDiagnosis
-		for _, it := range items {
-			if it.ExtErrorType != 0 || it.ExtAddValue != 0 {
-				usi = pnio.USIExtChannelDiagnosis
-			}
-		}
+		usi := diagUSI(items...)
 		dds = append(dds, pnio.DiagnosisData{API: d.apiOf(k.slot, k.subslot), Slot: k.slot, Subslot: k.subslot, ChannelNumber: pnio.ChannelNumberSubmodule, ChannelProperties: pnio.ChanSpecAppears, USI: usi, Items: items})
 	}
 	d.mu.Unlock()

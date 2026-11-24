@@ -233,6 +233,20 @@ them), for a module or DAP with more than 1440 submodules and for a model
 plugged module; and `ErrResourceExhausted` for parameter records of more
 than 16 MiB in the plugged submodules.
 
+## Device diagnoses
+
+`device.AddDiagnosis` and `RemoveDiagnosis` change the recorded state
+first and report it second; an error describes the report, not the state:
+
+| Call | Returns |
+|---|---|
+| `AddDiagnosis`, unknown slot or subslot | `ErrNotFound`; nothing recorded |
+| `AddDiagnosis`, new or changed diagnosis, no AR in Data owns the submodule | `ErrInvalidState`; the diagnosis is recorded |
+| `AddDiagnosis`, diagnosis identical to an active one | nil, with or without an AR; nothing sent (since v0.25.0) |
+| `AddDiagnosis`, changed diagnosis whose first alarm (the new one appears) fails | that error; the second alarm (the old one disappears) is not sent, the new value is recorded |
+| `RemoveDiagnosis`, no diagnosis of that channel and error type | `ErrNotFound` |
+| either, alarm not acknowledged | `ErrTimeout`, `ErrAborted` or a `*pnio.StatusError` as for `SendAlarm` |
+
 ## Lifecycle errors
 
 A netstack socket that is closed, by its `Close`, by `Stack.Close` or

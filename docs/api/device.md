@@ -306,7 +306,15 @@ ARs returns the application relationships.
 func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pnio.DiagnosisItem) error
 ```
 
-AddDiagnosis records a diagnosis of a submodule and reports it to the controllers with a diagnosis alarm. The item's ChannelProperties specifier is set to "appears". The diagnosis is recorded even when no AR can receive the alarm (it is then reported as an error matching profinet.ErrInvalidState).
+AddDiagnosis records a diagnosis of a submodule and reports it to the controller of the AR that owns the submodule with a diagnosis alarm. The item's ChannelProperties specifier is set to "appears".
+
+The diagnoses of a submodule are a set. A diagnosis is identified by its channel number, channel group (ChannelProperties.Accumulative), direction, error type and extended error type:
+
+  - A diagnosis that is not active is recorded and reported.
+  - A diagnosis identical to an active one, also in its other ChannelProperties bits, ExtAddValue and Qualifier, changes nothing: no alarm is sent and AddDiagnosis returns nil, with or without an AR.
+  - A diagnosis that differs from an active one with its identity only in those other fields (for example its maintenance severity) replaces it: one alarm reports the new one appearing, a second the old one disappearing while others remain.
+
+The diagnosis is recorded even when no AR can receive the alarm (it is then reported as an error matching profinet.ErrInvalidState); a controller that connects later reads it in the ModuleDiffBlock and the diagnosis records.
 
 #### func (Device) Close
 
@@ -378,7 +386,7 @@ RPCAddr returns the address of the RPC server's socket.
 func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, errorType uint16) error
 ```
 
-RemoveDiagnosis removes the diagnoses of a submodule channel with the error type and reports their disappearance. It returns an error matching profinet.ErrNotFound when there is none.
+RemoveDiagnosis removes the diagnoses of a submodule channel with the error type (every direction and extended error type) and reports the disappearance of each with an alarm: "disappears, others remain" while another diagnosis of the submodule remains, and for the last one, when none remains, "disappears" in a DiagnosisDisappears alarm. It returns an error matching profinet.ErrNotFound when there is none, and the first alarm error otherwise (the later alarms are then not sent; the diagnoses are removed either way).
 
 #### func (Device) SendAlarm
 

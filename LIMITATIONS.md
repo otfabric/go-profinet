@@ -370,6 +370,18 @@ data (PACKET_AUXDATA).
   boundaries and MRP role they set apply again only after the next
   connect. The semantics of a temporary Set follow p-net's reading of the
   CMINA state table, not the (non-public) text itself.
+- Diagnoses (`AddDiagnosis`): the identity of a diagnosis, the update of
+  a changed one and the AlarmSpecifier summary follow p-net v2.0.0
+  (`pf_diag.c`, `pf_alarm.c`), not the standard's text. Not established:
+  whether ARDiagnosisState covers the other submodules of the AR (it
+  summarises the alarm's submodule, as p-net does). Not implemented: the
+  MaintenanceItem (USI 0x8100) p-net puts before a maintenance alarm's
+  diagnosis item, manufacturer-specific diagnoses (USI below 0x8000), and
+  the PortDataChangeNotification alarm type p-net uses for remote mismatch
+  diagnoses (go-profinet sends a Diagnosis alarm). See
+  [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
+- The LLDP TTL of 21 s is p-net v2.0.0's (its release notes cite the
+  PROFINET test specification, which go-profinet has not read).
 
 ## Verification
 

@@ -14,7 +14,49 @@ err = dev.RemoveDiagnosis(ctx, 1, 1, 3, pnio.ChannelErrLineBreak) // "disappears
 ```
 
 `AddDiagnosis` records the diagnosis even when no AR can receive the alarm
-(it then returns an error matching `profinet.ErrInvalidState`). A controller
+(it then returns an error matching `profinet.ErrInvalidState`).
+
+The active diagnoses of a submodule are a set (since v0.25.0; before,
+every call added an entry and an alarm). A diagnosis is identified by its
+channel number, channel group (Accumulative), direction, error type and
+extended error type, as p-net v2.0.0 identifies it (`pf_diag_find_entry`):
+
+| `AddDiagnosis` of a diagnosis that is | State | Alarms | Returns |
+|---|---|---|---|
+| not active | added | one: appears | nil, or `ErrInvalidState` without an AR |
+| identical to an active one (also its other ChannelProperties bits, `ExtAddValue`, `Qualifier`) | unchanged | none | nil, with or without an AR |
+| active with other values (for example another maintenance severity) | replaced | two: the new one appears, the old one disappears with others remaining | nil, or `ErrInvalidState` without an AR |
+
+The check and the update are one step under the device's lock, so
+concurrent identical calls record one diagnosis and send one alarm; no
+lock is held while an alarm waits for its acknowledgement.
+
+The AlarmSpecifier of a diagnosis alarm summarises the submodule's active
+diagnoses after the change: ChannelDiagnosis, SubmoduleDiagnosisState and
+ARDiagnosisState are set when one of them is a fault, none of them when
+only maintenance diagnoses (or none) remain. A fault is a diagnosis with
+Maintenance 0, or `ChanMaintQualified` with a bit of 0xF8000000 in its
+`Qualifier`. This is p-net v2.0.0's summary (`pf_alarm_get_diag_summary`),
+which fixed its issue 2727; before v0.25.0 go-profinet set
+ChannelDiagnosis on every diagnosis alarm. Open points, not established
+from a specification:
+
+- ARDiagnosisState summarises the alarm's submodule only, as in p-net; the
+  standard may mean every submodule of the AR.
+- p-net puts a MaintenanceItem (USI 0x8100) before the diagnosis item of a
+  maintenance alarm; go-profinet sends the diagnosis item alone.
+
+`RemoveDiagnosis(ctx, slot, subslot, channel, errorType)` removes every
+diagnosis of the channel with the error type (all directions and extended
+error types) and sends one alarm for each: "disappears, others remain"
+while another diagnosis remains, and "disappears" in a DiagnosisDisappears
+alarm for the last one.
+
+A diagnosis with a `Qualifier` or the qualified severity is sent and served
+in the QualifiedChannelDiagnosis format (USI 0x8003; before v0.25.0 the
+qualifier was dropped).
+
+A controller
 reads the diagnosis with `Device.ReadDiagnosis` (index 0xF80C of the device)
 or `RecordClient.ReadDiagnosis` for one submodule (0x800C), and receives the
 alarms in `OnAlarm`.

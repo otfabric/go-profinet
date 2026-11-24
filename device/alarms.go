@@ -194,53 +194,118 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 const AlarmAckTimeout = 5 * time.Second
 
 // AddDiagnosis records a diagnosis of a submodule and reports it to the
-// controllers with a diagnosis alarm. The item's ChannelProperties
-// specifier is set to "appears". The diagnosis is recorded even when no
-// AR can receive the alarm (it is then reported as an error matching
-// profinet.ErrInvalidState).
+// controller of the AR that owns the submodule with a diagnosis alarm. The
+// item's ChannelProperties specifier is set to "appears".
+//
+// The diagnoses of a submodule are a set. A diagnosis is identified by
+// its channel number, channel group (ChannelProperties.Accumulative),
+// direction, error type and extended error type:
+//   - A diagnosis that is not active is recorded and reported.
+//   - A diagnosis identical to an active one, also in its other
+//     ChannelProperties bits, ExtAddValue and Qualifier, changes nothing:
+//     no alarm is sent and AddDiagnosis returns nil, with or without an AR.
+//   - A diagnosis that differs from an active one with its identity only
+//     in those other fields (for example its maintenance severity)
+//     replaces it: one alarm reports the new one appearing, a second the
+//     old one disappearing while others remain.
+//
+// The diagnosis is recorded even when no AR can receive the alarm (it is
+// then reported as an error matching profinet.ErrInvalidState); a
+// controller that connects later reads it in the ModuleDiffBlock and the
+// diagnosis records.
 func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pnio.DiagnosisItem) error {
 	if _, ok := d.model.Submodule(slot, subslot); !ok {
 		return fmt.Errorf("device: diagnosis %d/%d: %w", slot, subslot, profinet.ErrNotFound)
 	}
 	item.ChannelProperties = item.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecAppears
+	old, replaced, changed, spec := d.upsertDiagnosis(key{slot, subslot}, item)
+	if !changed {
+		return nil
+	}
+	if err := d.diagAlarm(ctx, pnio.AlarmDiagnosis, slot, subslot, item, spec); err != nil || !replaced {
+		return err
+	}
+	old.ChannelProperties = old.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecOtherRemain
+	return d.diagAlarm(ctx, pnio.AlarmDiagnosis, slot, subslot, old, spec)
+}
+
+// upsertDiagnosis makes item an active diagnosis of the submodule, in one
+// step under d.mu. changed is false when an identical diagnosis is already
+// active; replaced reports that item took the place of old, the active
+// diagnosis with the same identity. spec is the AlarmSpecifier of the
+// submodule's active diagnoses afterwards.
+func (d *Device) upsertDiagnosis(k key, item pnio.DiagnosisItem) (old pnio.DiagnosisItem, replaced, changed bool, spec uint16) {
 	d.mu.Lock()
-	k := key{slot, subslot}
-	d.diags[k] = append(d.diags[k], item)
-	d.mu.Unlock()
-	return d.diagAlarm(ctx, pnio.AlarmDiagnosis, slot, subslot, item, true)
+	defer d.mu.Unlock()
+	items := d.diags[k]
+	for i, it := range items {
+		if !sameDiagnosis(it, item) {
+			continue
+		}
+		if it == item {
+			return it, false, false, diagSpecifier(items)
+		}
+		items[i] = item
+		return it, true, true, diagSpecifier(items)
+	}
+	items = append(items, item)
+	d.diags[k] = items
+	return pnio.DiagnosisItem{}, false, true, diagSpecifier(items)
+}
+
+// diagIdentityProps are the ChannelProperties bits in a diagnosis'
+// identity: the channel group and the direction (pnio.ChanDirInOut has
+// both direction bits set).
+const diagIdentityProps = pnio.ChanAccumulative | pnio.ChanDirInOut
+
+// sameDiagnosis reports whether two diagnoses of a submodule are the same
+// diagnosis: the same channel number, channel group, direction, error
+// type and extended error type. The maintenance severity, the channel
+// type bits, ExtAddValue and Qualifier are its value, which may change.
+// This is the identity of p-net's pf_diag_find_entry (src/device/pf_diag.c,
+// rtlabs-com/p-net v2.0.0), which updates an active diagnosis instead of
+// adding a second one (p-net issue 2729).
+func sameDiagnosis(a, b pnio.DiagnosisItem) bool {
+	return a.ChannelNumber == b.ChannelNumber && a.ErrorType == b.ErrorType && a.ExtErrorType == b.ExtErrorType &&
+		a.ChannelProperties&diagIdentityProps == b.ChannelProperties&diagIdentityProps
 }
 
 // RemoveDiagnosis removes the diagnoses of a submodule channel with the
-// error type and reports their disappearance. It returns an error matching
-// profinet.ErrNotFound when there is none.
+// error type (every direction and extended error type) and reports the
+// disappearance of each with an alarm: "disappears, others remain" while
+// another diagnosis of the submodule remains, and for the last one, when
+// none remains, "disappears" in a DiagnosisDisappears alarm. It returns an
+// error matching profinet.ErrNotFound when there is none, and the first
+// alarm error otherwise (the later alarms are then not sent; the
+// diagnoses are removed either way).
 func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, errorType uint16) error {
 	d.mu.Lock()
 	k := key{slot, subslot}
-	var kept []pnio.DiagnosisItem
-	var removed *pnio.DiagnosisItem
+	var kept, removed []pnio.DiagnosisItem
 	for _, it := range d.diags[k] {
 		if it.ChannelNumber == channel && it.ErrorType == errorType {
-			c := it
-			removed = &c
+			removed = append(removed, it)
 			continue
 		}
 		kept = append(kept, it)
 	}
 	d.diags[k] = kept
+	spec := diagSpecifier(kept)
 	d.mu.Unlock()
-	if removed == nil {
+	if len(removed) == 0 {
 		return fmt.Errorf("device: diagnosis %d/%d channel %d type %d: %w", slot, subslot, channel, errorType, profinet.ErrNotFound)
 	}
-	spec := pnio.ChanSpecDisappears
-	if len(kept) > 0 {
-		spec = pnio.ChanSpecOtherRemain
+	for i, it := range removed {
+		chSpec, t := pnio.ChanSpecOtherRemain, pnio.AlarmDiagnosis
+		if len(kept) == 0 && i == len(removed)-1 {
+			chSpec, t = pnio.ChanSpecDisappears, pnio.AlarmDiagnosisDisappears
+		}
+		it.ChannelProperties = it.ChannelProperties&^pnio.ChanSpecMask | chSpec
+		if err := d.diagAlarm(ctx, t, slot, subslot, it, spec); err != nil {
+			return err
+		}
 	}
-	removed.ChannelProperties = removed.ChannelProperties&^pnio.ChanSpecMask | spec
-	t := pnio.AlarmDiagnosis
-	if len(kept) == 0 {
-		t = pnio.AlarmDiagnosisDisappears
-	}
-	return d.diagAlarm(ctx, t, slot, subslot, *removed, len(kept) > 0)
+	return nil
 }
 
 // Diagnoses returns the recorded diagnoses of a submodule.
@@ -250,15 +315,70 @@ func (d *Device) Diagnoses(slot, subslot uint16) []pnio.DiagnosisItem {
 	return append([]pnio.DiagnosisItem(nil), d.diags[key{slot, subslot}]...)
 }
 
-func (d *Device) diagAlarm(ctx context.Context, t pnio.AlarmType, slot, subslot uint16, item pnio.DiagnosisItem, remaining bool) error {
+// qualifierFault are the bits of a QualifiedChannelQualifier that qualify
+// a diagnosis as a fault: p-net's PF_DIAG_QUALIFIER_MASK_FAULT
+// (src/pf_types.h, rtlabs-com/p-net v2.0.0).
+const qualifierFault uint32 = 0xF8000000
+
+// isFault reports whether an active diagnosis is a fault: its
+// ChannelProperties.Maintenance is "diagnosis" (0), or "qualified" with a
+// fault bit in its qualifier. A maintenance-required or -demanded
+// diagnosis is not a fault.
+func isFault(it pnio.DiagnosisItem) bool {
+	switch it.ChannelProperties & pnio.ChanMaintQualified {
+	case 0:
+		return true
+	case pnio.ChanMaintQualified:
+		return it.Qualifier&qualifierFault != 0
+	default:
+		return false
+	}
+}
+
+// diagSpecifier is the AlarmSpecifier, without the sequence number, of a
+// diagnosis alarm of a submodule whose active diagnoses are items:
+// ChannelDiagnosis, SubmoduleDiagnosisState and ARDiagnosisState are set
+// when one of them is a fault; none is set when only maintenance
+// diagnoses, or none, remain. The alarm goes to the AR that owns the
+// submodule, so the diagnosis is always one of that AR.
+//
+// This is the summary of p-net's pf_alarm_get_diag_summary and
+// pf_alarm_add_diag_item_to_summary (src/common/pf_alarm.c,
+// rtlabs-com/p-net v2.0.0), which fixed p-net issue 2727: the
+// ChannelDiagnosis bit was set for a diagnosis that is not a fault. Like
+// p-net it summarises the alarm's submodule only; whether
+// ARDiagnosisState should also reflect the other submodules of the AR is
+// not established (docs/DIAGNOSTICS.md). The device keeps no
+// manufacturer-specific diagnoses, so ManufacturerSpecificDiagnosis is
+// never set.
+func diagSpecifier(items []pnio.DiagnosisItem) uint16 {
+	for _, it := range items {
+		if isFault(it) {
+			return pnio.AlarmSpecChannelDiag | pnio.AlarmSpecSubmoduleDiag | pnio.AlarmSpecARDiag
+		}
+	}
+	return 0
+}
+
+// diagUSI is the format that carries every field of the items: the
+// qualified channel diagnosis when one has a qualifier or a qualified
+// severity, the extended one when one has an extended error type or
+// value, the channel diagnosis otherwise.
+func diagUSI(items ...pnio.DiagnosisItem) uint16 {
 	usi := pnio.USIChannelDiagnosis
-	if item.ExtErrorType != 0 || item.ExtAddValue != 0 {
-		usi = pnio.USIExtChannelDiagnosis
+	for _, it := range items {
+		switch {
+		case it.Qualifier != 0 || it.ChannelProperties&pnio.ChanMaintQualified == pnio.ChanMaintQualified:
+			return pnio.USIQualifiedChannel
+		case it.ExtErrorType != 0 || it.ExtAddValue != 0:
+			usi = pnio.USIExtChannelDiagnosis
+		}
 	}
-	spec := pnio.AlarmSpecChannelDiag
-	if remaining {
-		spec |= pnio.AlarmSpecSubmoduleDiag | pnio.AlarmSpecARDiag
-	}
+	return usi
+}
+
+func (d *Device) diagAlarm(ctx context.Context, t pnio.AlarmType, slot, subslot uint16, item pnio.DiagnosisItem, spec uint16) error {
+	usi := diagUSI(item)
 	return d.SendAlarm(ctx, Alarm{
 		Type: t, Slot: slot, Subslot: subslot,
 		HasItem: true, USI: usi, Data: pnio.AppendDiagnosisItems(nil, usi, []pnio.DiagnosisItem{item}),
