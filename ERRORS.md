@@ -33,7 +33,7 @@ What the library retries by itself, and what it leaves to the application:
 |-------|-------|---------------|
 | DCP Get and Set | retransmitted with the same transaction ID (default 3 times) | `dcp.ClientOptions.Retries` |
 | DCE/RPC calls | retransmitted every second until the call's deadline (a fragment that is missing is asked for again); a device executes a call at most once and answers a retransmission from its response cache | `rpc.ClientOptions.Retransmit`, `controller.DeviceConfig.RPCTimeout`, the context |
-| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted | `RTATimeoutFactor`, `RTARetries` |
+| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted. A DATA PDU that never reached the wire gives its sequence number back; one whose `Send` was cancelled after it was sent stays pending and is retransmitted before the next one (since v0.25.0) | `RTATimeoutFactor`, `RTARetries` |
 | Controller lifecycle | a failed AR or connection attempt is retried for ever with an exponential backoff and optional jitter; a DCP Hello of the device skips the wait | `ReconnectMin`, `ReconnectMax`, `ReconnectJitter`; `Metrics.OnRetry` |
 | Record calls (`ReadRecord`, …) | not retried: a write must not be repeated behind the application's back | the application |
 
@@ -111,7 +111,9 @@ wrapped or truncated field. Checked when a component is built
 name or MRP domain name above 240 octets, an MRP `TopChangeInterval` or
 `LinkInterval` that is negative or 65.535 s or more, a model too large for
 its 16-bit blocks (`model.Validate`). Checked per call (`ErrInvalidConfig`):
-an RPC body that needs more than 65 536 fragments, an alarm VarPart above
+an RPC body that needs more than 65 536 fragments (and, received, a
+fragment in another byte order than the first: `ErrMalformed`, answered
+with a REJECT), an alarm VarPart above
 65 535 octets, `device.SendAlarm` data that does not fit the notification,
 a netstack `WriteTo` port outside 0..65535 or a datagram above 65 535
 octets, a pcap frame time before 1970 or after 2106. A record the device

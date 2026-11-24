@@ -380,6 +380,12 @@ data (PACKET_AUXDATA).
   the PortDataChangeNotification alarm type p-net uses for remote mismatch
   diagnoses (go-profinet sends a Diagnosis alarm). See
   [docs/DIAGNOSTICS.md](docs/DIAGNOSTICS.md).
+- Port checks and adjustments (PDPortDataCheck, PDPortDataAdjust) and the
+  remote mismatch diagnoses they cause belong to the AR that wrote them:
+  the Connect of an IOCAR resets them for the DAP ports it takes, as
+  p-net v2.0.0's `pf_pdport_reset_ar`; an IOSAR and S2 ARs keep them, and
+  a port another AR holds keeps its state. The standard's text on this is
+  not read.
 - The LLDP TTL of 21 s is p-net v2.0.0's (its release notes cite the
   PROFINET test specification, which go-profinet has not read).
 

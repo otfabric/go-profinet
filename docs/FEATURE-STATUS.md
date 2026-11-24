@@ -252,7 +252,7 @@ text is not available to the project.
 | Alarms | Wireshark; reference stacks | — |
 | Cyclic data | Wireshark; reference stacks | timing of a general-purpose OS ([CYCLIC.md](CYCLIC.md), [BENCHMARKS.md](BENCHMARKS.md)) |
 | Shared device | Wireshark; p-net | shared input not implemented (not public) |
-| Port checks, boundaries | Wireshark; p-net | MAU, link state and line delay checks refused |
+| Port checks, boundaries | Wireshark; p-net (also the reset at an IOCAR's Connect, `pf_pdport_reset_ar`) | MAU, link state and line delay checks refused |
 | Multiport device | IEEE 802.1D behaviour (learning bridge) | software forwarding, not deterministic |
 | MRP client and manager | microchip-ung/mrp, umrp and the Linux bridge (IEC 62439-2 not read) | 200/500 ms profiles only; no interconnection, MRPD, diagnoses |
 | MRA | microchip-ung/mrp and umrp (NAck/Propagate, priorities); Wireshark (option layout) | a role of the device configuration only (PROFINET's MRP_Role has no value for it); sends the OUI 08-00-06 Wireshark decodes, where the open implementations send 00-00-00 (both parse either) |

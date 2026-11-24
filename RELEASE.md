@@ -79,12 +79,35 @@ fault only when a fault diagnosis is active.
   source; the interop evidence stays against p-net `ea5e554`, which
   profinet-interop v0.15.0 builds.
 
+### Fixed
+
+- **Alarm sequence numbers after a failed or cancelled send**
+  (`alarm.Endpoint.Send`): a DATA PDU whose first transmission failed
+  (link down) or whose `Send` was cancelled while it awaited its ACK used
+  up its sequence number; the peer then refused every later alarm as out
+  of sequence, and the next alarm aborted the AR. A PDU that never left
+  gives its number back; a sent, cancelled one stays pending and the next
+  `Send` retransmits it first. Found auditing p-net issue 2701.
+- **Port checks no longer outlive their AR**: an IOCAR's Connect resets
+  the PDPortDataCheck, PDPortDataAdjust and remote mismatch diagnoses of
+  the DAP ports it takes (p-net's `pf_pdport_reset_ar`). Before, a stale
+  check was reported in the next controller's ModuleDiffBlock and a stale
+  NoLLDP boundary kept LLDP off. Found auditing p-net issue 2728 (the
+  inverse defect: p-net reset every port at every Connect).
+- **Fragments in mixed byte order are refused** (`rpc`): a fragment whose
+  DRep byte order differs from the first is `ErrMalformed` (the server
+  answers a REJECT); before, the body was read in the last fragment's
+  order. Audit of p-net issue 2275.
+
 ### Breaking
 
 - Behaviour only: a repeated identical `AddDiagnosis` returns nil and
   sends nothing; a changed one sends two alarms; the AlarmSpecifier of
   maintenance diagnosis alarms has no fault bits; a controller's LLDP
-  neighbor table keeps the device one second longer.
+  neighbor table keeps the device one second longer; a controller that
+  reconnects with a new IOCAR writes its port checks again (they are no
+  longer kept from the previous AR); fragmented RPC calls in mixed byte
+  order are refused.
 
 ### Evidence
 
@@ -94,7 +117,12 @@ diagnosis), `TestDiagnosisAlarmSpecifier` (specifier 0xA800 for a
 maintenance-required diagnosis), `TestDiagnosisWithoutAR` (32 concurrent
 identical adds recorded 32 entries), `TestDiagnosisRecordQualified` (the
 qualifier dropped); `TestDiagnosisIdempotent` also checks one alarm per
-removed diagnosis. The behaviour follows p-net v2.0.0's source; it is not
+removed diagnosis. `TestSendAfterTransmitFailure` and
+`TestSendAfterCancelledSend` (the next alarm timed out),
+`TestPDevResetOnConnect` (a stale mismatch after the Connect) and
+`TestReassemblyMixedDRep` (mixed byte order reassembled) fail before
+their fixes; `TestSendPendingTimeout` checks the pending PDU is dropped
+after its retries. The behaviour follows p-net v2.0.0's source; it is not
 tested against p-net v2.0.0, PI's test bundle or a PLC.
 
 ---

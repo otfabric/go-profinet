@@ -67,6 +67,11 @@ type Endpoint struct {
 	// a DATA PDU awaits its ACK
 	// the sequence number of that DATA PDU
 
+	// pending is a DATA PDU that was transmitted and is not acknowledged:
+	// its Send was cancelled. The next Send retransmits it first, so the
+	// peer, which may have accepted it, and this side agree on the
+	// sequence numbers.
+
 }
 ```
 
@@ -95,6 +100,8 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error
 ```
 
 Send transmits a DATA PDU carrying varPart and waits for its transport acknowledgement, retransmitting it every Timeout up to Retries times. It returns an error matching profinet.ErrTimeout when the peer never acknowledged (the owner then aborts the AR), and one matching profinet.ErrInvalidConfig, before any sequence number is used, for a varPart longer than 65535 octets.
+
+A PDU that never left (its first transmission failed, or ctx ended before it) gives its sequence number back: the error is returned and the next Send uses the number again. A transmission that fails after the PDU was on the wire counts as a lost frame and is retried. When ctx ends while a transmitted PDU awaits its acknowledgement, the PDU stays pending and the next Send retransmits it, with its own Retries, before its own PDU: the peer may have accepted it, and skipping its number would make the peer refuse every later PDU as out of sequence.
 
 #### func (Endpoint) SendErr
 
