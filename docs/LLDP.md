@@ -18,13 +18,17 @@ alias := a.Alias()         // "port-002.switch-1": what DCP Identify by alias ma
 - **Sent**: chassis ID = station name (or the MAC address without one),
   port ID = `port-001.<station>` (the "legacy" form without the station
   with `LocalInfo.Legacy`), TTL, system description, management address,
-  and the PROFINET port status and chassis MAC TLVs. The TTL is
+  and the PROFINET port status and chassis MAC TLVs, and the MRP port
+  status TLV with `LocalInfo.MRP` (a device's ring ports while MRP runs,
+  since v0.25.0). The TTL is
   `TTLFactor` × `Interval` (20 s by default: 4 × 5 s), or `TTL` when set.
   A negative `Interval` only listens; `SendNow` sends at once.
 - **Received**: the IEEE 802.1AB TLVs, the PROFINET TLVs (OUI 00-0E-CF)
-  delay, port status and chassis MAC, and the IEEE 802.3 MAC/PHY TLV are
-  decoded; the others (PROFINET alias, MRP port status, PTCP status, other
-  organizations) are kept as raw TLVs. A neighbor
+  delay, port status, chassis MAC and MRP port status (MRP domain UUID and
+  MRRT state, the layout Wireshark's packet-lldp.c dissects; since
+  v0.25.0), and the IEEE 802.3 MAC/PHY TLV are decoded; the others
+  (PROFINET alias, PTCP status, other organizations, and an MRP port
+  status of another length) are kept as raw TLVs. A neighbor
   expires after its TTL; a TTL of 0 withdraws it at once.
 - The IO-Device runs an agent (`device.Config.DisableLLDP`,
   `LLDPInterval`) that announces a TTL of 21 s with the PROFINET interval

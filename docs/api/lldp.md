@@ -53,6 +53,16 @@ const (
 
 PROFINET TLV subtypes (OUI 00-0E-CF).
 
+```go
+const (
+	MRRTOff        uint16 = 0
+	MRRTConfigured uint16 = 1
+	MRRTUp         uint16 = 2
+)
+```
+
+MRRT\_PortStatus values (Wireshark packet-lldp.c).
+
 ## Variables
 
 ```go
@@ -232,12 +242,13 @@ type Frame struct {
 	// tag and length (empty when none). Siemens devices send ifIndex = the
 	// port's number and the PNO enterprise OID 1.3.6.1.4.1.24686
 	// (testdata/captures, ics-pcaps/*_lldp.pcap*).
-	ManagementIfIndex uint32        `json:"managementIfIndex,omitempty"`
-	ManagementOID     []byte        `json:"managementOid,omitempty"`
-	PortStatus        *PortStatus   `json:"portStatus,omitempty"`
-	ChassisMAC        *ethernet.MAC `json:"chassisMac,omitempty"`
-	Delay             *Delay        `json:"delay,omitempty"`
-	MACPHY            *MACPHY       `json:"macPhy,omitempty"`
+	ManagementIfIndex uint32         `json:"managementIfIndex,omitempty"`
+	ManagementOID     []byte         `json:"managementOid,omitempty"`
+	PortStatus        *PortStatus    `json:"portStatus,omitempty"`
+	ChassisMAC        *ethernet.MAC  `json:"chassisMac,omitempty"`
+	Delay             *Delay         `json:"delay,omitempty"`
+	MRPPortStatus     *MRPPortStatus `json:"mrpPortStatus,omitempty"`
+	MACPHY            *MACPHY        `json:"macPhy,omitempty"`
 	// Other holds the TLVs this package does not decode.
 	Other []TLV `json:"-"`
 }
@@ -293,6 +304,9 @@ type LocalInfo struct {
 	// Legacy sends the port ID without the station name (the LLDP mode
 	// of GSDML versions before 2.3).
 	Legacy bool
+	// MRP, when set, is sent as the MRP port status TLV (an MRP ring
+	// port).
+	MRP *MRPPortStatus
 }
 ```
 
@@ -321,6 +335,17 @@ type MACPHY struct {
 ```
 
 MACPHY is the IEEE 802.3 MAC/PHY configuration/status TLV.
+
+### type MRPPortStatus
+
+```go
+type MRPPortStatus struct {
+	Domain [16]byte `json:"domain"`
+	MRRT   uint16   `json:"mrrt"`
+}
+```
+
+MRPPortStatus is the PROFINET MRP port status TLV (subtype 4): the MRP domain of the port and its MRRT state. The layout (MRP\_DomainUUID, 16 octets, then MRRT\_PortStatus, 2 octets) and the state values are Wireshark's (packet-lldp.c); rt-labs p-net sends the same TLV.
 
 ### type Neighbor
 

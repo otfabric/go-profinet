@@ -32,6 +32,9 @@ type LocalInfo struct {
 	// Legacy sends the port ID without the station name (the LLDP mode
 	// of GSDML versions before 2.3).
 	Legacy bool
+	// MRP, when set, is sent as the MRP port status TLV (an MRP ring
+	// port).
+	MRP *MRPPortStatus
 }
 
 // Build returns the LLDPDU an agent with this information sends from mac,
@@ -50,6 +53,10 @@ func (l LocalInfo) Build(mac ethernet.MAC, ttl uint16) Frame {
 		MACPHY:            &MACPHY{Autoneg: 0x03, PMDCapability: 0x6C00, MAUType: 16},
 		ManagementAddr:    l.IP,
 		ManagementIfIndex: 1,
+	}
+	if l.MRP != nil {
+		m := *l.MRP
+		f.MRPPortStatus = &m
 	}
 	if l.StationName == "" {
 		f.ChassisSubtype, f.ChassisID = ChassisSubtypeMAC, append([]byte(nil), mac[:]...)

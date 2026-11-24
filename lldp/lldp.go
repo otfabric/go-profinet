@@ -74,6 +74,22 @@ type PortStatus struct {
 	RTClass3 uint16 `json:"rtClass3"`
 }
 
+// MRPPortStatus is the PROFINET MRP port status TLV (subtype 4): the MRP
+// domain of the port and its MRRT state. The layout (MRP_DomainUUID, 16
+// octets, then MRRT_PortStatus, 2 octets) and the state values are
+// Wireshark's (packet-lldp.c); rt-labs p-net sends the same TLV.
+type MRPPortStatus struct {
+	Domain [16]byte `json:"domain"`
+	MRRT   uint16   `json:"mrrt"`
+}
+
+// MRRT_PortStatus values (Wireshark packet-lldp.c).
+const (
+	MRRTOff        uint16 = 0
+	MRRTConfigured uint16 = 1
+	MRRTUp         uint16 = 2
+)
+
 // Delay is the PROFINET measured delay TLV, in nanoseconds.
 type Delay struct {
 	RxLocal, RxRemote, TxLocal, TxRemote, Cable uint32
@@ -108,12 +124,13 @@ type Frame struct {
 	// tag and length (empty when none). Siemens devices send ifIndex = the
 	// port's number and the PNO enterprise OID 1.3.6.1.4.1.24686
 	// (testdata/captures, ics-pcaps/*_lldp.pcap*).
-	ManagementIfIndex uint32        `json:"managementIfIndex,omitempty"`
-	ManagementOID     []byte        `json:"managementOid,omitempty"`
-	PortStatus        *PortStatus   `json:"portStatus,omitempty"`
-	ChassisMAC        *ethernet.MAC `json:"chassisMac,omitempty"`
-	Delay             *Delay        `json:"delay,omitempty"`
-	MACPHY            *MACPHY       `json:"macPhy,omitempty"`
+	ManagementIfIndex uint32         `json:"managementIfIndex,omitempty"`
+	ManagementOID     []byte         `json:"managementOid,omitempty"`
+	PortStatus        *PortStatus    `json:"portStatus,omitempty"`
+	ChassisMAC        *ethernet.MAC  `json:"chassisMac,omitempty"`
+	Delay             *Delay         `json:"delay,omitempty"`
+	MRPPortStatus     *MRPPortStatus `json:"mrpPortStatus,omitempty"`
+	MACPHY            *MACPHY        `json:"macPhy,omitempty"`
 	// Other holds the TLVs this package does not decode.
 	Other []TLV `json:"-"`
 }
@@ -179,6 +196,10 @@ func (f *Frame) AppendTo(dst []byte) ([]byte, error) {
 			v = binary.BigEndian.AppendUint32(v, x)
 		}
 		dst = appendTLV(dst, TypeOrgSpecific, org(OUIProfinet, PNSubtypeDelay, v))
+	}
+	if f.MRPPortStatus != nil {
+		v := binary.BigEndian.AppendUint16(append([]byte(nil), f.MRPPortStatus.Domain[:]...), f.MRPPortStatus.MRRT)
+		dst = appendTLV(dst, TypeOrgSpecific, org(OUIProfinet, PNSubtypeMRPPortStatus, v))
 	}
 	if f.MACPHY != nil {
 		v := []byte{f.MACPHY.Autoneg}
@@ -311,6 +332,8 @@ func (f *Frame) decodeOrg(v []byte) bool {
 			TxLocal: binary.BigEndian.Uint32(d[8:]), TxRemote: binary.BigEndian.Uint32(d[12:]),
 			Cable: binary.BigEndian.Uint32(d[16:]),
 		}
+	case oui == OUIProfinet && sub == PNSubtypeMRPPortStatus && len(d) == 18:
+		f.MRPPortStatus = &MRPPortStatus{Domain: [16]byte(d[:16]), MRRT: binary.BigEndian.Uint16(d[16:])}
 	case oui == OUIIEEE8023 && sub == 1 && len(d) >= 5:
 		f.MACPHY = &MACPHY{Autoneg: d[0], PMDCapability: binary.BigEndian.Uint16(d[1:]), MAUType: binary.BigEndian.Uint16(d[3:])}
 	default:

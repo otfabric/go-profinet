@@ -39,6 +39,7 @@ func fullFrame() Frame {
 		PortStatus:        &PortStatus{RTClass2: 1, RTClass3: 2},
 		ChassisMAC:        &cm,
 		Delay:             &Delay{RxLocal: 1, RxRemote: 2, TxLocal: 3, TxRemote: 4, Cable: 5},
+		MRPPortStatus:     &MRPPortStatus{Domain: [16]byte{0xD0, 1, 2, 3}, MRRT: MRRTConfigured},
 		MACPHY:            &MACPHY{Autoneg: 3, PMDCapability: 0x6C00, MAUType: 16},
 		Other: []TLV{
 			{Type: TypeCapabilities, Value: []byte{0, 0x80, 0, 0x80}},
