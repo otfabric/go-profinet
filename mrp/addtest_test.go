@@ -140,3 +140,23 @@ func TestProfileTestTiming(t *testing.T) {
 		})
 	}
 }
+
+// TestTestRoundAlreadyAsked: a LinkChange while a test round is already
+// asked for (testNow full) asks for no second one, and does not block:
+// with MRP_TSTshortT the additional test is still set up, without it the
+// LinkUp's round is the one already asked for.
+func TestTestRoundAlreadyAsked(t *testing.T) {
+	for _, short := range []time.Duration{0, 80 * time.Millisecond} {
+		p := quiet
+		p.TestShortInterval = short
+		e := &Entity{cfg: Config{Role: RoleManager, Profile: p}, testNow: make(chan struct{}, 1)}
+		e.testNow <- struct{}{}
+		e.managerRecv(0, linkFrame(true))
+		if len(e.testNow) != 1 {
+			t.Fatalf("short %v: %d rounds asked for", short, len(e.testNow))
+		}
+		if e.addTest != (short > 0) || e.shortNext != (short > 0) {
+			t.Fatalf("short %v: ADD_TEST %v, short next %v", short, e.addTest, e.shortNext)
+		}
+	}
+}
