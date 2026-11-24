@@ -66,7 +66,8 @@ func TestParameterPlan(t *testing.T) {
 	e := newEnv(t, 43)
 	e.device("fixture", "192.168.0.10", m, nil)
 	ctrl, _ := e.controller("192.168.0.1")
-	cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "fixture", Model: fixtureModel(t, file, dap), Parameters: params})
+	cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "fixture", Model: fixtureModel(t, file, dap), Parameters: params,
+		DataHoldFactor: stallHold, WatchdogFactor: stallHold})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -94,7 +94,8 @@ func TestFixtureDevices(t *testing.T) {
 					params = append(params, controller.Parameter{Slot: p.Slot, Subslot: p.Submodule.Subslot, Index: r.Index, Data: v})
 				}
 			})
-			cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "fixture", Model: fixtureModel(t, c.file, c.dap), Parameters: params})
+			cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "fixture", Model: fixtureModel(t, c.file, c.dap), Parameters: params,
+				DataHoldFactor: stallHold, WatchdogFactor: stallHold})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -123,7 +124,8 @@ func TestFixtureDevices(t *testing.T) {
 		var cds []*controller.Device
 		for i, part := range [][]uint16{{1, 2}, {3, 4}} {
 			ctrl, _ := e.controllerOn(segs[i], []string{"192.168.0.1", "192.168.0.2"}[i])
-			cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "fixture-2p", Model: fixtureModel(t, file, "DAP_2P").WithSlots(part...)})
+			cd, err := ctrl.AddDevice(controller.DeviceConfig{StationName: "fixture-2p", Model: fixtureModel(t, file, "DAP_2P").WithSlots(part...),
+				DataHoldFactor: stallHold, WatchdogFactor: stallHold})
 			if err != nil {
 				t.Fatal(err)
 			}
