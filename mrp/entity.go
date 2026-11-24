@@ -84,6 +84,11 @@ type Profile struct {
 	// Test frames: TSTdefaultT, TSTNRmax.
 	TestInterval time.Duration
 	TestMax      int
+	// TestShortInterval is TSTshortT: after a client's MRP_LinkChange the
+	// manager tests at once and again after this interval, then at
+	// TestInterval (IEC 62439-2:2016, Table 45, ADD_TEST). Zero: no
+	// additional test.
+	TestShortInterval time.Duration
 	// Link change frames: LNKdownT = LNKupT, LNKNRmax.
 	LinkInterval time.Duration
 	LinkRepeat   int
@@ -94,9 +99,11 @@ type Profile struct {
 // OS does not keep; they are not offered.
 var (
 	Profile500 = Profile{Name: "500ms", TopChangeInterval: 20 * time.Millisecond, TopChangeRepeat: 3,
-		TestInterval: 50 * time.Millisecond, TestMax: 5, LinkInterval: 100 * time.Millisecond, LinkRepeat: 4}
+		TestInterval: 50 * time.Millisecond, TestMax: 5, TestShortInterval: 30 * time.Millisecond,
+		LinkInterval: 100 * time.Millisecond, LinkRepeat: 4}
 	Profile200 = Profile{Name: "200ms", TopChangeInterval: 10 * time.Millisecond, TopChangeRepeat: 3,
-		TestInterval: 20 * time.Millisecond, TestMax: 3, LinkInterval: 20 * time.Millisecond, LinkRepeat: 4}
+		TestInterval: 20 * time.Millisecond, TestMax: 3, TestShortInterval: 10 * time.Millisecond,
+		LinkInterval: 20 * time.Millisecond, LinkRepeat: 4}
 )
 
 // Switch is what the entity needs of the switch its ring ports belong to;
@@ -198,6 +205,11 @@ type Entity struct {
 	linkGen uint64
 	// testNow asks the manager's loop for a test round now.
 	testNow chan struct{}
+	// addTest is the standard's ADD_TEST: an additional test after a
+	// LinkChange is under way, so further LinkChanges ask for none until
+	// the test timer expires. shortNext asks the loop to time the next
+	// test TestShortInterval after the one it sends now. Both under mu.
+	addTest, shortNext bool
 
 	testsSent, testsRecv, topChanges, linkChanges, forwarded, malformed atomic.Uint64
 
@@ -243,6 +255,9 @@ func New(cfg Config) (*Entity, error) {
 	}
 	if cfg.Profile.TestInterval < 0 {
 		return nil, fmt.Errorf("mrp: profile %q: test interval %v: %w", cfg.Profile.Name, cfg.Profile.TestInterval, profinet.ErrInvalidConfig)
+	}
+	if cfg.Profile.TestShortInterval < 0 {
+		return nil, fmt.Errorf("mrp: profile %q: short test interval %v: %w", cfg.Profile.Name, cfg.Profile.TestShortInterval, profinet.ErrInvalidConfig)
 	}
 	// The TopologyChange and LinkChange frames carry these intervals as
 	// 16-bit millisecond counts.
@@ -357,16 +372,21 @@ func (e *Entity) linkUp(i int) bool {
 // run follows the links and, for a manager, sends the test frames.
 func (e *Entity) run() {
 	defer e.wg.Done()
-	poll := min(e.cfg.Profile.TestInterval, 20*time.Millisecond)
-	t := time.NewTicker(poll)
+	// The ticker polls the links; the test timer fires at the next test,
+	// so that the test intervals are not rounded up to a polling tick
+	// (with a 10 ms ticker a 20 ms interval came every 30 to 40 ms).
+	t := time.NewTicker(min(e.cfg.Profile.TestInterval, 20*time.Millisecond))
 	defer t.Stop()
 	nextTest := time.Now()
+	test := time.NewTimer(0)
+	defer test.Stop()
 	for {
 		now := false
 		select {
 		case <-e.ctx.Done():
 			return
 		case <-t.C:
+		case <-test.C:
 		case <-e.testNow:
 			now = true
 		}
@@ -381,6 +401,22 @@ func (e *Entity) run() {
 		due := !time.Now().Before(nextTest)
 		if due {
 			nextTest = time.Now().Add(e.cfg.Profile.TestInterval)
+			test.Reset(time.Until(nextTest))
+		}
+		// TestRingReq(MRP_TSTshortT): a test now, the next one after the
+		// short interval. The expiry of that timer, like any, ends the
+		// additional test (ADD_TEST := FALSE).
+		e.mu.Lock()
+		short := e.shortNext
+		e.shortNext = false
+		if due && !short {
+			e.addTest = false
+		}
+		e.mu.Unlock()
+		if short {
+			nextTest = time.Now().Add(e.cfg.Profile.TestShortInterval)
+			test.Reset(time.Until(nextTest))
+			now = true
 		}
 		if now || due {
 			switch e.actingRole() {
@@ -692,14 +728,21 @@ func (e *Entity) managerRecv(port int, f Frame) {
 		}
 	case f.Link != nil:
 		e.linkChanges.Add(1)
+		// With MRP_TSTshortT the additional test decides when to test,
+		// for a LinkUp as for a LinkDown: at once unless ADD_TEST is set
+		// already (additionalTest).
+		short := e.additionalTest()
 		if f.Link.Up {
-			// A client's port came up: the ring may close now. Test it
-			// at once rather than at the next interval; a test that
-			// comes around closes it (a LinkUp alone may be a late one
-			// of a ring that is open again).
-			select {
-			case e.testNow <- struct{}{}:
-			default:
+			// A client's port came up: the ring may close now. Without
+			// MRP_TSTshortT (a profile with no TestShortInterval) test it
+			// at once rather than at the next interval; a test that comes
+			// around closes it (a LinkUp alone may be a late one of a
+			// ring that is open again).
+			if !short {
+				select {
+				case e.testNow <- struct{}{}:
+				default:
+				}
 			}
 			return
 		}
@@ -721,6 +764,32 @@ func (e *Entity) managerRecv(port int, f Frame) {
 		}
 	}
 	_ = port
+}
+
+// additionalTest starts the additional test of a client's LinkChange
+// (IEC 62439-2:2016, Table 45, rows 16 and 33: LinkChangeInd with
+// ADD_TEST false sets it and calls TestRingReq(MRP_TSTshortT); with
+// ADD_TEST set the LinkChange asks for none). The manager's loop sends a
+// test round at once and times the next one TestShortInterval later.
+//
+// It reports whether the profile has MRP_TSTshortT, so that the caller
+// asks for no test of its own.
+func (e *Entity) additionalTest() bool {
+	if e.cfg.Profile.TestShortInterval <= 0 {
+		return false
+	}
+	e.mu.Lock()
+	if e.addTest {
+		e.mu.Unlock()
+		return true
+	}
+	e.addTest, e.shortNext = true, true
+	e.mu.Unlock()
+	select {
+	case e.testNow <- struct{}{}:
+	default:
+	}
+	return true
 }
 
 // sa returns the MRP_SA of a frame, the station that sent it.

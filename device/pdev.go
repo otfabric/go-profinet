@@ -4,6 +4,7 @@ package device
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/otfabric/go-profinet/ethernet"
@@ -25,6 +26,11 @@ const (
 	extPeerStationMismatch uint16 = 0x8000
 	extPeerPortMismatch    uint16 = 0x8001
 	extNoPeer              uint16 = 0x8005
+	// extPeerMRPDomainMismatch is "Peer MRP domain mismatch" (Wireshark
+	// packet-dcerpc-pn-io.c, pn_io_ext_channel_error_type0x8001; p-net
+	// PF_WRT_ERROR_PEER_MRP_DOMAIN_MISMATCH), from the MRP_DomainUUID
+	// check of PDInterfaceMrpDataCheck.
+	extPeerMRPDomainMismatch uint16 = 0x8004
 )
 
 // pdevChannel is the channel of the port diagnoses: the whole submodule.
@@ -333,6 +339,97 @@ func (d *Device) expectedPDev() []byte {
 	return b
 }
 
+// resetPDev forgets the port checks and adjustments of the ports a
+// connecting IOCAR takes (a matching port submodule of the DAP that no
+// other controller's AR holds), and the remote mismatch diagnoses they
+// caused, without alarms: the AR owns the ports now and is not in Data,
+// and its controller writes its own checks during parameterization. A
+// port another AR holds keeps its state. This is p-net's
+// pf_pdport_reset_ar (src/device/pf_pdport.c, rtlabs-com/p-net v2.0.0),
+// which resets only the ports of the connecting AR; resetting every port
+// at every Connect was its issue 2728. An IOSAR and the ARs of a system
+// redundancy set do not reset (p-net skips a backup AR; go-profinet's S2
+// is an experiment and keeps the state).
+//
+// The reset happens while the Connect builds the AR, before its
+// ModuleDiffBlock. A Connect refused after it calls the returned undo:
+// the AR never existed, so the ports get back what it removed; a port
+// written meanwhile keeps the write. p-net's source does not show what a
+// refused Connect leaves; giving back what it took is go-profinet's rule
+// for every resource of a refused Connect.
+func (d *Device) resetPDev(a *ar, locked map[key]bool) (undo func()) {
+	var ports []uint16
+	for k := range a.match {
+		if k.slot == 0 && !locked[k] && d.portBySubslot(k.subslot) != nil {
+			ports = append(ports, k.subslot)
+		}
+	}
+	type saved struct {
+		check  *pnio.PDPortDataCheck
+		adjust *pnio.PDPortDataAdjust
+		active []uint16
+		diags  []pnio.DiagnosisItem
+	}
+	prev := map[uint16]saved{}
+	d.mu.Lock()
+	for _, sub := range ports {
+		k := key{0, sub}
+		s := saved{check: d.pd.checks[sub], adjust: d.pd.adjusts[sub], active: d.pd.active[sub]}
+		for _, it := range d.diags[k] {
+			if isPDevMismatch(it) {
+				s.diags = append(s.diags, it)
+			}
+		}
+		if s.check != nil || s.adjust != nil || len(s.active) > 0 || len(s.diags) > 0 {
+			prev[sub] = s
+		}
+		delete(d.pd.checks, sub)
+		delete(d.pd.adjusts, sub)
+		delete(d.pd.active, sub)
+		d.diags[k] = slices.DeleteFunc(d.diags[k], isPDevMismatch)
+	}
+	d.mu.Unlock()
+	if len(prev) == 0 {
+		return func() {}
+	}
+	d.log.Debugf("device: AR %s: port checks and adjustments of %#x reset", a.uuid, ports)
+	d.applyAdjust()
+	d.pokePDev()
+	return func() {
+		d.mu.Lock()
+		for sub, s := range prev {
+			if d.pd.checks[sub] != nil || d.pd.adjusts[sub] != nil {
+				continue // written since the reset: the write stands
+			}
+			if s.check != nil {
+				d.pd.checks[sub] = s.check
+			}
+			if s.adjust != nil {
+				d.pd.adjusts[sub] = s.adjust
+			}
+			if len(s.active) > 0 {
+				d.pd.active[sub] = s.active
+			}
+			k := key{0, sub}
+			for _, it := range s.diags {
+				if !slices.Contains(d.diags[k], it) {
+					d.diags[k] = append(d.diags[k], it)
+				}
+			}
+		}
+		d.mu.Unlock()
+		d.log.Debugf("device: AR %s: Connect refused, port checks and adjustments of %#x restored", a.uuid, ports)
+		d.applyAdjust()
+		d.pokePDev()
+	}
+}
+
+// isPDevMismatch reports whether it is a remote mismatch diagnosis of
+// the port checks.
+func isPDevMismatch(it pnio.DiagnosisItem) bool {
+	return it.ChannelNumber == pdevChannel && it.ErrorType == pnio.ChannelErrRemoteMismat
+}
+
 // pokePDev asks the evaluator to check the ports again.
 func (d *Device) pokePDev() {
 	select {
@@ -396,6 +493,11 @@ func (d *Device) evalPort(subslot uint16) {
 		peer, found = p.lldpA.Latest()
 	}
 	want := peerMismatch(c, peer, found)
+	d.mu.Lock()
+	if d.mrpDomainMismatch(subslot, peer, found) {
+		want = append(want, extPeerMRPDomainMismatch)
+	}
+	d.mu.Unlock()
 	if equalTypes(want, active) {
 		return
 	}
@@ -416,7 +518,7 @@ func (d *Device) evalPort(subslot uint16) {
 	d.pd.active[subslot] = want
 	d.mu.Unlock()
 	if len(want) > 0 {
-		d.log.Infof("device: port %#x: remote mismatch %#x (expected %+v)", subslot, want, c.Peers)
+		d.log.Infof("device: port %#x: remote mismatch %#x", subslot, want)
 	}
 }
 

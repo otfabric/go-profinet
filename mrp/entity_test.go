@@ -324,6 +324,8 @@ func TestEntityConfig(t *testing.T) {
 		// not wrap.
 		"long topology change interval": {Role: RoleManager, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, Switch: br, MAC: mac,
 			Profile: Profile{Name: "x", TopChangeInterval: 70 * time.Second, TopChangeRepeat: 1, TestInterval: time.Millisecond, TestMax: 1, LinkInterval: time.Millisecond, LinkRepeat: 1}},
+		"negative short test interval": {Role: RoleManager, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, Switch: br, MAC: mac,
+			Profile: Profile{Name: "x", TopChangeInterval: time.Millisecond, TopChangeRepeat: 1, TestInterval: time.Millisecond, TestMax: 1, LinkInterval: time.Millisecond, LinkRepeat: 1, TestShortInterval: -time.Millisecond}},
 		"negative link interval": {Role: RoleClient, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, Switch: br, MAC: mac,
 			Profile: Profile{Name: "x", TopChangeInterval: time.Millisecond, TopChangeRepeat: 1, TestInterval: time.Millisecond, TestMax: 1, LinkInterval: -time.Millisecond, LinkRepeat: 1}},
 	} {

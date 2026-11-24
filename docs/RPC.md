@@ -20,7 +20,9 @@ r, err := cli.Do(ctx, addr, rpc.Call{Object: obj, Iface: pnio.DeviceInterface, I
   same activity and sequence number, until the call's deadline.
 - Requests and responses larger than a packet are **fragmented** (1384
   octets of body per fragment, at most 256 fragments, `MaxMessage` 64 KiB) and
-  reassembled; FACKs, WORKING, NOCALL and REJECT are handled.
+  reassembled; FACKs, WORKING, NOCALL and REJECT are handled. The
+  fragments of one message must share the first one's byte order (DRep);
+  one in another order is refused as malformed.
 - **Idempotent** calls are not acknowledged with an ACK packet (p-net does
   not process ACKs); non-idempotent ones are.
 

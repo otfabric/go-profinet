@@ -32,6 +32,9 @@ type LocalInfo struct {
 	// Legacy sends the port ID without the station name (the LLDP mode
 	// of GSDML versions before 2.3).
 	Legacy bool
+	// MRP, when set, is sent as the MRP port status TLV (an MRP ring
+	// port).
+	MRP *MRPPortStatus
 }
 
 // Build returns the LLDPDU an agent with this information sends from mac,
@@ -50,6 +53,10 @@ func (l LocalInfo) Build(mac ethernet.MAC, ttl uint16) Frame {
 		MACPHY:            &MACPHY{Autoneg: 0x03, PMDCapability: 0x6C00, MAUType: 16},
 		ManagementAddr:    l.IP,
 		ManagementIfIndex: 1,
+	}
+	if l.MRP != nil {
+		m := *l.MRP
+		f.MRPPortStatus = &m
 	}
 	if l.StationName == "" {
 		f.ChassisSubtype, f.ChassisID = ChassisSubtypeMAC, append([]byte(nil), mac[:]...)
@@ -106,6 +113,10 @@ type AgentOptions struct {
 	Interval time.Duration
 	// TTLFactor × Interval is the TTL announced; zero means 4.
 	TTLFactor int
+	// TTL, when positive, is the TTL announced instead of TTLFactor ×
+	// Interval, in whole seconds (at least 1, at most 65535). A PROFINET
+	// IO device announces 21 s with the 5 s interval (package device).
+	TTL time.Duration
 	// Local returns the information to announce; it is called for every
 	// frame. nil makes the agent receive only.
 	Local func() LocalInfo
@@ -274,7 +285,7 @@ func (a *Agent) SendNow(ctx context.Context) error {
 	if a.opts.Local == nil || a.silent.Load() {
 		return nil
 	}
-	f := a.opts.Local().Build(a.mux.HardwareAddr(), announcedTTL(a.opts.Interval, a.opts.TTLFactor))
+	f := a.opts.Local().Build(a.mux.HardwareAddr(), a.ttl())
 	h := ethernet.Frame{Dst: ethernet.LLDPMulticast, Src: a.mux.HardwareAddr(), EtherType: ethernet.EtherTypeLLDP}
 	b := h.AppendHeader(make([]byte, 0, 256))
 	b, err := f.AppendTo(b)
@@ -422,6 +433,14 @@ func (a *Agent) Alias() string {
 		return ""
 	}
 	return ns[0].Alias()
+}
+
+// ttl is the TTL of the frames the agent sends.
+func (a *Agent) ttl() uint16 {
+	if a.opts.TTL > 0 {
+		return announcedTTL(a.opts.TTL, 1)
+	}
+	return announcedTTL(a.opts.Interval, a.opts.TTLFactor)
 }
 
 // announcedTTL is the TTL of the frames sent: factor × interval in whole

@@ -71,6 +71,13 @@ func (d *Device) alarmData(a *ar, b []byte) {
 // profinet.ErrTimeout when an acknowledgement did not arrive and a
 // *pnio.StatusError when the controller acknowledged with an error.
 func (d *Device) SendAlarm(ctx context.Context, al Alarm) error {
+	// The alarm goes to the AR that owns the submodule (several IO
+	// controllers may share the device), the primary of an AR set.
+	return d.alarmTo(ctx, d.alarmOwner(key{al.Slot, al.Subslot}), al)
+}
+
+// alarmTo sends an alarm to the AR a, when it is in the Data state.
+func (d *Device) alarmTo(ctx context.Context, a *ar, al Alarm) error {
 	m, ok := d.model.Module(al.Slot)
 	if !ok {
 		return fmt.Errorf("device: alarm: slot %d: %w", al.Slot, profinet.ErrNotFound)
@@ -79,32 +86,13 @@ func (d *Device) SendAlarm(ctx context.Context, al Alarm) error {
 	if !ok {
 		return fmt.Errorf("device: alarm: subslot %d/%d: %w", al.Slot, al.Subslot, profinet.ErrNotFound)
 	}
-	// The alarm goes to the AR that owns the submodule (several IO
-	// controllers may share the device).
 	// An AR owns its submodules from its Connect on, but its alarm
 	// endpoints are only set up later: the state, read under the AR's lock,
 	// orders the read of the endpoint after its write.
-	var targets []*ar
-	a := d.ownerOf(al.Slot, al.Subslot)
-	if a != nil && a.sr != nil {
-		// Of an AR set, the primary takes the alarms.
-		a = d.srPrimaryOf(a)
-	}
-	if a != nil && a.currentState() == ARStateData && a.alarmLow != nil {
-		targets = append(targets, a)
-	}
-	var sent int
-	var errs []error
-	for _, a := range targets {
-		sent++
-		if err := d.sendAlarm(ctx, a, al, m.IdentNumber, sm.IdentNumber); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if sent == 0 {
+	if a == nil || a.currentState() != ARStateData || a.alarmLow == nil {
 		return fmt.Errorf("device: alarm: %w: no AR in the Data state", profinet.ErrInvalidState)
 	}
-	return errors.Join(errs...)
+	return d.sendAlarm(ctx, a, al, m.IdentNumber, sm.IdentNumber)
 }
 
 func (d *Device) sendAlarm(ctx context.Context, a *ar, al Alarm, modIdent, subIdent uint32) error {
@@ -114,11 +102,39 @@ func (d *Device) sendAlarm(ctx context.Context, a *ar, al Alarm, modIdent, subId
 
 // sendAlarmSeq sends an alarm and waits for its acknowledgement; it
 // returns the alarm's sequence number.
+//
+// One alarm of each priority is outstanding at a time, from its
+// transmission to its AlarmAck, as p-net's alarm machine sends only from
+// ALPMI W_ALARM (pf_alarm.c). The transport acknowledgement does not end
+// an alarm; its AlarmAck does, or the end of the AR, or the device's
+// AlarmAck timer (AlarmAckTimeout at least) running out, after which the
+// device takes the alarm as lost. A caller that stops waiting earlier
+// (ctx ends) does not end it: the alarm stays outstanding until one of
+// those, and the next alarm of the priority waits for that within its
+// own ctx. What a controller does with an alarm sent after the device
+// gave up on the previous AlarmAck is not established.
 func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, subIdent uint32) (uint16, error) {
 	prio := 0
 	if al.High {
 		prio = 1
 	}
+	a.mu.Lock()
+	if a.alarmSem[prio] == nil {
+		a.alarmSem[prio] = make(chan struct{}, 1)
+	}
+	sem := a.alarmSem[prio]
+	a.mu.Unlock()
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+	outstanding := false
+	defer func() {
+		if !outstanding {
+			<-sem
+		}
+	}()
 	a.mu.Lock()
 	seq := a.alarmSeq[prio]
 	a.alarmSeq[prio] = (seq + 1) & pnio.AlarmSpecSeqMask
@@ -166,7 +182,11 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 	// controller; it has as long as the transport would retransmit, and at
 	// least AlarmAckTimeout, to arrive.
 	t := time.NewTimer(max(a.alarmAckTimeout, AlarmAckTimeout))
-	defer t.Stop()
+	defer func() {
+		if !outstanding {
+			t.Stop()
+		}
+	}()
 	select {
 	case ack, ok := <-ch:
 		if !ok {
@@ -182,11 +202,33 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 		a.mu.Unlock()
 		return seq, fmt.Errorf("device: alarm to AR %s: %w: no AlarmAck", a.uuid, profinet.ErrTimeout)
 	case <-ctx.Done():
+		outstanding = true
+		go d.awaitAlarmAck(a, k, ch, sem, t)
+		return seq, fmt.Errorf("device: alarm to AR %s: %w: %w", a.uuid, errAlarmOutstanding, ctx.Err())
+	}
+}
+
+// errAlarmOutstanding marks the error of an alarm the controller's
+// transport acknowledged whose AlarmAck the caller stopped waiting for:
+// it was delivered, and stays outstanding (awaitAlarmAck).
+var errAlarmOutstanding = errors.New("delivered, its AlarmAck outstanding")
+
+// awaitAlarmAck keeps an alarm whose caller stopped waiting outstanding
+// until its AlarmAck arrives (alarmData delivers it on ch), the AR ends
+// (ch closed) or the AlarmAck timer t runs out, then frees the
+// priority's sem. Close aborts every AR before it cancels d.ctx, and
+// the abort closes ch: the device closing ends the wait through ch.
+func (d *Device) awaitAlarmAck(a *ar, k ackKey, ch <-chan pnio.AlarmAck, sem <-chan struct{}, t *time.Timer) {
+	defer t.Stop()
+	select {
+	case <-ch:
+	case <-t.C:
 		a.mu.Lock()
 		delete(a.ackWait, k)
 		a.mu.Unlock()
-		return seq, ctx.Err()
+		d.log.Debugf("device: AR %s: no AlarmAck for alarm %d", a.uuid, k.seq)
 	}
+	<-sem
 }
 
 // AlarmAckTimeout is the shortest time the device waits for the
@@ -194,53 +236,261 @@ func (d *Device) sendAlarmSeq(ctx context.Context, a *ar, al Alarm, modIdent, su
 const AlarmAckTimeout = 5 * time.Second
 
 // AddDiagnosis records a diagnosis of a submodule and reports it to the
-// controllers with a diagnosis alarm. The item's ChannelProperties
-// specifier is set to "appears". The diagnosis is recorded even when no
-// AR can receive the alarm (it is then reported as an error matching
-// profinet.ErrInvalidState).
+// controller of the AR that owns the submodule with a diagnosis alarm. The
+// item's ChannelProperties specifier is set to "appears".
+//
+// The diagnoses of a submodule are a set. A diagnosis is identified by
+// its channel number, channel group (ChannelProperties.Accumulative),
+// direction, error type and extended error type:
+//   - A diagnosis that is not active is recorded and reported.
+//   - A diagnosis identical to an active one, also in its other
+//     ChannelProperties bits, ExtAddValue and Qualifier, changes nothing:
+//     no alarm is sent and AddDiagnosis returns nil, with or without an AR.
+//   - A diagnosis that differs from an active one with its identity only
+//     in those other fields (for example its maintenance severity)
+//     replaces it: one alarm reports the new one appearing, a second the
+//     old one disappearing while others remain.
+//
+// The diagnosis is recorded even when no AR can receive the alarm (it is
+// then reported as an error matching profinet.ErrInvalidState); a
+// controller that connects later reads it in the ModuleDiffBlock and the
+// diagnosis records.
+//
+// Diagnosis operations are reported in the order they change the state:
+// AddDiagnosis and RemoveDiagnosis wait, until ctx ends, for the alarms of
+// the previous one (an error of ctx then, nothing recorded). An alarm that
+// is not delivered while the AR lives (no or a refused AlarmAck, ctx
+// ending before the controller's transport acknowledged it, the AR out
+// of the Data state for a while) is owed: the next diagnosis operation of
+// the submodule, an identical AddDiagnosis included, sends it first, so
+// repeating the call retries the report. An alarm the controller received
+// whose AlarmAck ctx did not wait for is not owed: it stays outstanding.
 func (d *Device) AddDiagnosis(ctx context.Context, slot, subslot uint16, item pnio.DiagnosisItem) error {
 	if _, ok := d.model.Submodule(slot, subslot); !ok {
 		return fmt.Errorf("device: diagnosis %d/%d: %w", slot, subslot, profinet.ErrNotFound)
 	}
 	item.ChannelProperties = item.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecAppears
-	d.mu.Lock()
+	if err := d.lockDiag(ctx); err != nil {
+		return err
+	}
+	defer d.unlockDiag()
 	k := key{slot, subslot}
-	d.diags[k] = append(d.diags[k], item)
+	owner := d.alarmOwner(k)
+	d.mu.Lock()
+	old, replaced, changed, spec := d.upsertDiagnosis(k, item)
+	var notes []diagNote
+	if changed {
+		notes = append(notes, diagNote{pnio.AlarmDiagnosis, item, spec})
+	}
+	if replaced {
+		old.ChannelProperties = old.ChannelProperties&^pnio.ChanSpecMask | pnio.ChanSpecOtherRemain
+		notes = append(notes, diagNote{pnio.AlarmDiagnosis, old, spec})
+	}
+	notes = d.takeOwed(k, owner, notes)
 	d.mu.Unlock()
-	return d.diagAlarm(ctx, pnio.AlarmDiagnosis, slot, subslot, item, true)
+	return d.reportDiag(ctx, k, owner, notes)
+}
+
+// diagNote is a diagnosis alarm to send.
+type diagNote struct {
+	t    pnio.AlarmType
+	item pnio.DiagnosisItem
+	spec uint16
+}
+
+// owedDiag are the diagnosis alarms of a submodule a failed report left
+// undelivered, for the AR that owned it then.
+type owedDiag struct {
+	ar    *ar
+	notes []diagNote
+}
+
+// maxOwedDiag bounds the undelivered diagnosis alarms kept per submodule;
+// beyond it the oldest are dropped (and logged).
+const maxOwedDiag = 64
+
+// lockDiag takes diagSem, waiting at most until ctx ends.
+func (d *Device) lockDiag(ctx context.Context) error {
+	select {
+	case d.diagSem <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-d.ctx.Done():
+		return fmt.Errorf("device: diagnosis: %w", profinet.ErrClosed)
+	}
+}
+
+func (d *Device) unlockDiag() { <-d.diagSem }
+
+// alarmOwner is the AR a diagnosis alarm of the submodule goes to (the
+// primary of an AR set), nil when none.
+func (d *Device) alarmOwner(k key) *ar {
+	a := d.ownerOf(k.slot, k.subslot)
+	if a != nil && a.sr != nil {
+		a = d.srPrimaryOf(a)
+	}
+	return a
+}
+
+// takeOwed returns the submodule's undelivered alarms followed by notes,
+// and forgets them. The alarms owed to an AR that no longer owns the
+// submodule (owner, the alarmOwner taken before d.mu) are dropped: a new
+// owner reads the diagnoses in its ModuleDiffBlock and records. d.mu held.
+func (d *Device) takeOwed(k key, owner *ar, notes []diagNote) []diagNote {
+	o, ok := d.diagOwed[k]
+	if !ok {
+		return notes
+	}
+	delete(d.diagOwed, k)
+	if o.ar != owner {
+		return notes
+	}
+	return append(o.notes, notes...)
+}
+
+// reportDiag sends the diagnosis alarms in order to owner, the AR the
+// operation took as the submodule's alarm owner before it changed the
+// state, while holding diagSem, and calls afterDiagChange first. Every
+// alarm of the operation goes to that AR, also when the ownership moves
+// meanwhile: the new owner reads the state in its own ModuleDiffBlock
+// and records. On the first failure the alarms not delivered, that one
+// included, are owed to owner: the next diagnosis operation of the
+// submodule sends them first if owner still owns it, and drops them
+// otherwise. An owner that cannot receive alarms now (ErrInvalidState:
+// not in the Data state, for example after a PrmBegin) is owed them as
+// well; with no owner nothing is owed, since the next AR reads the
+// diagnoses in its ModuleDiffBlock. An alarm that cannot be encoded
+// (ErrInvalidConfig) is not owed. An alarm the controller received, whose
+// AlarmAck the caller stopped waiting for (errAlarmOutstanding), is not
+// owed either: owing it would deliver it twice.
+func (d *Device) reportDiag(ctx context.Context, k key, owner *ar, notes []diagNote) error {
+	if d.afterDiagChange != nil {
+		d.afterDiagChange()
+	}
+	for i, n := range notes {
+		err := d.diagAlarm(ctx, owner, n.t, k.slot, k.subslot, n.item, n.spec)
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, profinet.ErrInvalidConfig) || owner == nil {
+			return err
+		}
+		if d.diagFailed != nil {
+			d.diagFailed()
+		}
+		from := i
+		if errors.Is(err, errAlarmOutstanding) {
+			from = i + 1
+		}
+		rest := append([]diagNote(nil), notes[from:]...)
+		if len(rest) == 0 {
+			return err
+		}
+		if len(rest) > maxOwedDiag {
+			d.log.Infof("device: diagnosis %d/%d: %d undelivered alarms dropped", k.slot, k.subslot, len(rest)-maxOwedDiag)
+			rest = rest[len(rest)-maxOwedDiag:]
+		}
+		d.mu.Lock()
+		d.diagOwed[k] = owedDiag{ar: owner, notes: rest}
+		d.mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// upsertDiagnosis makes item an active diagnosis of the submodule, d.mu
+// held. changed is false when an identical diagnosis is already active;
+// replaced reports that item took the place of old, the active diagnosis
+// with the same identity. spec is the AlarmSpecifier of the submodule's
+// active diagnoses afterwards.
+func (d *Device) upsertDiagnosis(k key, item pnio.DiagnosisItem) (old pnio.DiagnosisItem, replaced, changed bool, spec uint16) {
+	items := d.diags[k]
+	for i, it := range items {
+		if !sameDiagnosis(it, item) {
+			continue
+		}
+		if it == item {
+			return it, false, false, diagSpecifier(items)
+		}
+		items[i] = item
+		return it, true, true, diagSpecifier(items)
+	}
+	items = append(items, item)
+	d.diags[k] = items
+	return pnio.DiagnosisItem{}, false, true, diagSpecifier(items)
+}
+
+// diagIdentityProps are the ChannelProperties bits in a diagnosis'
+// identity: the channel group and the direction (pnio.ChanDirInOut has
+// both direction bits set).
+const diagIdentityProps = pnio.ChanAccumulative | pnio.ChanDirInOut
+
+// sameDiagnosis reports whether two diagnoses of a submodule are the same
+// diagnosis: the same channel number, channel group, direction, error
+// type and extended error type. The maintenance severity, the channel
+// type bits, ExtAddValue and Qualifier are its value, which may change.
+// This is the identity of p-net's pf_diag_find_entry (src/device/pf_diag.c,
+// rtlabs-com/p-net v2.0.0), which updates an active diagnosis instead of
+// adding a second one (p-net issue 2729).
+func sameDiagnosis(a, b pnio.DiagnosisItem) bool {
+	return a.ChannelNumber == b.ChannelNumber && a.ErrorType == b.ErrorType && a.ExtErrorType == b.ExtErrorType &&
+		a.ChannelProperties&diagIdentityProps == b.ChannelProperties&diagIdentityProps
 }
 
 // RemoveDiagnosis removes the diagnoses of a submodule channel with the
-// error type and reports their disappearance. It returns an error matching
-// profinet.ErrNotFound when there is none.
+// error type (every direction and extended error type) and reports the
+// disappearance of each with an alarm: "disappears, others remain" while
+// another diagnosis of the submodule remains, and for the last one, when
+// none remains, "disappears" in a DiagnosisDisappears alarm. It returns an
+// error matching profinet.ErrNotFound when there is none, and the first
+// alarm error otherwise; the diagnoses are removed either way, and the
+// alarms not delivered are owed as for AddDiagnosis.
+//
+// Repeating a RemoveDiagnosis whose alarms were not delivered retries
+// them: when no diagnosis matches but alarms of the submodule are owed
+// to its alarm owner, they are sent and RemoveDiagnosis returns their
+// result (nil once delivered) instead of ErrNotFound. So a caller retries
+// a failed removal until it returns nil or an error matching
+// profinet.ErrNotFound, which then means nothing was left to report.
 func (d *Device) RemoveDiagnosis(ctx context.Context, slot, subslot, channel, errorType uint16) error {
-	d.mu.Lock()
+	if err := d.lockDiag(ctx); err != nil {
+		return err
+	}
+	defer d.unlockDiag()
 	k := key{slot, subslot}
-	var kept []pnio.DiagnosisItem
-	var removed *pnio.DiagnosisItem
+	owner := d.alarmOwner(k)
+	d.mu.Lock()
+	var kept, removed []pnio.DiagnosisItem
 	for _, it := range d.diags[k] {
 		if it.ChannelNumber == channel && it.ErrorType == errorType {
-			c := it
-			removed = &c
+			removed = append(removed, it)
 			continue
 		}
 		kept = append(kept, it)
 	}
-	d.diags[k] = kept
-	d.mu.Unlock()
-	if removed == nil {
+	if len(removed) == 0 {
+		owed := d.takeOwed(k, owner, nil)
+		d.mu.Unlock()
+		if len(owed) > 0 {
+			return d.reportDiag(ctx, k, owner, owed)
+		}
 		return fmt.Errorf("device: diagnosis %d/%d channel %d type %d: %w", slot, subslot, channel, errorType, profinet.ErrNotFound)
 	}
-	spec := pnio.ChanSpecDisappears
-	if len(kept) > 0 {
-		spec = pnio.ChanSpecOtherRemain
+	d.diags[k] = kept
+	spec := diagSpecifier(kept)
+	var notes []diagNote
+	for i, it := range removed {
+		chSpec, t := pnio.ChanSpecOtherRemain, pnio.AlarmDiagnosis
+		if len(kept) == 0 && i == len(removed)-1 {
+			chSpec, t = pnio.ChanSpecDisappears, pnio.AlarmDiagnosisDisappears
+		}
+		it.ChannelProperties = it.ChannelProperties&^pnio.ChanSpecMask | chSpec
+		notes = append(notes, diagNote{t, it, spec})
 	}
-	removed.ChannelProperties = removed.ChannelProperties&^pnio.ChanSpecMask | spec
-	t := pnio.AlarmDiagnosis
-	if len(kept) == 0 {
-		t = pnio.AlarmDiagnosisDisappears
-	}
-	return d.diagAlarm(ctx, t, slot, subslot, *removed, len(kept) > 0)
+	notes = d.takeOwed(k, owner, notes)
+	d.mu.Unlock()
+	return d.reportDiag(ctx, k, owner, notes)
 }
 
 // Diagnoses returns the recorded diagnoses of a submodule.
@@ -250,16 +500,71 @@ func (d *Device) Diagnoses(slot, subslot uint16) []pnio.DiagnosisItem {
 	return append([]pnio.DiagnosisItem(nil), d.diags[key{slot, subslot}]...)
 }
 
-func (d *Device) diagAlarm(ctx context.Context, t pnio.AlarmType, slot, subslot uint16, item pnio.DiagnosisItem, remaining bool) error {
+// qualifierFault are the bits of a QualifiedChannelQualifier that qualify
+// a diagnosis as a fault: p-net's PF_DIAG_QUALIFIER_MASK_FAULT
+// (src/pf_types.h, rtlabs-com/p-net v2.0.0).
+const qualifierFault uint32 = 0xF8000000
+
+// isFault reports whether an active diagnosis is a fault: its
+// ChannelProperties.Maintenance is "diagnosis" (0), or "qualified" with a
+// fault bit in its qualifier. A maintenance-required or -demanded
+// diagnosis is not a fault.
+func isFault(it pnio.DiagnosisItem) bool {
+	switch it.ChannelProperties & pnio.ChanMaintQualified {
+	case 0:
+		return true
+	case pnio.ChanMaintQualified:
+		return it.Qualifier&qualifierFault != 0
+	default:
+		return false
+	}
+}
+
+// diagSpecifier is the AlarmSpecifier, without the sequence number, of a
+// diagnosis alarm of a submodule whose active diagnoses are items:
+// ChannelDiagnosis, SubmoduleDiagnosisState and ARDiagnosisState are set
+// when one of them is a fault; none is set when only maintenance
+// diagnoses, or none, remain. The alarm goes to the AR that owns the
+// submodule, so the diagnosis is always one of that AR.
+//
+// This is the summary of p-net's pf_alarm_get_diag_summary and
+// pf_alarm_add_diag_item_to_summary (src/common/pf_alarm.c,
+// rtlabs-com/p-net v2.0.0), which fixed p-net issue 2727: the
+// ChannelDiagnosis bit was set for a diagnosis that is not a fault. Like
+// p-net it summarises the alarm's submodule only; whether
+// ARDiagnosisState should also reflect the other submodules of the AR is
+// not established (docs/DIAGNOSTICS.md). The device keeps no
+// manufacturer-specific diagnoses, so ManufacturerSpecificDiagnosis is
+// never set.
+func diagSpecifier(items []pnio.DiagnosisItem) uint16 {
+	for _, it := range items {
+		if isFault(it) {
+			return pnio.AlarmSpecChannelDiag | pnio.AlarmSpecSubmoduleDiag | pnio.AlarmSpecARDiag
+		}
+	}
+	return 0
+}
+
+// diagUSI is the format that carries every field of the items: the
+// qualified channel diagnosis when one has a qualifier or a qualified
+// severity, the extended one when one has an extended error type or
+// value, the channel diagnosis otherwise.
+func diagUSI(items ...pnio.DiagnosisItem) uint16 {
 	usi := pnio.USIChannelDiagnosis
-	if item.ExtErrorType != 0 || item.ExtAddValue != 0 {
-		usi = pnio.USIExtChannelDiagnosis
+	for _, it := range items {
+		switch {
+		case it.Qualifier != 0 || it.ChannelProperties&pnio.ChanMaintQualified == pnio.ChanMaintQualified:
+			return pnio.USIQualifiedChannel
+		case it.ExtErrorType != 0 || it.ExtAddValue != 0:
+			usi = pnio.USIExtChannelDiagnosis
+		}
 	}
-	spec := pnio.AlarmSpecChannelDiag
-	if remaining {
-		spec |= pnio.AlarmSpecSubmoduleDiag | pnio.AlarmSpecARDiag
-	}
-	return d.SendAlarm(ctx, Alarm{
+	return usi
+}
+
+func (d *Device) diagAlarm(ctx context.Context, a *ar, t pnio.AlarmType, slot, subslot uint16, item pnio.DiagnosisItem, spec uint16) error {
+	usi := diagUSI(item)
+	return d.alarmTo(ctx, a, Alarm{
 		Type: t, Slot: slot, Subslot: subslot,
 		HasItem: true, USI: usi, Data: pnio.AppendDiagnosisItems(nil, usi, []pnio.DiagnosisItem{item}),
 		Specifier: spec,

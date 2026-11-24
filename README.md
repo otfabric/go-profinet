@@ -100,7 +100,7 @@ is from PI's public pages.
 |---|:---:|:---:|:---:|:---:|:---:|
 | Language | Go | C | Rust | Python | C |
 | Licence | MIT | GPL-3.0-only or commercial | MIT OR Apache-2.0 | GPL-3.0-only or commercial | PNO Community Source Code License (members only; no combination with copyleft) |
-| Status | pre-1.0 (v0.24.0, 2026) | maintained privately; public tree is an evaluation snapshot without ports (v1.0.2, 2025) | young, single author (v0.1.0, 2026) | active, one maintainer (0.6.6, 2026) | maintained by PI |
+| Status | pre-1.0 (v0.24.0, 2026) | maintained privately; public tree is an evaluation snapshot without ports or build files (v2.0.0, 2026) | young, single author (v0.1.0, 2026) | active, one maintainer (0.6.6, 2026) | maintained by PI |
 | IO-Controller | ✅ | — | — | ✅ minimal (cyclic marked experimental) | not documented publicly |
 | IO-Device | ✅ | ✅ | ✅ | — | ✅ |
 | DCP requester | ✅ Identify (all filters), Get, Set, Signal, Reset | — | — | ✅ | — |
@@ -110,28 +110,39 @@ is from PI's public pages.
 | IRT (RT_CLASS_3) | — | — | — | — | ✅ with a hardware driver |
 | Alarms | ✅ both priorities, all types | ✅ | ◐ low priority, diagnosis only | ✅ receive and acknowledge | ✅ |
 | Diagnosis records | ✅ serve and read | ✅ | — (invalid index) | ✅ read | ✅ |
-| I&M | ✅ I&M0–4 | ✅ I&M0–4 (device only) | ◐ I&M0–3 | ✅ read I&M0–15, write I&M1–3 | ✅ |
-| Several ARs on a device | ✅ IOCARs + IOSAR | ◐ 2 IOCARs | — single AR | n/a | ✅ |
+| I&M | ✅ I&M0–4 | ✅ I&M0–4 (device only; the application owns the data from v2.0.0) | ◐ I&M0–3 | ✅ read I&M0–15, write I&M1–3 | ✅ |
+| Several ARs on a device | ✅ IOCARs + IOSAR | ✅ IOCARs + device access ARs (build-time maxima) | — single AR | n/a | ✅ |
 | Shared device (one owner per submodule, hand-over) | ✅ device and controller | ✅ | — | — | ✅ |
-| Device access AR (IOSAR) | ✅ both roles | — | — | ✅ | not documented |
+| Device access AR (IOSAR) | ✅ both roles | ✅ Device Access (v2.0.0) | — | ✅ | not documented |
 | ModuleDiffBlock | ✅ both roles | ✅ (plugs expected modules) | — (mismatch rejects Connect) | ✅ read | ✅ |
 | ReadImplicit, WriteMultiple | ✅ / ✅ | ✅ / ✅ | ✅ / ✅ | ✅ / ✅ | ✅ |
 | PDPortDataReal / PDRealData (topology) | ✅ serve and decode | ✅ | — | ✅ read | ✅ |
 | PDPortDataCheck (CheckPeers) / PDPortDataAdjust (boundaries) | ✅ device and controller | ◐ CheckPeers, PeerToPeerBoundary bit 0 | — | — | ✅ |
-| Re-parameterization in Data (PrmBegin) | ✅ device and controller | — (refuses PrmBegin) | — (refuses PrmBegin) | ✅ controller | ✅ |
-| Media redundancy (MRP) | ✅ client, manager, automatic manager (multiport device) | — | — | n/a | not documented |
+| Re-parameterization in Data (PrmBegin) | ✅ device and controller | ✅ PrmBegin/PrmEnd parameter sequences (v2.0.0) | — (refuses PrmBegin) | ✅ controller | ✅ |
+| Media redundancy (MRP) | ✅ client, manager, automatic manager (multiport device); 200/500 ms profiles; written timers select the 200/500 ms profile; PDInterfaceMrpDataCheck: the domain check only | ◐ client (v2.0.0, build option) | — | n/a | not documented |
+| System redundancy (S2, AR sets) | ◐ experiment, off by default; not tested against a PLC | ✅ AR sets (v2.0.0, build option) | — | — | not documented |
+| Dynamic reconfiguration, plug and pull in Data | — | ✅ (v2.0.0) | — | — | not documented |
+| Combined Object Container | — | ✅ (v2.0.0) | — | — | not documented |
+| PA profile | — | ◐ marked preliminary (v2.0.0) | — | — | not documented |
+| Multicast pruning | — | ◐ filtering only (v2.0.0) | — | — | not documented |
 | SNMP agent | ✅ v1/v2c, MIB-II, LLDP-MIB | ◐ optional, through Net-SNMP | — | n/a | not documented |
 | GSDML | ✅ parse, validate (catalog, and each file's own schema version), generate, model conversion, configurable submodule selection, typed model of V1.0–V2.46 | — static sample GSDML (V2.4); no parser or generator | ◐ generates V2.4 GSDML from its typed device configuration | ◐ parses DAPs, modules and submodules for cyclic IO | — |
 | Platforms | Linux, macOS/BSD, Windows (Npcap) | Linux, RTOS ports (not in the public tree) | Linux | Linux | Linux (Raspberry Pi demo) |
 | Runs without privileges in tests | ✅ virtual Ethernet in process | — | — | — | — |
-| Tested against other stacks in CI | ✅ p-net, pnio-rs, profinet-py, pnio-dcp; umrp and microchip-ung/mrp (MRP); Net-SNMP; scapy and Wireshark decode every capture | not documented | golden frames from p-net and an S7-1500 | p-net (integration tests) | not documented |
-| PI certification | — (not certified) | v1.0.2 release notes: "PROFINET Test Bundle 2.45.0.2 PASS" | — | — | basis for certified products |
+| Tested against other stacks in CI | ✅ p-net (the `ea5e554` tree, not v2.0.0), pnio-rs, profinet-py, pnio-dcp; umrp and microchip-ung/mrp (MRP); Net-SNMP; scapy and Wireshark decode every capture | not documented | golden frames from p-net and an S7-1500 | p-net (integration tests) | not documented |
+| PI certification | — (not certified) | v2.0.0 release notes: PROFINET Test Bundle 2.46.0.205 passed, with hints | — | — | basis for certified products |
 
 ✅ = available · ◐ = partly (the cell says what) · — = not available. For
-p-net `ea5e554` (the last complete public tree; current release v1.0.2),
-pnio-rs v0.1.0 and profinet-py 0.6.6, from their source and documentation
-([docs/research/STACKS.md](docs/research/STACKS.md)) and the interop tests,
-as of October 2026. If you spot an inaccuracy, please
+p-net v2.0.0 (tag `public/v2.0.0`, `67301c5`, November 2026) from its
+source and release notes; pnio-rs v0.1.0 and profinet-py 0.6.6 from their
+source and documentation ([docs/research/STACKS.md](docs/research/STACKS.md))
+as of October 2026. The p-net v2.0.0 cells are what its release notes and
+source say, not what go-profinet tested: the interop harness
+(profinet-interop v0.15.0) still builds p-net `ea5e554` (2023, the last
+public tree with build files and ports), so every p-net result in
+INTEROPERABILITY.md is against that tree. go-profinet's experimental
+features (S2) are marked ◐; [docs/FEATURE-STATUS.md](docs/FEATURE-STATUS.md)
+gives each feature's evidence. If you spot an inaccuracy, please
 [open an issue](https://github.com/otfabric/go-profinet/issues).
 
 ## Install

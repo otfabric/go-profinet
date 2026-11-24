@@ -14,7 +14,85 @@ err = dev.RemoveDiagnosis(ctx, 1, 1, 3, pnio.ChannelErrLineBreak) // "disappears
 ```
 
 `AddDiagnosis` records the diagnosis even when no AR can receive the alarm
-(it then returns an error matching `profinet.ErrInvalidState`). A controller
+(it then returns an error matching `profinet.ErrInvalidState`).
+
+The active diagnoses of a submodule are a set (since v0.25.0; before,
+every call added an entry and an alarm). A diagnosis is identified by its
+channel number, channel group (Accumulative), direction, error type and
+extended error type, as p-net v2.0.0 identifies it (`pf_diag_find_entry`):
+
+| `AddDiagnosis` of a diagnosis that is | State | Alarms | Returns |
+|---|---|---|---|
+| not active | added | one: appears | nil, or `ErrInvalidState` without an AR |
+| identical to an active one (also its other ChannelProperties bits, `ExtAddValue`, `Qualifier`) | unchanged | none | nil, with or without an AR |
+| active with other values (for example another maintenance severity) | replaced | two: the new one appears, the old one disappears with others remaining | nil, or `ErrInvalidState` without an AR |
+
+The check and the update are one step under the device's lock, so
+concurrent identical calls record one diagnosis and send one alarm; the
+device's lock is not held while an alarm waits for its acknowledgement.
+
+Diagnosis operations (`AddDiagnosis`, `RemoveDiagnosis`) are reported in
+the order they change the state: each waits, at most until its context
+ends, for the previous operation's alarms to be acknowledged (before
+v0.25.0 a removal's alarm could overtake the addition it undid). Alarms of
+one priority go out one at a time, each after the controller's AlarmAck
+of the previous, as p-net's alarm machine sends them. An alarm stays
+outstanding until its AlarmAck, the end of the AR or the device's
+AlarmAck timer (`AlarmAckTimeout` at least), also when its caller stops
+waiting earlier: the next alarm of the priority waits, within its own
+context, for one of those. The transport acknowledgement does not end
+an alarm. After the timer the device takes the alarm as lost and the
+next one may go; what a controller does with it then is not
+established.
+
+An alarm that is not delivered without the AR ending (no AlarmAck, a
+refused AlarmAck, the context ending before the controller's transport
+acknowledged it, the owning AR out of the Data state for a while, as
+after a PrmBegin) is owed: the next diagnosis
+operation of the submodule, an identical `AddDiagnosis` included, sends
+the owed alarms first, so repeating the call retries the report; a
+repeated `RemoveDiagnosis` whose diagnoses are already removed sends
+what is owed and returns its result instead of `ErrNotFound`. The
+alarms of an operation go to the AR that owned the submodule when the
+operation changed the state, and are owed to that AR: when the
+submodule moves to another AR (or another primary of an AR set), they
+are dropped, as the new owner reads the diagnoses in its ModuleDiffBlock
+and records. An alarm the controller's transport acknowledged whose
+AlarmAck the context did not wait for is not owed: it was delivered and
+stays outstanding, and owing it would send it twice. A transport timeout aborts the AR. At most 64 alarms are owed per
+submodule; older ones are dropped and logged.
+
+The AlarmSpecifier of a diagnosis alarm summarises the submodule's active
+diagnoses after the change: ChannelDiagnosis, SubmoduleDiagnosisState and
+ARDiagnosisState are set when one of them is a fault, none of them when
+only maintenance diagnoses (or none) remain. A fault is a diagnosis with
+Maintenance 0, or `ChanMaintQualified` with a bit of 0xF8000000 in its
+`Qualifier`. This is p-net v2.0.0's summary (`pf_alarm_get_diag_summary`),
+which fixed its issue 2727; before v0.25.0 go-profinet set
+ChannelDiagnosis on every diagnosis alarm. Open points, not established
+from a specification:
+
+- ARDiagnosisState summarises the alarm's submodule only, as in p-net
+  (whose comment names the standard's BuildSummarizedAlarmSpecifier,
+  computed per subslot); the standard may mean every submodule of the AR.
+  So when the fault of one submodule disappears while another submodule of
+  the AR keeps one, the alarm carries no ARDiagnosisState
+  (`TestARDiagnosisStateScope`). Wireshark names the bit but gives no
+  rule.
+- p-net puts a MaintenanceItem (USI 0x8100) before the diagnosis item of a
+  maintenance alarm; go-profinet sends the diagnosis item alone.
+
+`RemoveDiagnosis(ctx, slot, subslot, channel, errorType)` removes every
+diagnosis of the channel with the error type (all directions and extended
+error types) and sends one alarm for each: "disappears, others remain"
+while another diagnosis remains, and "disappears" in a DiagnosisDisappears
+alarm for the last one.
+
+A diagnosis with a `Qualifier` or the qualified severity is sent and served
+in the QualifiedChannelDiagnosis format (USI 0x8003; before v0.25.0 the
+qualifier was dropped).
+
+A controller
 reads the diagnosis with `Device.ReadDiagnosis` (index 0xF80C of the device)
 or `RecordClient.ReadDiagnosis` for one submodule (0x800C), and receives the
 alarms in `OnAlarm`.

@@ -1023,3 +1023,37 @@ func TestIPSuiteStringZero(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+// TestResponderSetIPLength: the IP parameter of a Set is three IPv4
+// addresses, 12 octets (as Wireshark's PN-DCP dissector reads it). A
+// longer one is refused and changes nothing: trailing octets have no
+// meaning, and a Full IP Suite sent with the wrong suboption would lose
+// its DNS servers without the controller knowing.
+func TestResponderSetIPLength(t *testing.T) {
+	st := testStation()
+	_, raw, _ := responderEnv(t, st, ResponderOptions{NoResponseDelay: true}, devMAC, 200)
+	suite := AppendIPSuite(nil, IPSuite{Addr: netip.MustParseAddr("10.0.0.5"), Mask: netip.MustParseAddr("255.255.255.0"), Gateway: netip.MustParseAddr("10.0.0.1")})
+	st.mu.Lock()
+	was := st.id.IP
+	st.mu.Unlock()
+	for i, data := range [][]byte{
+		append(slices.Clone(suite), 0),
+		append(slices.Clone(suite), make([]byte, 16)...), // a Full IP Suite's length
+	} {
+		raw.send(t, devMAC, &Frame{FrameID: FrameIDGetSet, Service: ServiceSet, Type: TypeRequest, Xid: uint32(i + 1),
+			Blocks: []Block{{ID: IPParameter, HasInfo: true, Data: data}}})
+		_, resp, ok := raw.recv(t, 300*time.Millisecond)
+		if !ok || len(resp.Blocks) != 1 {
+			t.Fatalf("%d octets: response %+v", len(data), resp)
+		}
+		cr, err := DecodeControlResponse(resp.Blocks[0].Data)
+		if err != nil || cr.Block != IPParameter || cr.Error != BlockErrorSetNotPossible {
+			t.Fatalf("%d octets: %+v %v, want SetNotPossible", len(data), cr, err)
+		}
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.id.IP != was {
+		t.Fatalf("IP %+v, want %+v unchanged", st.id.IP, was)
+	}
+}

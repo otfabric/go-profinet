@@ -371,3 +371,69 @@ func TestOnChangeMayReadStatus(t *testing.T) {
 		return s != nil && s.State == StatePT && s.Blocked[1]
 	})
 }
+
+// TestAdditionalTest: a client's MRP_LinkChange makes the manager test
+// at once and again after MRP_TSTshortT, then at MRP_TSTdefaultT
+// (IEC 62439-2:2016, Table 45: LinkChangeInd with ADD_TEST false sets it
+// and calls TestRingReq(MRP_TSTshortT); the next TestTimer expiry clears
+// it and calls TestRingReq(MRP_TSTdefaultT)). A second LinkChange while
+// the additional test runs asks for none. Before, the manager waited for
+// the next default interval.
+func TestAdditionalTest(t *testing.T) {
+	p := quiet
+	p.TestInterval = 600 * time.Millisecond
+	p.TestMax = 1000
+	p.TestShortInterval = 80 * time.Millisecond
+	r := newRig(t, RoleManager, p, [2]bool{true, true})
+	r.nextTest(0) // the first round
+	time.Sleep(100 * time.Millisecond)
+	r.drainTests(0) // a test queued before the LinkChange (TestAdditionalTestEvents)
+	client := ethernet.MAC{0x02, 0x20, 0, 0, 2, 1}
+	down := Frame{Link: &LinkChange{SA: client, PortRole: PortPrimary, Interval: 20, Blocked: 1}}
+	sent := time.Now()
+	r.put(0, MACControl, down)
+	r.nextTest(0)
+	t1 := time.Now()
+	// While ADD_TEST is set, a LinkChange asks for no further test.
+	r.put(0, MACControl, down)
+	r.nextTest(0)
+	t2 := time.Now()
+	r.nextTest(0)
+	t3 := time.Now()
+	if d := t1.Sub(sent); d > 50*time.Millisecond {
+		t.Errorf("first test %v after the LinkChange, want at once", d)
+	}
+	if d := t2.Sub(t1); d < 50*time.Millisecond || d > 300*time.Millisecond {
+		t.Errorf("second test %v after the first, want MRP_TSTshortT (%v)", d, p.TestShortInterval)
+	}
+	if d := t3.Sub(t2); d < 450*time.Millisecond {
+		t.Errorf("third test %v after the second, want MRP_TSTdefaultT (%v)", d, p.TestInterval)
+	}
+	// The next LinkChange, after the timer expired, starts another one.
+	sent = time.Now()
+	r.put(0, MACControl, down)
+	r.nextTest(0)
+	if d := time.Since(sent); d > 50*time.Millisecond {
+		t.Errorf("test %v after a later LinkChange, want at once", d)
+	}
+	if s := r.ent.Status(); s.LinkChanges != 3 {
+		t.Fatalf("%d link changes", s.LinkChanges)
+	}
+}
+
+// TestNoAdditionalTestWithoutShortInterval: a profile without
+// TestShortInterval keeps the default rhythm after a LinkDown.
+func TestNoAdditionalTestWithoutShortInterval(t *testing.T) {
+	p := quiet
+	p.TestInterval = 300 * time.Millisecond
+	p.TestMax = 1000
+	r := newRig(t, RoleManager, p, [2]bool{true, true})
+	r.nextTest(0)
+	t0 := time.Now()
+	client := ethernet.MAC{0x02, 0x20, 0, 0, 2, 1}
+	r.put(0, MACControl, Frame{Link: &LinkChange{SA: client, PortRole: PortPrimary, Interval: 20, Blocked: 1}})
+	r.nextTest(0)
+	if d := time.Since(t0); d < 200*time.Millisecond {
+		t.Errorf("test %v after the previous one, want the default interval", d)
+	}
+}

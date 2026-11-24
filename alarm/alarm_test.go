@@ -385,9 +385,19 @@ func TestSendTimeoutCancelClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	e3.Close()
-	// A send error is returned.
+	// After the timeout, e sends no DATA PDU again: the sequence numbers
+	// may disagree. It fails at once, without a frame.
+	sent := e.Stats().Sent
+	if err := e.Send(context.Background(), []byte("y")); !errors.Is(err, profinet.ErrInvalidState) || errors.Is(err, profinet.ErrTimeout) {
+		t.Fatalf("send after a timeout: %v", err)
+	}
+	if e.Stats().Sent != sent {
+		t.Fatal("a DATA PDU sent after a timeout")
+	}
+	// A send error is returned; the abort (ERR PDU) is still sent.
+	e4 := a.open(t, EndpointConfig{LocalRef: 3, RemoteRef: 2, RemoteMAC: ethernet.MAC{2, 0, 0, 0, 0, 0x99}, Timeout: 10 * time.Millisecond, Retries: 2})
 	a.ep.SetLinkUp(false)
-	if err := e.Send(context.Background(), nil); !errors.Is(err, profinet.ErrLinkDown) {
+	if err := e4.Send(context.Background(), nil); !errors.Is(err, profinet.ErrLinkDown) {
 		t.Fatalf("err %v", err)
 	}
 	if err := e.SendErr(context.Background(), pnio.Status{}); !errors.Is(err, profinet.ErrLinkDown) {

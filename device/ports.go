@@ -73,6 +73,7 @@ func (d *Device) startLLDP() error {
 	for _, p := range d.ports {
 		a, err := lldp.NewAgent(p.mux, lldp.AgentOptions{
 			Interval: d.cfg.LLDPInterval,
+			TTL:      lldpTTL(d.cfg.LLDPInterval),
 			Local:    func() lldp.LocalInfo { return d.lldpInfo(p) },
 			OnChange: d.pokePDev,
 			Logger:   d.log,
@@ -83,6 +84,30 @@ func (d *Device) startLLDP() error {
 		p.lldpA = a
 	}
 	return nil
+}
+
+// profinetLLDPTTL is the TTL a PROFINET IO device announces with the
+// default 5 s interval: 21 s, one second longer than the 20 s of the
+// IEEE 802.1AB default (msgTxHold 4 × msgTxInterval 5 s). The value is
+// that of rtlabs-com/p-net v2.0.0 (PF_LLDP_TTL, src/pf_types.h), whose
+// release notes give the PROFINET test specification as the reason;
+// go-profinet has not read that specification.
+const profinetLLDPTTL = 21 * time.Second
+
+// profinetLLDPInterval is the LLDP transmit interval of a PROFINET IO
+// device, the default of Config.LLDPInterval.
+const profinetLLDPInterval = 5 * time.Second
+
+// lldpTTL is the TTL the device's LLDP agents announce for a transmit
+// interval: 21 s with the PROFINET interval of 5 s (zero selects it). Any
+// other interval keeps the generic TTL of the lldp package, four
+// intervals (zero here), so that a shorter interval still lets a neighbor
+// forget the device soon after it leaves.
+func lldpTTL(interval time.Duration) time.Duration {
+	if interval == 0 || interval == profinetLLDPInterval {
+		return profinetLLDPTTL
+	}
+	return 0
 }
 
 // closePorts stops the LLDP agents and the muxes the device built.

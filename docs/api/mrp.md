@@ -54,9 +54,11 @@ Version is the MRP\_Version this package sends.
 ```go
 var (
 	Profile500 = Profile{Name: "500ms", TopChangeInterval: 20 * time.Millisecond, TopChangeRepeat: 3,
-		TestInterval: 50 * time.Millisecond, TestMax: 5, LinkInterval: 100 * time.Millisecond, LinkRepeat: 4}
+		TestInterval: 50 * time.Millisecond, TestMax: 5, TestShortInterval: 30 * time.Millisecond,
+		LinkInterval: 100 * time.Millisecond, LinkRepeat: 4}
 	Profile200 = Profile{Name: "200ms", TopChangeInterval: 10 * time.Millisecond, TopChangeRepeat: 3,
-		TestInterval: 20 * time.Millisecond, TestMax: 3, LinkInterval: 20 * time.Millisecond, LinkRepeat: 4}
+		TestInterval: 20 * time.Millisecond, TestMax: 3, TestShortInterval: 10 * time.Millisecond,
+		LinkInterval: 20 * time.Millisecond, LinkRepeat: 4}
 )
 ```
 
@@ -167,6 +169,11 @@ type Entity struct {
 	// never repeated after the link came back.
 
 	// testNow asks the manager's loop for a test round now.
+
+	// addTest is the standard's ADD_TEST: an additional test after a
+	// LinkChange is under way, so further LinkChanges ask for none until
+	// the test timer expires. shortNext asks the loop to time the next
+	// test TestShortInterval after the one it sends now. Both under mu.
 
 	// timers counts the timer callbacks that are past their check of
 	// ctx (made under mu): Close waits for them.
@@ -320,6 +327,11 @@ type Profile struct {
 	// Test frames: TSTdefaultT, TSTNRmax.
 	TestInterval time.Duration
 	TestMax      int
+	// TestShortInterval is TSTshortT: after a client's MRP_LinkChange the
+	// manager tests at once and again after this interval, then at
+	// TestInterval (IEC 62439-2:2016, Table 45, ADD_TEST). Zero: no
+	// additional test.
+	TestShortInterval time.Duration
 	// Link change frames: LNKdownT = LNKupT, LNKNRmax.
 	LinkInterval time.Duration
 	LinkRepeat   int

@@ -26,6 +26,250 @@ section ending with a `---` line and no `---` line inside a section.
 
 ---
 
+## v0.25.0
+
+**Date:** unreleased
+**Previous release:** v0.24.0
+
+## Summary
+
+Device fixes found by comparing go-profinet with rt-labs p-net v2.0.0: the
+IO-Device's LLDP TTL is 21 s, an unchanged diagnosis no longer adds an
+entry and an alarm, and a diagnosis alarm's AlarmSpecifier advertises a
+fault only when a fault diagnosis is active. The audit of p-net's fixed
+issues found three defects (alarm sequence numbers after a failed send,
+port checks kept across ARs, RPC fragments in mixed byte order). The
+device now honours the MRP domain check and the MRP timers a controller
+writes, within the 200 ms and 500 ms profiles.
+
+## Changes
+
+### Added
+
+- **`mrp.Profile.TestShortInterval`**: MRP_TSTshortT, the interval of the
+  manager's additional test after a client's LinkChange (see Changed).
+- **`lldp.AgentOptions.TTL`**: the TTL announced, in place of
+  `TTLFactor` × `Interval`, in whole seconds within 1..65535. Without it
+  the default stays 20 s (4 × 5 s).
+- **`lldp.MRPPortStatus`**, `Frame.MRPPortStatus`, `LocalInfo.MRP` and
+  `MRRTOff`/`MRRTConfigured`/`MRRTUp`: the PROFINET MRP port status TLV
+  (subtype 4: MRP domain UUID and MRRT state, Wireshark's layout), decoded
+  and sent. Before it was kept as a raw TLV in `Frame.Other`.
+- **Device: PDInterfaceMrpDataCheck (0x8051), MRP_DomainUUID check**: the
+  ring ports announce the device's MRP domain in LLDP, and a ring port
+  whose neighbor announces another domain reports a remote mismatch
+  diagnosis with extended error type 0x8004 ("Peer MRP domain mismatch",
+  Wireshark; p-net's check). The record is stored and read back. The
+  MediaRedundancyManager check, reserved bits, another domain and block
+  version 1.1 are refused.
+
+### Changed
+
+- **MRP manager: the additional test after a LinkChange**: a client's
+  MRP_LinkDown or MRP_LinkUp makes the manager send its test frames at
+  once and again after MRP_TSTshortT, then at MRP_TSTdefaultT, as
+  IEC 62439-2:2016 Table 45 (ADD_TEST, TestRingReq(MRP_TSTshortT))
+  states; a further LinkChange before the test timer expires, MRP_LinkUp
+  or MRP_LinkDown, asks for none. New field `mrp.Profile.TestShortInterval`
+  (10 ms in `Profile200`, 30 ms in `Profile500`; zero: no additional test,
+  and an MRP_LinkUp makes the manager test at once, as before). Before,
+  the manager waited for the next default interval after an MRP_LinkDown.
+- **MRP test intervals are kept**: the manager's tests (and an automatic
+  manager's monitoring) are timed by a timer set to the next test, not
+  by the link polling tick. Before, every interval was rounded up to a
+  tick: `Profile200` tested every 30 ms instead of 20 ms and `Profile500`
+  every 60 ms instead of 50 ms, which lengthened the detection of an open
+  ring (MRP_TSTNRmax intervals) by half and a fifth. The medians measured
+  on a development machine are now within about 1 ms; a general-purpose
+  OS gives no bound on a single interval.
+- **Device: written MRP timers are applied**: the timers of a written
+  MrpManagerParams/MrpClientParams select `mrp.Profile200` or
+  `mrp.Profile500` (units from Wireshark: MRP_TOPchgT in 10 ms, the
+  others in ms; MRP_TSTshortT 10/30 ms from microchip-ung/mrp), and the
+  entity restarts with it, MRP_TSTshortT included; any other set of timers is refused with
+  "feature not supported" and changes nothing. All-zero timers keep the
+  profile (the go-profinet controller writes MrpManagerParams with the
+  priority alone). A changed manager priority alone now restarts the
+  entity; before, it was stored but not applied.
+
+- **Device LLDP TTL**: the device's agents announce 21 s with the default
+  5 s interval (was 20 s); another `LLDPInterval` keeps four intervals. 21 s is p-net v2.0.0's `PF_LLDP_TTL`, whose release notes cite
+  the PROFINET test specification (not read here).
+- **`device.AddDiagnosis` keeps a set** (p-net issue 2729): a diagnosis is
+  identified by channel, channel group, direction, error type and extended
+  error type, as p-net's `pf_diag_find_entry`. An identical active
+  diagnosis changes nothing, sends no alarm and returns nil, also without
+  an AR (before: a second entry and alarm, or `ErrInvalidState`). One with
+  other values (severity, channel type, `ExtAddValue`, `Qualifier`)
+  replaces the active one and is reported with two alarms: the new one
+  appears, the old one disappears with others remaining. Check and update
+  are one step under the device lock; concurrent identical calls record
+  one entry.
+- **Diagnosis AlarmSpecifier** (p-net issue 2727): ChannelDiagnosis,
+  SubmoduleDiagnosisState and ARDiagnosisState are set when one of the
+  submodule's active diagnoses is a fault (Maintenance 0, or qualified with
+  a fault qualifier bit), and none of them otherwise. Before, every
+  diagnosis alarm set ChannelDiagnosis, and every appearing one all three,
+  so a maintenance-required or -demanded diagnosis advertised a fault.
+- **`device.RemoveDiagnosis` reports every diagnosis it removes**: one
+  alarm each ("disappears, others remain"), the last "disappears" in a
+  DiagnosisDisappears alarm when none remains. Before, it removed every
+  diagnosis of the channel and error type but reported only one.
+- **Diagnosis reports are ordered and retried**: `AddDiagnosis` and
+  `RemoveDiagnosis` report in the order they change the state (each waits,
+  within its context, for the previous one's alarms); an alarm that is not
+  delivered while the AR lives is owed and sent first by the next
+  diagnosis call of the submodule, an identical `AddDiagnosis` included.
+  Before, a removal's alarm could overtake the addition it undid, and an
+  undelivered "disappears" of a replacement was never sent.
+- **Alarms of one priority wait for the previous AlarmAck** (`SendAlarm`,
+  diagnosis alarms), as p-net's alarm machine (`pf_alarm.c`) sends them,
+  also when the caller of the previous one stopped waiting (its context
+  ended): it stays outstanding until its AlarmAck, the end of the AR or
+  the device's AlarmAck timer. Before, a second alarm could go out
+  while the first awaited its AlarmAck.
+- **Diagnosis alarms stay with their AR**: the alarms of a diagnosis
+  operation go to, and are owed to, the AR that owned the submodule when
+  the operation changed the state; a repeated `RemoveDiagnosis` retries
+  owed alarms instead of returning `ErrNotFound`. Alarms owed to an AR
+  that is out of the Data state for a while (after a PrmBegin) stay owed
+  to it, so the repeated call sends them once it is back; before, they
+  were dropped and the repeat returned `ErrNotFound`. A diagnosis alarm
+  the controller received whose AlarmAck the caller did not wait for is
+  no longer owed; before, the next operation sent it a second time.
+- **Qualified diagnoses** are sent and served as QualifiedChannelDiagnosis
+  (USI 0x8003); the `Qualifier` was dropped before.
+- README: the p-net column describes v2.0.0 (MRP client, S2, Device
+  Access, dynamic reconfiguration, PrmBegin/PrmEnd, Combined Object
+  Container, PA profile, multicast pruning), from its release notes and
+  source; the interop evidence stays against p-net `ea5e554`, which
+  profinet-interop v0.15.0 builds.
+
+### Fixed
+
+- **Alarm sequence numbers after a failed or cancelled send**
+  (`alarm.Endpoint.Send`): a DATA PDU whose first transmission failed
+  (link down) or whose `Send` was cancelled while it awaited its ACK used
+  up its sequence number; the peer then refused every later alarm as out
+  of sequence, and the next alarm aborted the AR. A PDU that never left
+  gives its number back; a sent, cancelled one stays pending and the next
+  `Send` retransmits it first. Found auditing p-net issue 2701.
+- **A pending alarm PDU owns its payload** (`alarm.Endpoint.Send`): the
+  endpoint keeps a copy of the VarPart; before, a caller that reused its
+  buffer after a cancelled `Send` changed what the retransmission sent.
+- **An alarm endpoint whose DATA PDU timed out sends no further DATA PDU**:
+  `Send` returns `ErrInvalidState` (the AR is to be aborted; `SendErr`
+  still works). Before, the next `Send` used the next sequence number
+  after a PDU the peer may never have received.
+- **A refused Connect leaves the port checks as they were**: the PDev
+  reset of an IOCAR's Connect is undone when the Connect is refused after
+  it (an abort while the AR is built, no FrameID, no alarm endpoint).
+  Before, the refused Connect erased the checks, adjustments and mismatch
+  diagnoses another controller had written.
+- **DCP Set of IP/Parameter must be 12 octets**: a longer block is
+  refused with "set not possible" and changes nothing; before, the first
+  12 octets were applied and the rest ignored.
+- **Port checks no longer outlive their AR**: an IOCAR's Connect resets
+  the PDPortDataCheck, PDPortDataAdjust and remote mismatch diagnoses of
+  the DAP ports it takes (p-net's `pf_pdport_reset_ar`). Before, a stale
+  check was reported in the next controller's ModuleDiffBlock and a stale
+  NoLLDP boundary kept LLDP off. Found auditing p-net issue 2728 (the
+  inverse defect: p-net reset every port at every Connect).
+- **MRP port adjustments wait for an interface adjustment in progress**:
+  a PDPortMrpDataAdjust is checked against the domain an adjustment
+  leaves, after its rollback. Before, one written by another AR during a
+  refused adjustment was checked against the refused domain and stored.
+- **A refused PDInterfaceMrpDataAdjust changes nothing**: when the MRP
+  entity of the new configuration does not start, the previous records,
+  configuration and entity are restored. Before, the write was refused
+  but its role, domain, priority and timers stayed recorded with no
+  entity running. When the previous entity does not start either, the
+  configuration is still restored with no entity running, and writing it
+  again starts its entity; before, a write of the same configuration was
+  accepted as changing nothing and no entity ran.
+- **No MRP is advertised without an entity**: when neither a new MRP
+  entity nor the previous one starts, the ring ports send no MRP port
+  status, PDInterfaceMrpDataReal reports the role off and the domain
+  check reports nothing. A PDInterfaceMrpDataCheck written while an
+  adjustment replaces the entity waits for it, so a rollback no longer
+  discards it.
+- **The MRP domain check follows the domain**: a PDInterfaceMrpDataAdjust
+  that changes the MRP domain drops the PDInterfaceMrpDataCheck of the
+  old one, and the check compares the neighbor with the domain it names.
+  Before, the check stayed and compared with a domain it did not name.
+- **Fragments in mixed byte order are refused** (`rpc`): a fragment whose
+  DRep byte order differs from the first is `ErrMalformed` (the server
+  answers a REJECT); before, the body was read in the last fragment's
+  order. Audit of p-net issue 2275.
+
+### Breaking
+
+- Behaviour only: a repeated identical `AddDiagnosis` returns nil and
+  sends nothing; a changed one sends two alarms; the AlarmSpecifier of
+  maintenance diagnosis alarms has no fault bits; a controller's LLDP
+  neighbor table keeps the device one second longer; a `SendAlarm` may
+  wait, within its context, for the AlarmAck of an earlier alarm of its
+  priority whose caller gave up; a repeated `RemoveDiagnosis` returns nil
+  instead of `ErrNotFound` when it delivers owed alarms; a controller that
+  reconnects with a new IOCAR writes its port checks again (they are no
+  longer kept from the previous AR); fragmented RPC calls in mixed byte
+  order are refused; `alarm.Endpoint.Send` after a timed-out DATA PDU
+  returns `ErrInvalidState`; a DCP Set of an IP/Parameter longer than 12
+  octets is refused; a PDInterfaceMrpDataCheck with the domain bit is
+  accepted (it was refused), and a PDInterfaceMrpDataAdjust whose timers
+  are not those of the 200 or 500 ms profile is refused (they were
+  ignored); a decoded MRP port status TLV is in `Frame.MRPPortStatus`, no
+  longer in `Frame.Other`.
+
+### Evidence
+
+Regression tests that fail before the change: `TestDeviceLLDPTTL` (TTL 20,
+want 21), `TestDiagnosisIdempotent` (a second alarm for an identical
+diagnosis), `TestDiagnosisAlarmSpecifier` (specifier 0xA800 for a
+maintenance-required diagnosis), `TestDiagnosisWithoutAR` (32 concurrent
+identical adds recorded 32 entries), `TestDiagnosisRecordQualified` (the
+qualifier dropped); `TestDiagnosisIdempotent` also checks one alarm per
+removed diagnosis. `TestDiagnosisOrder` (a removal's alarm before the
+addition's), `TestDiagnosisOwed` (the undelivered alarm never sent) and
+`TestAlarmsSerializedToAck` (a second alarm before the first AlarmAck),
+`TestAlarmOutstandingAfterCancel` (the same after a cancelled wait),
+`TestRemoveDiagnosisRetry` (`ErrNotFound`, the alarm never retried) and
+`TestOwedDiagnosisStaysWithItsAR` (the new AR received the old one's
+alarm) fail before the change; `TestARDiagnosisStateScope` pins the
+per-submodule ARDiagnosisState. `TestSendAfterTransmitFailure` and
+`TestSendAfterCancelledSend` (the next alarm timed out),
+`TestPDevResetOnConnect` (a stale mismatch after the Connect) and
+`TestReassemblyMixedDRep` (mixed byte order reassembled) fail before
+their fixes, and so do `TestSendPendingOwnsPayload` (the retransmission
+sent the caller's later bytes), `TestSendAfterTimeoutIsTerminal` (a DATA
+PDU sent after the timeout), `TestPDevResetUndoneOnRefusedConnect` (the
+checks erased by a refused Connect) and `TestResponderSetIPLength` (a
+13-octet IP parameter applied); `TestSendPendingTimeout` checks the
+pending PDU is dropped after its retries. `TestMRPDomainCheck` and
+`TestMRPCheckRefused` (the check refused with 0xA9) and
+`TestMRPAdjustTimers` (no profile applied) fail before the MRP change,
+`TestMRPAdjustRollback` (a refused write left its configuration and no
+entity), `TestMRPCheckLifecycle` (the old domain's check kept),
+`TestMRPCheckDuringAdjustRollback` (a concurrent check write discarded)
+and `TestMRPRestoreFails` (the domain advertised with no entity) before
+their fixes, `TestAdditionalTest` (mrp; the first test came 519 ms after
+a LinkChange, at the default interval) before the additional test,
+`TestAdditionalTestEvents` (a LinkUp while ADD_TEST was set tested at
+once) and `TestProfileTestTiming` (the intervals rounded up to the
+polling tick) before their fixes, and `TestMRPRestoreFails` (the same
+configuration rewritten started no entity) before its fix;
+`TestMRPRestoreFailsBlocked` shows the forwarding state kept, with the
+controller outside the ring; `TestOwedWhileNotInData`,
+`TestOutstandingDiagnosisNotOwed` and
+`TestMRPPortAdjustDuringAdjustRollback` fail before their fixes;
+`TestWrittenProfile` covers each field and the extreme values,
+`TestMRPPortStatusTLV` the TLV against its layout, and e2e
+`TestMRPRecords` the records through the controller. The
+behaviour follows p-net v2.0.0's source; it is not
+tested against p-net v2.0.0, PI's test bundle or a PLC.
+
+---
+
 ## v0.24.0
 
 **Date:** 2026-11-24

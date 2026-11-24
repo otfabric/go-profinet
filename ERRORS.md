@@ -33,7 +33,7 @@ What the library retries by itself, and what it leaves to the application:
 |-------|-------|---------------|
 | DCP Get and Set | retransmitted with the same transaction ID (default 3 times) | `dcp.ClientOptions.Retries` |
 | DCE/RPC calls | retransmitted every second until the call's deadline (a fragment that is missing is asked for again); a device executes a call at most once and answers a retransmission from its response cache | `rpc.ClientOptions.Retransmit`, `controller.DeviceConfig.RPCTimeout`, the context |
-| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted | `RTATimeoutFactor`, `RTARetries` |
+| Alarms (RTA) | retransmitted until acknowledged, then the AR is aborted. A DATA PDU that never reached the wire gives its sequence number back; one whose `Send` was cancelled after it was sent stays pending and is retransmitted before the next one (since v0.25.0). After one is not acknowledged, `Send` returns `ErrInvalidState`: the AR is to be aborted | `RTATimeoutFactor`, `RTARetries` |
 | Controller lifecycle | a failed AR or connection attempt is retried for ever with an exponential backoff and optional jitter; a DCP Hello of the device skips the wait | `ReconnectMin`, `ReconnectMax`, `ReconnectJitter`; `Metrics.OnRetry` |
 | Record calls (`ReadRecord`, …) | not retried: a write must not be repeated behind the application's back | the application |
 
@@ -111,7 +111,9 @@ wrapped or truncated field. Checked when a component is built
 name or MRP domain name above 240 octets, an MRP `TopChangeInterval` or
 `LinkInterval` that is negative or 65.535 s or more, a model too large for
 its 16-bit blocks (`model.Validate`). Checked per call (`ErrInvalidConfig`):
-an RPC body that needs more than 65 536 fragments, an alarm VarPart above
+an RPC body that needs more than 65 536 fragments (and, received, a
+fragment in another byte order than the first: `ErrMalformed`, answered
+with a REJECT), an alarm VarPart above
 65 535 octets, `device.SendAlarm` data that does not fit the notification,
 a netstack `WriteTo` port outside 0..65535 or a datagram above 65 535
 octets, a pcap frame time before 1970 or after 2106. A record the device
@@ -232,6 +234,24 @@ them), for a module or DAP with more than 1440 submodules and for a model
 `model.Device.Validate` refuses; the `Err` of a placed submodule or of a
 plugged module; and `ErrResourceExhausted` for parameter records of more
 than 16 MiB in the plugged submodules.
+
+## Device diagnoses
+
+`device.AddDiagnosis` and `RemoveDiagnosis` change the recorded state
+first and report it second; an error describes the report, not the state:
+
+| Call | Returns |
+|---|---|
+| `AddDiagnosis`, unknown slot or subslot | `ErrNotFound`; nothing recorded |
+| `AddDiagnosis`, new or changed diagnosis, no AR in Data owns the submodule | `ErrInvalidState`; the diagnosis is recorded. When an AR owns it but is not in Data (after a PrmBegin), its alarms are owed to it and a repeated call sends them once it is back in Data |
+| `AddDiagnosis`, diagnosis identical to an active one | nil, with or without an AR; nothing sent (since v0.25.0) |
+| `AddDiagnosis`, changed diagnosis whose first or second alarm fails | that error; the new value is recorded, and the alarms not delivered are owed: the next diagnosis call of the submodule (an identical `AddDiagnosis` included) sends them first |
+| either, ctx ends while another diagnosis call reports | `ctx.Err()`; nothing recorded |
+| `RemoveDiagnosis`, no diagnosis of that channel and error type | `ErrNotFound`; when alarms of the submodule are owed to its owner (a removal repeated after its alarm failed), they are sent and their result is returned instead |
+| `RemoveDiagnosis`, an alarm fails | that error; the diagnoses are removed, the alarms not delivered are owed as above |
+| either, alarm not acknowledged | `ErrTimeout`, `ErrAborted` or a `*pnio.StatusError` as for `SendAlarm` |
+| `SendAlarm` or a diagnosis call, ctx ends after the alarm was delivered | an error matching `ctx.Err()`; the alarm stays outstanding: the next alarm of its priority waits for its AlarmAck, the end of the AR or the AlarmAck timer. A diagnosis alarm in this case is not owed |
+| `SendAlarm` or a diagnosis call, no AlarmAck within the AlarmAck timer | `ErrTimeout`; the alarm is taken as lost and the priority is free |
 
 ## Lifecycle errors
 
