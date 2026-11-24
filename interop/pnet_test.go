@@ -159,6 +159,7 @@ func TestPnetAPI(t *testing.T) {
 		"-param", "1:1:123:01020304", "-read", at("1:1:123"),
 		"-write", at("1:1:124:0a0b0c0d"), "-read", at("1:1:124"),
 		"-implicit", "0:1:0xF821", "-read", "0:1:0xF821", "-read", "0:1:0xE001", "-read", at("1:1:0xF000"),
+		"-read", at("1:1:0xC001"), "-read", at("1:1:0x8001"), "-read", "1:1:0xC001", "-read", "1:1:0x8001",
 		"-output", "1:1:0:5a", "-output", "2:1:0:1122334455667788", "-duration", "4s")
 	r := report(t, out)
 	e.expect("Connect with a submodule in API 0x4E01 (two APIs in the expected configuration and the IOCRs), PrmEnd, ApplicationReady", r["running"] == true, "running=%v error=%v", r["running"], r["error"])
@@ -224,6 +225,23 @@ func TestPnetAPI(t *testing.T) {
 	e.expect("RealIdentificationData for the AR (0xE001) decoded: the IO module in API 0x4E01, the DAP and the echo module in API 0", err == nil && len(ar) == 2 && ar[apiIOLink] == ioModule && strings.Contains(ar[0], "2/1:0x40/0x140"), "%v %v", ar, err)
 	one, err := ident("read 0x4e01/1/1/61440")
 	e.expect("RealIdentificationData for API 0x4E01 (0xF000) decoded: the IO module alone", err == nil && len(one) == 1 && one[apiIOLink] == ioModule, "%v %v", one, err)
+	slot, err := ident("read 0x4e01/1/1/49153")
+	e.expect("RealIdentificationData for slot 1 in API 0x4E01 (0xC001) decoded: the IO module alone", err == nil && len(slot) == 1 && slot[apiIOLink] == ioModule, "%v %v", slot, err)
+	sub, err := ident("read 0x4e01/1/1/32769")
+	e.expect("RealIdentificationData for subslot 1/1 in API 0x4E01 (0x8001) decoded: the IO module alone", err == nil && len(sub) == 1 && sub[apiIOLink] == ioModule, "%v %v", sub, err)
+	// The same reads in API 0, which has no submodule at slot 1: p-net
+	// answers with a record of no data, not a refusal
+	// (pf_put_real_ident_data, src/common/pf_block_writer.c: "Nothing was
+	// inserted!! Report a NULL record"). go-profinet's controller returns
+	// it as an empty record.
+	for _, k := range []string{"read 0x0/1/1/49153", "read 0x0/1/1/32769"} {
+		what := "slot 1 (0xC001)"
+		if strings.HasSuffix(k, "32769") {
+			what = "subslot 1/1 (0x8001)"
+		}
+		e.expect("RealIdentificationData in API 0 for "+what+", where API 0 has no submodule: answered with no record data",
+			byKey[k] != nil && byKey[k]["error"] == nil && byKey[k]["data"] == "", "%v", byKey[k])
+	}
 	stats, _ := r["stats"].(map[string]any)
 	cons, _ := stats["Consumer"].(map[string]any)
 	prov, _ := stats["Provider"].(map[string]any)
@@ -252,6 +270,13 @@ func TestPnetAPI(t *testing.T) {
 	// The Connect request: its expected configuration and IOCRs name both
 	// APIs.
 	fr = e.tsharkFields(pcap, "dcerpc.pkt_type == 0 && dcerpc.opnum == 0 && pn_io.iocr_type", "pn_io.api")
+	// The identification requests: tshark decodes the header's API of each.
+	idr := e.tsharkFields(pcap, "dcerpc.pkt_type == 0 && (pn_io.index == 0xc001 || pn_io.index == 0x8001)", "pn_io.api", "pn_io.index")
+	reqs := map[string]bool{}
+	for _, f := range idr {
+		reqs[strings.Join(f.Fields["pn_io.api"], ",")+" "+strings.Join(f.Fields["pn_io.index"], ",")] = true
+	}
+	e.expect("tshark fields: the 0xC001 and 0x8001 requests in APIs 0x00004e01 and 0", len(idr) == 4 && reqs["0x00004e01 0xc001"] && reqs["0x00004e01 0x8001"] && reqs["0x00000000 0xc001"] && reqs["0x00000000 0x8001"], "%v %+v", reqs, idr)
 	e.expect("tshark fields: the Connect request names APIs 0x00000000 and 0x00004e01", len(fr) == 1 &&
 		slices.Contains(fr[0].Fields["pn_io.api"], "0x00004e01") && slices.Contains(fr[0].Fields["pn_io.api"], "0x00000000"), "%+v", fr)
 

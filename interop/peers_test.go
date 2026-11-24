@@ -175,6 +175,10 @@ func TestProfinetPyController(t *testing.T) {
 // profinet-py's GSDML loader reads). profinet-py's read and write take an
 // API; its IOCRs and expected configuration list each slot under its
 // submodule's API.
+// profileWrite is what TestProfinetPyAPI writes to record 0xB600 of the
+// device's submodule in API 0x4E01: 16 octets other than its default.
+var profileWrite = []byte{0x80, 0x01, 0x02, 0x20, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x00, 0x07}
+
 func TestProfinetPyAPI(t *testing.T) {
 	e := newEnv(t)
 	img := image("profinet-py")
@@ -185,6 +189,11 @@ func TestProfinetPyAPI(t *testing.T) {
 	out := e.run("pypn", img, 3, 3*time.Minute, "controller", "--station", "otf-dut", "--gsdml", "/share/otf-dut-api.xml",
 		"--read", "0x4e01@3:1:0x11", "--write", "0x4e01@3:1:0x11:0a0b", "--read", "0x4e01@3:1:0x11", "--read", "0@3:1:0x11", "--read", "0x4e02@3:1:0x11",
 		"--read", "0x4e01@3:1:0xF000", "--read", "0:1:0xF821",
+		"--read", "0x4e01@3:1:0xB600", "--write", "0x4e01@3:1:0xB600:"+hex.EncodeToString(profileWrite), "--read", "0x4e01@3:1:0xB600",
+		"--read", "0@3:1:0xB600", "--read", "0x4e02@3:1:0xB600",
+		"--write", "0x4e01@3:1:0xB900:00000000", "--write", "0x4e01@3:1:0xB600:0102",
+		"--read", "0x4e01@3:1:0xB900", "--read", "0x4e01@3:1:0xB600",
+		"--read", "0x4e01@3:1:0xC001", "--read", "0x4e01@3:1:0x8001", "--read", "0@3:1:0xC001", "--read", "0@3:1:0x8001",
 		"--output", "2:1:a1b2c3d4", "--output", "3:1:beef", "--read-input", "1:1", "--read-input", "3:1", "--duration", "3")
 	var rep struct {
 		Steps []struct {
@@ -266,6 +275,69 @@ func TestProfinetPyAPI(t *testing.T) {
 	// profinet-py's slot discovery reads 0xF000 in API 0, which Wireshark's
 	// index table names "RealIdentificationData for one API": API 0's
 	// slots, without slot 3.
+	// Identification of slot 3 at slot level (0xC001) and subslot level
+	// (0x8001) in its API: the same one submodule. In API 0, the slot-level
+	// read is answered with API 0 and no slot (API 0 has none at slot 3),
+	// and the subslot-level one is refused: go-profinet's rule
+	// (LIMITATIONS.md), observed by an independent controller.
+	identOf := func(name string) (string, error) {
+		blk, err := decode(name)
+		if err != nil {
+			return "", err
+		}
+		d, err := pnio.DecodeIdentificationData(blk)
+		out := ""
+		for _, a := range d.APIs {
+			out += fmt.Sprintf("api %#x:", a.API)
+			for _, sl := range a.Slots {
+				for _, sm := range sl.Submodules {
+					out += fmt.Sprintf(" %d/%d:%#x/%#x", sl.Slot, sm.Subslot, sl.IdentNumber, sm.IdentNumber)
+				}
+			}
+			out += ";"
+		}
+		return out, err
+	}
+	const slot3Ident = "api 0x4e01: 3/1:0x30/0x31;"
+	id, err := identOf("read 0x4e01@3:1:0xC001")
+	e.expect("RealIdentificationData for slot 3 in API 0x4E01 (0xC001) read by profinet-py: that slot's one submodule", ok("read 0x4e01@3:1:0xC001") && err == nil && id == slot3Ident, "%q %v %s", id, err, errOf("read 0x4e01@3:1:0xC001"))
+	id, err = identOf("read 0x4e01@3:1:0x8001")
+	e.expect("RealIdentificationData for subslot 3/1 in API 0x4E01 (0x8001) read by profinet-py: that submodule", ok("read 0x4e01@3:1:0x8001") && err == nil && id == slot3Ident, "%q %v %s", id, err, errOf("read 0x4e01@3:1:0x8001"))
+	id, err = identOf("read 0@3:1:0xC001")
+	e.expect("RealIdentificationData for slot 3 in API 0 (0xC001): API 0 without a slot", ok("read 0@3:1:0xC001") && err == nil && id == "api 0x0:;", "%q %v %s", id, err, errOf("read 0@3:1:0xC001"))
+	e.expect("RealIdentificationData for subslot 3/1 in API 0 (0x8001) refused: invalid area/API (0xB4)", refused("read 0@3:1:0x8001"), "%s", errOf("read 0@3:1:0x8001"))
+
+	// Profile records (0xB000-0xBFFF) of the submodule in API 0x4E01, as
+	// generic records: their transport and the model's access rules, not
+	// a profile's meaning. The step names repeat; the report keeps every
+	// step in order.
+	all := func(name string) (vals, errs []string) {
+		for _, st := range rep.Steps {
+			if st.Step == name {
+				if st.OK {
+					vals = append(vals, str(st.Value))
+				} else {
+					errs = append(errs, st.Error)
+				}
+			}
+		}
+		return vals, errs
+	}
+	written := hex.EncodeToString(profileWrite)
+	b600, b600Errs := all("read 0x4e01@3:1:0xB600")
+	e.expect("Read profile record 0xB600 in API 0x4E01: its default", len(b600) == 3 && b600[0] == "80010110fffff0f0f0f0f0f0f0ff0005", "%v %v", b600, b600Errs)
+	e.expect("Write profile record 0xB600 in API 0x4E01, read back", ok("write 0x4e01@3:1:0xB600:"+written) && len(b600) == 3 && b600[1] == written, "%v %s", b600, errOf("write 0x4e01@3:1:0xB600:"+written))
+	e.expect("Read of 0xB600 in API 0 refused: invalid area/API (0xB4)", refused("read 0@3:1:0xB600"), "%s", errOf("read 0@3:1:0xB600"))
+	e.expect("Read of 0xB600 in API 0x4E02 refused: invalid area/API (0xB4)", refused("read 0x4e02@3:1:0xB600"), "%s", errOf("read 0x4e02@3:1:0xB600"))
+	// profinet-py prints the PNIORW codes as Decode=ErrorCode1 and
+	// ErrorCode1=ErrorDecode; 0xDF is a write's ErrorCode.
+	writeRefused := func(name string, code string) bool {
+		er := errOf(name)
+		return !ok(name) && strings.Contains(er, "Decode="+code) && strings.Contains(er, "ErrorCode1=0x80") && strings.Contains(er, "ErrorCode2=0xDF")
+	}
+	e.expect("Write of read-only profile record 0xB900 refused: access denied (0xB6)", writeRefused("write 0x4e01@3:1:0xB900:00000000", "0xB6"), "%s", errOf("write 0x4e01@3:1:0xB900:00000000"))
+	e.expect("Write of 2 octets to 0xB600 (length 16) refused: write length (0xB1)", writeRefused("write 0x4e01@3:1:0xB600:0102", "0xB1"), "%s", errOf("write 0x4e01@3:1:0xB600:0102"))
+	e.expect("After the refused requests: 0xB900 keeps its default, 0xB600 the value written", val("read 0x4e01@3:1:0xB900") == "80010011" && len(b600) == 3 && b600[2] == written, "%s %v", val("read 0x4e01@3:1:0xB900"), b600)
 	e.expect("Slot discovery by profinet-py (0xF000 in API 0): API 0's slots, not slot 3", ok("discover-slots") && strings.Contains(val("discover-slots"), "slot=2") && !strings.Contains(val("discover-slots"), "slot=3"), "%s", val("discover-slots"))
 	e.expect("GSDML with a submodule in API 0x4E01, written by go-profinet, parsed by profinet-py; cyclic AR (IOCARSingle) established", ok("start-cyclic") && strings.Contains(val("start-cyclic"), "slot:3"), "%v %s", val("start-cyclic"), errOf("start-cyclic"))
 	e.expect("Cyclic inputs of the submodule in API 0x4E01 at profinet-py", ok("input 3:1") && len(val("input 3:1")) == 4, "%s", val("input 3:1"))
@@ -284,6 +356,9 @@ func TestProfinetPyAPI(t *testing.T) {
 		}
 	}
 	e.expect("The device received the write in API 0x4E01", slices.Contains(writes, "3:1:17=0a0b"), "%v", writes)
+	e.expect("The device received the write of 0xB600 and neither refused write", slices.Contains(writes, "3:1:46592="+written) && !slices.ContainsFunc(writes, func(w string) bool {
+		return strings.HasPrefix(w, "3:1:47360=") || w == "3:1:46592=0102"
+	}), "%v", writes)
 	pcap := stop()
 	e.oracles(pcap, peerDeviation{Protocol: "PNIO-CM", Message: "Trailing stray characters",
 		Why: "profinet-py writes I&M1 with BlockLength 58 and two padding octets; the standard block is 56 octets (tshark flags the extra octets of its Write request)"})
@@ -302,6 +377,24 @@ func TestProfinetPyAPI(t *testing.T) {
 		slot3 = slot3 && allEqual(f.Fields["pn_io.slot_nr"], "0x0003") && allEqual(f.Fields["pn_io.subslot_nr"], "0x0001")
 	}
 	e.expect("tshark fields: record 0x0011 read and written in API 0x00004e01, slot 3, subslot 1; the refused reads in APIs 0 and 0x00004e02", slot3 && n["0x00004e01"] >= 6 && n["0x00000000"] >= 1 && n["0x00004e02"] >= 1, "%v %+v", n, fr)
+	// The Write of 0xB600: the header's API, slot, subslot, index and
+	// RecordDataLength, and the data as profile user data (pn.user_data, as
+	// in TestCodecDecoders). The filter matches the frame only if its last
+	// 16 octets are the data written.
+	fr = e.tsharkFields(pcap, "pn_io.index == 0xb600 && dcerpc.pkt_type == 0 && frame[-16:] == "+colonHex(profileWrite),
+		"pn_io.api", "pn_io.slot_nr", "pn_io.subslot_nr", "pn_io.index", "pn_io.record_data_length", "pn.user_data")
+	e.expect("tshark fields: profinet-py's Write of 0xB600 in API 0x00004e01, slot 3, subslot 1, RecordDataLength 16, its 16 octets as profile user data",
+		len(fr) == 1 && slices.Equal(fr[0].Fields["pn_io.api"], []string{"0x00004e01"}) &&
+			slices.Equal(fr[0].Fields["pn_io.slot_nr"], []string{"0x0003"}) && slices.Equal(fr[0].Fields["pn_io.subslot_nr"], []string{"0x0001"}) &&
+			slices.Equal(fr[0].Fields["pn_io.index"], []string{"0xb600"}) && slices.Equal(fr[0].Fields["pn_io.record_data_length"], []string{"16"}) &&
+			slices.Equal(fr[0].Fields["pn.user_data"], []string{"data"}), "%+v", fr)
+	// The identification reads: tshark decodes the header's API of each.
+	fr = e.tsharkFields(pcap, "dcerpc.pkt_type == 0 && (pn_io.index == 0xc001 || pn_io.index == 0x8001)", "pn_io.api", "pn_io.index")
+	reqs := map[string]bool{}
+	for _, f := range fr {
+		reqs[strings.Join(f.Fields["pn_io.api"], ",")+" "+strings.Join(f.Fields["pn_io.index"], ",")] = true
+	}
+	e.expect("tshark fields: the 0xC001 and 0x8001 requests in APIs 0x00004e01 and 0", len(fr) == 4 && reqs["0x00004e01 0xc001"] && reqs["0x00004e01 0x8001"] && reqs["0x00000000 0xc001"] && reqs["0x00000000 0x8001"], "%v %+v", reqs, fr)
 }
 
 func TestPnioRsReparameterize(t *testing.T) {
