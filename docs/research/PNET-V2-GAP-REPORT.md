@@ -110,6 +110,15 @@ the fix.
 | R2-132-02 check write during an adjustment's rollback | defect | MRP record writes are serialized by `mrpMu` | `TestMRPCheckDuringAdjustRollback` |
 | R2-132-03 failed restoration | defect | without a running entity nothing is advertised, reported as real or checked; the ring ports keep their state | `TestMRPRestoreFails` |
 
+### Third review
+
+| Finding | Class | Resolution | Test |
+|---|---|---|---|
+| R3-132-01 a LinkUp bypasses ADD_TEST | defect | with MRP_TSTshortT, ADD_TEST alone decides a LinkChange's test, for a LinkUp as for a LinkDown; without it a LinkUp still tests at once | `TestAdditionalTestEvents` (fails before for up-up, down-up, up-down), `TestLinkUpTestWithoutShortInterval` |
+| R3-132-01 timer precision | defect | the tests are timed by a timer set to the next test; before, intervals were rounded up to the polling tick (Profile200 30 ms instead of 20, Profile500 60 ms instead of 50, MRP_TSTshortT 20 and 40 ms instead of 10 and 30). Medians within about 1 ms; no real-time bound claimed | `TestProfileTestTiming` (fails before) |
+| R3-132-02 the same configuration does not restart a missing entity | defect | an adjustment equal to the stored configuration changes nothing only when its entity runs | `TestMRPRestoreFails` (fails before) |
+| R3-132-03 blocked port without an entity | limitation, accepted | the forwarding state is kept, not repaired; configuration restored, entity restarted by a later write | `TestMRPRestoreFailsBlocked` (deterministic, controller outside the ring) |
+
 ## Residual observations and their disposition
 
 | Observation | Disposition |
@@ -123,12 +132,12 @@ the fix.
 | PortDataChangeNotification for remote mismatches | difference; documented in LIMITATIONS.md |
 | ARDiagnosisState over the AR | needs specification (see above) |
 | a neighbor without the MRP port status is no mismatch | difference; documented in PNET-V2-MRP.md |
-| CHK_RC LinkChange rows of IEC 62439-2 Table 45 not read (outside the public preview) | limitation; the manager keeps its own reactions to MRP_LinkDown (ring opened at once) and MRP_LinkUp (a test round) |
+| CHK_RC LinkChange rows of IEC 62439-2 Table 45 not read (outside the public preview) | limitation; the manager keeps its own reaction to MRP_LinkDown (ring opened at once), and without MRP_TSTshortT its test round on an MRP_LinkUp |
 | the controller writes the manager priority alone | follow-up: writing complete profile timers changes the controller's output and needs interop evidence |
 | owed diagnosis alarms are capped at 64 per submodule | limitation; the oldest are dropped and logged, the records stay authoritative |
 | an alarm whose transport send was cancelled before its ACK: the next alarm of the priority retransmits it and then goes out without waiting for its AlarmAck | limitation; fixing it needs the outstanding alarm to push its pending PDU itself (an `alarm.Endpoint` addition); the delivered-alarm case is fixed |
 | after the device's AlarmAck timer the next alarm of the priority may go before the late AlarmAck | needs specification: what the standard's alarm machine does on that timeout is not read |
-| ring port forwarding when no MRP entity runs | needs specification: kept as the last entity left it |
+| ring port forwarding when no MRP entity runs | accepted degraded mode (third review): kept as the last entity left it, a port held blocked in PT included; a later write restarts the entity |
 | nothing here is tested against p-net v2.0.0 | the interop pin stays at profinet-interop v0.15.0 (p-net `ea5e554`) |
 
 ## Wave 4: design
