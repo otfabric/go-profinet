@@ -62,7 +62,9 @@ type Endpoint struct {
 	frameID uint16
 	mgr     *Manager
 
-	sendMu sync.Mutex // one Send at a time
+	// slot is held by the DATA PDU being sent, from its Send or Start to
+	// its transport acknowledgement or terminal failure: window size 1.
+	slot chan struct{}
 
 	mu       sync.Mutex
 	nextSend uint16 // the sequence number of the next DATA PDU
@@ -85,8 +87,11 @@ type Endpoint struct {
 
 	deliver chan []byte
 	done    chan struct{}
-	once    sync.Once
-	wg      sync.WaitGroup
+	// life ends at Close; it bounds the retransmissions of a Transfer.
+	life     context.Context
+	stopLife context.CancelFunc
+	once     sync.Once
+	wg       sync.WaitGroup
 
 	sent, received, retrans, dups, oos, acks, nacks, busy atomic.Uint64
 }
@@ -108,7 +113,9 @@ func newEndpoint(m *Manager, cfg EndpointConfig) *Endpoint {
 		expect:   InitialSendSeq,
 		deliver:  make(chan []byte, 32),
 		done:     make(chan struct{}),
+		slot:     make(chan struct{}, 1),
 	}
+	e.life, e.stopLife = context.WithCancel(context.Background())
 	if cfg.High {
 		e.frameID = pnio.FrameIDAlarmHigh
 	}
@@ -176,22 +183,53 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	if len(varPart) > math.MaxUint16 {
 		return varPartTooLong(len(varPart))
 	}
-	e.sendMu.Lock()
-	defer e.sendMu.Unlock()
+	if err := e.acquire(ctx); err != nil {
+		return err
+	}
+	defer e.release()
+	p, prevSend, err := e.prepare(ctx, varPart)
+	if err != nil {
+		return err
+	}
+	sent, err := e.await(ctx, p, false)
+	if !sent {
+		e.giveBack(p.SendSeq, prevSend)
+	}
+	return err
+}
+
+// acquire takes the send slot, waiting for the DATA PDU before to end.
+func (e *Endpoint) acquire(ctx context.Context) error {
 	select {
+	case e.slot <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-e.done:
 		return fmt.Errorf("alarm: %w", profinet.ErrClosed)
-	default:
 	}
+	select {
+	case <-e.done:
+		<-e.slot
+		return fmt.Errorf("alarm: %w", profinet.ErrClosed)
+	default:
+		return nil
+	}
+}
+
+func (e *Endpoint) release() { <-e.slot }
+
+// prepare, holding the slot, retransmits a pending DATA PDU and numbers
+// the new one; prevSend is the sendSeq to restore when it never leaves.
+func (e *Endpoint) prepare(ctx context.Context, varPart []byte) (p *PDU, prevSend uint16, err error) {
 	e.mu.Lock()
 	pending, failed := e.pending, e.failed
 	e.mu.Unlock()
 	if failed != nil {
-		return fmt.Errorf("alarm: %w: an earlier DATA PDU was never acknowledged (%v); abort the AR", profinet.ErrInvalidState, failed)
+		return nil, 0, fmt.Errorf("alarm: %w: an earlier DATA PDU was never acknowledged (%v); abort the AR", profinet.ErrInvalidState, failed)
 	}
 	if pending != nil {
 		if _, err := e.await(ctx, pending, true); err != nil {
-			return err
+			return nil, 0, err
 		}
 	}
 	e.mu.Lock()
@@ -202,15 +240,112 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 	e.mu.Unlock()
 	// The PDU owns a copy: it may stay pending after Send returns, and the
 	// caller may reuse varPart.
-	p := &PDU{Type: PDUData, AddFlags: WindowSize | FlagTACK, SendSeq: seq, AckSeq: ack, VarPart: bytes.Clone(varPart)}
-	sent, err := e.await(ctx, p, false)
-	if !sent {
-		// Nothing reached the wire: the number was not used.
-		e.mu.Lock()
-		e.nextSend, e.sendSeq = seq, prevSend
-		e.mu.Unlock()
+	return &PDU{Type: PDUData, AddFlags: WindowSize | FlagTACK, SendSeq: seq, AckSeq: ack, VarPart: bytes.Clone(varPart)}, prevSend, nil
+}
+
+// giveBack returns the sequence number of a DATA PDU that never reached
+// the wire.
+func (e *Endpoint) giveBack(seq, prevSend uint16) {
+	e.mu.Lock()
+	e.nextSend, e.sendSeq = seq, prevSend
+	e.mu.Unlock()
+}
+
+// Transfer is a DATA PDU that [Endpoint.Start] transmitted. The endpoint
+// owns it until its transport acknowledgement or its terminal failure,
+// whatever happens to the context of the Start.
+type Transfer struct {
+	done chan struct{}
+	err  error
+}
+
+// Done is closed when the transfer ended: the peer acknowledged the PDU,
+// or it failed for good.
+func (t *Transfer) Done() <-chan struct{} { return t.done }
+
+// Err returns nil once the peer acknowledged the PDU and, once it failed,
+// an error matching profinet.ErrTimeout (never acknowledged: the endpoint
+// sends no DATA PDU again, as after a timed-out Send) or
+// profinet.ErrClosed (the endpoint closed first). Before Done it returns
+// nil.
+func (t *Transfer) Err() error {
+	select {
+	case <-t.done:
+		return t.err
+	default:
+		return nil
 	}
-	return err
+}
+
+// Start transmits a DATA PDU carrying varPart, like Send, but ctx bounds
+// only what happens before the PDU is on the wire: waiting for the DATA
+// PDU before it to end, retransmitting one an earlier Send left pending,
+// and the first transmission. When Start returns an error the PDU never
+// left: its sequence number is given back and nothing of it reaches the
+// peer. Otherwise the returned Transfer owns the PDU: the endpoint
+// retransmits it every Timeout up to Retries times, until the peer
+// acknowledges it, it fails for good or the endpoint closes, and the next
+// Send or Start waits for that. A caller whose context ends after Start
+// returned does not change the outcome: the PDU was transmitted and the
+// peer may have accepted it, so it is never left pending.
+//
+// The errors before the transmission are those of Send: one matching
+// profinet.ErrInvalidConfig for a varPart longer than 65535 octets,
+// profinet.ErrInvalidState after an earlier PDU timed out,
+// profinet.ErrClosed, the error of ctx, or that of the transmission.
+func (e *Endpoint) Start(ctx context.Context, varPart []byte) (*Transfer, error) {
+	if len(varPart) > math.MaxUint16 {
+		return nil, varPartTooLong(len(varPart))
+	}
+	if err := e.acquire(ctx); err != nil {
+		return nil, err
+	}
+	p, prevSend, err := e.prepare(ctx, varPart)
+	if err != nil {
+		e.release()
+		return nil, err
+	}
+	acked, nacked := e.arm(p.SendSeq)
+	if err := e.transmit(ctx, p); err != nil {
+		e.mu.Lock()
+		e.waiting = false
+		e.mu.Unlock()
+		e.giveBack(p.SendSeq, prevSend)
+		e.release()
+		return nil, fmt.Errorf("alarm: send: %w", err)
+	}
+	e.sent.Add(1)
+	tr := &Transfer{done: make(chan struct{})}
+	// The transfer holds the slot until it ended; Close waits for the
+	// slot, so it returns after the transfer.
+	go func() {
+		defer e.release()
+		_, err := e.wait(e.life, p, acked, nacked, false, true)
+		if e.life.Err() != nil && !errors.Is(err, profinet.ErrTimeout) {
+			err = fmt.Errorf("alarm: %w", profinet.ErrClosed)
+		}
+		e.mu.Lock()
+		e.waiting = false
+		if errors.Is(err, profinet.ErrTimeout) {
+			e.failed = err
+		}
+		e.mu.Unlock()
+		tr.err = err
+		close(tr.done)
+	}()
+	return tr, nil
+}
+
+// arm records that the DATA PDU seq awaits its acknowledgement; the
+// channels report its ACK and the NACKs.
+func (e *Endpoint) arm(seq uint16) (acked chan struct{}, nacked chan struct{}) {
+	acked = make(chan struct{})
+	nacked = make(chan struct{}, 1)
+	e.mu.Lock()
+	e.waiting, e.waitSeq = true, seq
+	e.acked, e.nacked = acked, nacked
+	e.mu.Unlock()
+	return acked, nacked
 }
 
 // await transmits the DATA PDU p (retransmitted reports that it was sent
@@ -218,13 +353,7 @@ func (e *Endpoint) Send(ctx context.Context, varPart []byte) error {
 // reports whether p reached the wire. On a cancelled ctx a sent p is left
 // in e.pending; otherwise e.pending is cleared.
 func (e *Endpoint) await(ctx context.Context, p *PDU, retransmitted bool) (sent bool, err error) {
-	sent = retransmitted
-	e.mu.Lock()
-	acked := make(chan struct{})
-	nacked := make(chan struct{}, 1)
-	e.waiting, e.waitSeq = true, p.SendSeq
-	e.acked, e.nacked = acked, nacked
-	e.mu.Unlock()
+	acked, nacked := e.arm(p.SendSeq)
 	defer func() {
 		e.mu.Lock()
 		e.waiting = false
@@ -237,24 +366,35 @@ func (e *Endpoint) await(ctx context.Context, p *PDU, retransmitted bool) (sent 
 		}
 		e.mu.Unlock()
 	}()
+	return e.wait(ctx, p, acked, nacked, retransmitted, false)
+}
+
+// wait transmits p until its acknowledgement, Retries times after the
+// first; transmitted reports that the first transmission was made, so
+// the first attempt only waits for the ACK.
+func (e *Endpoint) wait(ctx context.Context, p *PDU, acked, nacked chan struct{}, retransmitted, transmitted bool) (sent bool, err error) {
+	sent = retransmitted || transmitted
 	var lost error
 	for attempt := 0; attempt <= e.cfg.Retries; attempt++ {
-		if attempt > 0 || retransmitted {
-			e.retrans.Add(1)
-			e.mu.Lock()
-			p.AckSeq = e.lastRecv
-			e.mu.Unlock()
-		}
-		if err := e.transmit(ctx, p); err != nil {
-			if !sent || ctx.Err() != nil {
-				return sent, fmt.Errorf("alarm: send: %w", err)
+		// Start made the first transmission itself.
+		if attempt > 0 || !transmitted {
+			if attempt > 0 || retransmitted {
+				e.retrans.Add(1)
+				e.mu.Lock()
+				p.AckSeq = e.lastRecv
+				e.mu.Unlock()
 			}
-			// The PDU was on the wire before: this copy is lost like a
-			// dropped frame; the timer retransmits it.
-			lost = err
-		} else {
-			sent = true
-			e.sent.Add(1)
+			if err := e.transmit(ctx, p); err != nil {
+				if !sent || ctx.Err() != nil {
+					return sent, fmt.Errorf("alarm: send: %w", err)
+				}
+				// The PDU was on the wire before: this copy is lost like a
+				// dropped frame; the timer retransmits it.
+				lost = err
+			} else {
+				sent = true
+				e.sent.Add(1)
+			}
 		}
 		t := time.NewTimer(e.cfg.Timeout)
 		select {
@@ -364,8 +504,12 @@ func (e *Endpoint) handle(p *PDU) {
 func (e *Endpoint) Close() {
 	e.once.Do(func() {
 		close(e.done)
+		e.stopLife()
 		e.mgr.remove(e)
 		e.wg.Wait()
+		// Wait for a Send or a Transfer holding the slot: each ends at
+		// done. The slot stays taken; a later acquire sees done.
+		e.slot <- struct{}{}
 	})
 }
 

@@ -59,7 +59,8 @@ Priority returns the VLAN priority of the PDU's FrameID: 6 high, 5 low.
 ```go
 type Endpoint struct {
 
-	// one Send at a time
+	// slot is held by the DATA PDU being sent, from its Send or Start to
+	// its transport acknowledgement or terminal failure: window size 1.
 
 	// the sequence number of the next DATA PDU
 	// the last DATA PDU sent, InitialAckSeq before any
@@ -75,6 +76,8 @@ type Endpoint struct {
 	// failed is the error of a DATA PDU that was never acknowledged: the
 	// peer may or may not have accepted it, so the sequence numbers of the
 	// two sides are not known to agree and no DATA PDU is sent again.
+
+	// life ends at Close; it bounds the retransmissions of a Transfer.
 
 }
 ```
@@ -116,6 +119,16 @@ func (e *Endpoint) SendErr(ctx context.Context, status pnio.Status) error
 ```
 
 SendErr sends an ERR PDU with status, the abort of the AR.
+
+#### func (Endpoint) Start
+
+```go
+func (e *Endpoint) Start(ctx context.Context, varPart []byte) (*Transfer, error)
+```
+
+Start transmits a DATA PDU carrying varPart, like Send, but ctx bounds only what happens before the PDU is on the wire: waiting for the DATA PDU before it to end, retransmitting one an earlier Send left pending, and the first transmission. When Start returns an error the PDU never left: its sequence number is given back and nothing of it reaches the peer. Otherwise the returned Transfer owns the PDU: the endpoint retransmits it every Timeout up to Retries times, until the peer acknowledges it, it fails for good or the endpoint closes, and the next Send or Start waits for that. A caller whose context ends after Start returned does not change the outcome: the PDU was transmitted and the peer may have accepted it, so it is never left pending.
+
+The errors before the transmission are those of Send: one matching profinet.ErrInvalidConfig for a varPart longer than 65535 octets, profinet.ErrInvalidState after an earlier PDU timed out, profinet.ErrClosed, the error of ctx, or that of the transmission.
 
 #### func (Endpoint) Stats
 
@@ -305,3 +318,29 @@ PDU types.
 ```go
 func (t PDUType) String() string
 ```
+
+### type Transfer
+
+```go
+type Transfer struct {
+	// contains filtered or unexported fields
+}
+```
+
+Transfer is a DATA PDU that [Endpoint.Start](#func-endpoint-start) transmitted. The endpoint owns it until its transport acknowledgement or its terminal failure, whatever happens to the context of the Start.
+
+#### func (Transfer) Done
+
+```go
+func (t *Transfer) Done() <-chan struct{}
+```
+
+Done is closed when the transfer ended: the peer acknowledged the PDU, or it failed for good.
+
+#### func (Transfer) Err
+
+```go
+func (t *Transfer) Err() error
+```
+
+Err returns nil once the peer acknowledged the PDU and, once it failed, an error matching profinet.ErrTimeout (never acknowledged: the endpoint sends no DATA PDU again, as after a timed-out Send) or profinet.ErrClosed (the endpoint closed first). Before Done it returns nil.

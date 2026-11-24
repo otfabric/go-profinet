@@ -332,6 +332,14 @@ func TestEntityConfig(t *testing.T) {
 		if _, err := New(c); !errors.Is(err, profinet.ErrInvalidConfig) {
 			t.Errorf("%s: %v", name, err)
 		}
+		// Validate refuses what New refuses, with the same error.
+		if err := c.Validate(); !errors.Is(err, profinet.ErrInvalidConfig) {
+			t.Errorf("%s: Validate: %v", name, err)
+		}
+	}
+	// And accepts what New starts, starting nothing.
+	if err := (Config{Role: RoleClient, Ports: [2]*l2.Mux{m, m}, Index: [2]int{0, 1}, Switch: br, MAC: mac}).Validate(); err != nil {
+		t.Errorf("Validate of a valid configuration: %v", err)
 	}
 	// The conversion helpers clamp instead of wrapping.
 	for d, want := range map[time.Duration]uint16{-time.Millisecond: 0, 0: 0, 20 * time.Millisecond: 20, maxFrameInterval: 65535, maxFrameInterval + time.Millisecond: 65535} {

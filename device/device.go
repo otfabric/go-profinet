@@ -235,6 +235,14 @@ type Device struct {
 	// diagFailed, when set (tests), runs when a diagnosis alarm was not
 	// delivered, before the rest is owed.
 	diagFailed func()
+	// evalPaused, when set (tests), is called by the port evaluation
+	// after it read the port's state and before it records its result.
+	evalPaused func(subslot uint16)
+	// mrpRetry, when set (tests), is the first delay of an MRP recovery
+	// in place of mrpRetryMin.
+	mrpRetry time.Duration
+	// mrpWG counts the MRP recoveries; d.ctx ends them.
+	mrpWG sync.WaitGroup
 	// mrpNew, when set (tests), starts the MRP entity in place of mrp.New.
 	mrpNew func(mrp.Config) (*mrp.Entity, error)
 

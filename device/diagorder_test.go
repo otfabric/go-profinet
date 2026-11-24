@@ -28,8 +28,16 @@ type arrival struct {
 // alarms as policy says; acked reports when each AlarmAck was sent.
 func policyPeer(t *testing.T, policy ackPolicy) (*Device, <-chan arrival, func(n int) time.Time) {
 	t.Helper()
+	d, _, got, acked := policyPeerOn(t, nil, policy)
+	return d, got, acked
+}
+
+// policyPeerOn is policyPeer with the device's node, for faults, and a
+// handler h (nil for none).
+func policyPeerOn(t *testing.T, h Handler, policy ackPolicy) (*Device, *node, <-chan arrival, func(n int) time.Time) {
+	t.Helper()
 	n := newNet(t)
-	d, _ := n.device(nil)
+	d, nd := n.device(h)
 	p := n.peer(d, "192.168.0.2", true)
 	req := p.ioCAR()
 	resp := p.establish(req)
@@ -53,7 +61,7 @@ func policyPeer(t *testing.T, policy ackPolicy) (*Device, <-chan arrival, func(n
 			_ = ep.Send(context.Background(), ack.Append(nil))
 		}()
 	})
-	return d, got, func(i int) time.Time {
+	return d, nd, got, func(i int) time.Time {
 		mu.Lock()
 		defer mu.Unlock()
 		return acked[i]
